@@ -1,0 +1,159 @@
+StoneFossil in-process serving patch (Fossil 2.26)
+==================================================
+
+Fossil is designed as one process per HTTP request: it serves a request and
+then exit()s, discarding all process state. Stone embeds the Fossil core in a
+single long-lived process (the in-process loopback server in
+ios/FossilBridge/StoneFossil.c) and calls fossil_main() once per request. That
+re-entry is mostly safe because fossil_main() begins with memset(&g,0,...), but
+several modules keep *request-scoped* state in file-scope statics that Fossil
+otherwise relies on the process exit to clear. Reused across requests, that
+stale state causes redirect loops, dangling-pointer crashes and assert()
+failures.
+
+This patch adds a small `*_reset_state()` to each affected module and calls them
+all from the single HTTP request entry point, cgi_handle_http_request():
+
+  src/cgi.c      cgi_reset_state()    reply status/headers/content, query params
+  src/etag.c     etag_reset_state()   the once-per-request ETag buffer
+  src/cookies.c  cookie_reset_state() display-prefs cookie cache (dangling ptrs)
+  src/style.c    style_reset_state()  submenu buttons/controls, header flags, JS
+
+Scope is deliberately minimal: only statics that hold request-scoped data are
+reset. Process-scoped one-time initialization (SQL function registration, table
+loads, etc.) is intentionally left untouched. Regenerate the patch if the pinned
+Fossil version changes; gen-fossil-sources.sh applies it and fails loudly if it
+no longer applies cleanly.
+
+--- a/src/cgi.c
++++ b/src/cgi.c
+@@ -801,6 +801,34 @@
+   char cTag;                /* Tag on query parameters */
+   char isFetched;           /* 1 if the var is requested via P/PD() */
+ } *aParamQP;             /* An array of all parameters and cookies */
++
++/*
++** STONE: Reset all request-scoped CGI static state to its initial values.
++**
++** Fossil normally serves one HTTP request per process, so this file-scope
++** state is cleaned up implicitly when the process exits. When Fossil is
++** embedded and fossil_main() is called repeatedly in a single long-lived
++** process (e.g. the in-process loopback server on iOS), that state would
++** otherwise bleed from one request into the next -- most visibly, a 302
++** redirect status and its Location header would persist and poison every
++** subsequent reply. Calling this at the start of cgi_handle_http_request()
++** gives each request a clean slate. Added for the Stone embedding; see
++** scripts/fossil-inprocess.patch.
++*/
++void cgi_reset_state(void){
++  blob_reset(&cgiContent[0]);
++  blob_reset(&cgiContent[1]);
++  pContent = &cgiContent[0];
++  blob_reset(&extraHeader);
++  zContentType = "text/html";
++  zReplyStatus = "OK";
++  iReplyStatus = 200;
++  rangeStart = 0;
++  rangeEnd = 0;
++  nUsedQP = 0;
++  sortQP = 0;
++  seqQP = 0;
++}
+ 
+ /*
+ ** Add another query parameter or cookie to the parameter set.
+@@ -2125,6 +2153,12 @@
+   int i;
+   const char *zScheme = "http";
+   char zLine[2000];     /* A single line of input. */
++  cgi_reset_state();    /* STONE: clear request-scoped statics before parsing
++                        ** the new request, so in-process reuse (repeated
++                        ** fossil_main calls) starts each request clean. */
++  etag_reset_state();   /* STONE: ditto for the ETag subsystem. */
++  cookie_reset_state(); /* STONE: ditto for the display-preferences cookie. */
++  style_reset_state();  /* STONE: ditto for page-rendering (submenu/header). */
+   g.fullHttpReply = 1;
+   g.zReqType = "HTTP";
+   if( cgi_fgets(zLine, sizeof(zLine))==0 ){
+--- a/src/etag.c
++++ b/src/etag.c
+@@ -72,6 +72,22 @@
+ static int iMaxAge = 0;     /* The max-age parameter in the reply */
+ static sqlite3_int64 iEtagMtime = 0;  /* Last-Modified time */
+ static int etagCancelled = 0;         /* Never send an etag */
++
++/*
++** STONE: Reset request-scoped ETag state to its initial values.
++**
++** etag_check() asserts zETag[0]==0 ("only call this routine once!"), which
++** relies on the process exiting after each request. In the embedded in-process
++** server (see scripts/fossil-inprocess.patch) fossil_main() runs repeatedly in
++** one process, so this state must be cleared before each request or the second
++** request trips the assertion. Called from the HTTP request entry point.
++*/
++void etag_reset_state(void){
++  zETag[0] = 0;
++  iMaxAge = 0;
++  iEtagMtime = 0;
++  etagCancelled = 0;
++}
+ 
+ /*
+ ** Return a hash that changes every time the Fossil source code is
+--- a/src/cookies.c
++++ b/src/cookies.c
+@@ -80,6 +80,21 @@
+   } aParam[COOKIE_NPARAM];
+ } cookies;
+ 
++/*
++** STONE: Reset request-scoped cookie state to its initial values.
++**
++** The aParam[] entries point into the per-request zCookieValue buffer (and into
++** transient query-parameter strings), all of which are freed when the request's
++** db/cgi state is torn down. cookie_parse() short-circuits on bIsInit and never
++** rezeroes nParam, so in the embedded in-process server (repeated fossil_main()
++** calls; see scripts/fossil-inprocess.patch) the next request would dereference
++** those dangling pointers and crash. Clearing the whole struct forces a fresh
++** parse each request. Called from the HTTP request entry point.
++*/
++void cookie_reset_state(void){
++  memset(&cookies, 0, sizeof(cookies));
++}
++
+ /* Initialize this module by parsing the content of the cookie named
+ ** by DISPLAY_SETTINGS_COOKIE
+ */
+--- a/src/style.c
++++ b/src/style.c
+@@ -386,6 +386,30 @@
+ ** is NULL then use g.zPath.
+ */
+ static char *local_zCurrentPage = 0;
++
++/*
++** STONE: Reset request-scoped page-rendering state to its initial values.
++**
++** These statics accumulate per request (submenu buttons/controls, the
++** header-generated flag, deferred JavaScript, the current-page override, etc.).
++** Fossil normally discards them by exiting after each request; in the embedded
++** in-process server (repeated fossil_main() calls; see
++** scripts/fossil-inprocess.patch) they must be cleared, or nSubmenu/nSubmenuCtrl
++** overflow their fixed arrays (tripping an assert) and stale pointers leak into
++** later pages. Called from the HTTP request entry point.
++*/
++void style_reset_state(void){
++  nSubmenu = 0;
++  nSubmenuCtrl = 0;
++  headerHasBeenGenerated = 0;
++  sideboxUsed = 0;
++  adUnitFlags = 0;
++  submenuEnable = 1;
++  needHrefJs = 0;
++  blob_reset(&blobOnLoad);
++  fossil_free(local_zCurrentPage);
++  local_zCurrentPage = 0;
++}
+ 
+ /*
+ ** Set the desired $current_page to something other than g.zPath

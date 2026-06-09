@@ -1,0 +1,74 @@
+import Foundation
+
+/// Thin, readable Swift face over the `StoneFossil` C bridge.
+///
+/// Single responsibility: turn Swift calls into Fossil invocations and back,
+/// off the main thread. It owns no policy about repositories or UI — it only
+/// runs commands and manages the lifetime of the loopback web server.
+///
+/// The underlying C bridge serializes everything internally, so the engine is
+/// safe to call from anywhere; the dedicated queue keeps callers off the main
+/// thread and gives us clean `async` ergonomics.
+actor FossilEngine {
+    static let shared = FossilEngine()
+
+    /// The port the loopback server is currently listening on, if running.
+    private(set) var serverPort: Int?
+
+    /// Result of a one-shot Fossil command.
+    struct CommandResult {
+        let exitCode: Int32
+        let output: String
+        var succeeded: Bool { exitCode == 0 }
+    }
+
+    /// Run a Fossil command (without the leading "fossil"), capturing output.
+    /// Example: `run(["clone", url, path])`.
+    func run(_ args: [String]) -> CommandResult {
+        withCArgv(args) { argc, argv in
+            var outPtr: UnsafeMutablePointer<CChar>? = nil
+            let code = stone_fossil_run(argc, argv, &outPtr)
+            let text = outPtr.map { String(cString: $0) } ?? ""
+            if let p = outPtr { free(p) }
+            return CommandResult(exitCode: code, output: text)
+        }
+    }
+
+    /// Start (or reuse) the loopback web server for the given repository file.
+    /// Returns the base URL the WebView should load.
+    func startServer(repoPath: String) throws -> URL {
+        if let port = serverPort, let url = URL(string: "http://localhost:\(port)/") {
+            return url
+        }
+        var port: Int32 = 0
+        let rc = repoPath.withCString { stone_fossil_server_start($0, &port) }
+        guard rc == 0, let url = URL(string: "http://localhost:\(port)/") else {
+            throw EngineError.serverFailed
+        }
+        serverPort = Int(port)
+        return url
+    }
+
+    func stopServer() {
+        stone_fossil_server_stop()
+        serverPort = nil
+    }
+
+    enum EngineError: Error { case serverFailed }
+
+    // MARK: - C argv marshaling
+
+    /// Convert `[String]` into a C `argv` (NULL-terminated) for the duration of
+    /// `body`, freeing all allocations afterward.
+    private func withCArgv<R>(_ args: [String],
+                              _ body: (Int32, UnsafePointer<UnsafePointer<CChar>?>) -> R) -> R {
+        var cStrings: [UnsafeMutablePointer<CChar>?] = args.map { strdup($0) }
+        cStrings.append(nil)
+        defer { for p in cStrings where p != nil { free(p) } }
+        return cStrings.withUnsafeBufferPointer { buf in
+            let base = UnsafeRawPointer(buf.baseAddress!)
+                .assumingMemoryBound(to: UnsafePointer<CChar>?.self)
+            return body(Int32(args.count), base)
+        }
+    }
+}

@@ -1,0 +1,3 @@
+build/*
+vendor/fossil-src-2.26/*
+ios/Frameworks/FossilCore.xcframework/*

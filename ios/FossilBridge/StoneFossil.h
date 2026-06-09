@@ -1,0 +1,54 @@
+#ifndef STONE_FOSSIL_H
+#define STONE_FOSSIL_H
+
+/*
+ * StoneFossil — the one and only bridge between the Swift app and the
+ * vendored Fossil C core.
+ *
+ * Design contract (kept deliberately tiny to prevent coupling):
+ *   - All entry points run Fossil's own `fossil_main()`, which fully resets
+ *     global state on every call (it does `memset(&g,0,sizeof(g))`), so each
+ *     invocation is independent.
+ *   - Every call into Fossil is serialized behind one internal lock. The
+ *     vendored SQLite is built single-threaded (SQLITE_THREADSAFE=0) and
+ *     Fossil uses process-global state, so callers must never assume
+ *     concurrency. Serialization makes that safe.
+ */
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/*
+ * Run an arbitrary Fossil command in-process (e.g. "clone", "init", "sync").
+ *
+ *   argv  : the command and its arguments, WITHOUT a leading "fossil"
+ *           (e.g. {"sync", "https://example.com/repo", "-R", "/path.fossil"}).
+ *   out_text : on return, receives a newly malloc()'d, NUL-terminated string
+ *              containing captured stdout+stderr. Caller must free() it.
+ *              May be NULL if the caller does not want the output.
+ *
+ * Returns 0 on success, non-zero on failure.
+ */
+int stone_fossil_run(int argc, const char *const argv[], char **out_text);
+
+/*
+ * Start an in-process HTTP server bound to 127.0.0.1 on an OS-assigned port,
+ * serving the given .fossil repository's web UI with full local access.
+ *
+ *   repo_path : absolute path to a .fossil repository file.
+ *   out_port  : receives the chosen TCP port on success.
+ *
+ * The server runs on a background thread and handles one request at a time.
+ * Returns 0 on success, non-zero on failure.
+ */
+int stone_fossil_server_start(const char *repo_path, int *out_port);
+
+/* Stop the running server, if any. Safe to call when none is running. */
+void stone_fossil_server_stop(void);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* STONE_FOSSIL_H */
