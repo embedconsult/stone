@@ -112,8 +112,18 @@ static long read_file_all(const char *path, char **out_buf) {
 /* Core: run fossil_main() with stdout/stderr captured to a buffer.    */
 /* ------------------------------------------------------------------ */
 
+/* Fossil needs a user identity for clone/commit. iOS sets no USER environment
+ * variable and there is no global Fossil config, so seed a sensible default
+ * once. setenv(..., 0) leaves any identity the host already provided intact. */
+static pthread_once_t g_env_once = PTHREAD_ONCE_INIT;
+static void stone_init_env(void) {
+    setenv("USER", "stone", 0);
+    setenv("FOSSIL_USER", "stone", 0);
+}
+
 /* argv here is the FULL vector including "fossil" at index 0. */
 static int invoke_fossil(int argc, char *argv[], char **out_text) {
+    pthread_once(&g_env_once, stone_init_env);
     pthread_mutex_lock(&g_fossil_lock);
 
     char *cap_path = NULL;
@@ -199,6 +209,10 @@ typedef struct {
 
 static ServerState g_server = {.listen_fd = -1, .port = 0, .repo_path = NULL,
                                .running = 0};
+
+/* Guards g_server.repo_path so it can be swapped (retargeted) from another
+ * thread while the accept loop is reading it between requests. */
+static pthread_mutex_t g_repo_lock = PTHREAD_MUTEX_INITIALIZER;
 
 /* Read exactly n bytes worth of one HTTP request from the socket into a temp
  * file: request line + headers (until CRLFCRLF) plus Content-Length body.
@@ -292,8 +306,19 @@ static void handle_connection(int cfd) {
     char baseurl[64];
     snprintf(baseurl, sizeof(baseurl), "http://localhost:%d", g_server.port);
 
+    /* Snapshot the current repo path so a concurrent retarget can't free it
+     * out from under this request. */
+    pthread_mutex_lock(&g_repo_lock);
+    char *repo = g_server.repo_path ? strdup(g_server.repo_path) : NULL;
+    pthread_mutex_unlock(&g_repo_lock);
+    if (repo == NULL) {
+        unlink(req_path); free(req_path);
+        unlink(resp_path); free(resp_path);
+        return;
+    }
+
     char *argv[] = {
-        "fossil", "http", g_server.repo_path,
+        "fossil", "http", repo,
         "--in", req_path,
         "--out", resp_path,
         "--ipaddr", "127.0.0.1",
@@ -305,6 +330,7 @@ static void handle_connection(int cfd) {
     int argc = (int)(sizeof(argv) / sizeof(argv[0])) - 1;
 
     invoke_fossil(argc, argv, NULL);
+    free(repo);
 
     char *resp = NULL;
     long n = read_file_all(resp_path, &resp);
@@ -381,6 +407,20 @@ int stone_fossil_server_start(const char *repo_path, int *out_port) {
     return 0;
 }
 
+int stone_fossil_server_set_repo(const char *repo_path) {
+    if (repo_path == NULL) return -1;
+    if (!g_server.running) return -1;
+
+    char *copy = strdup(repo_path);
+    if (copy == NULL) return -1;
+
+    pthread_mutex_lock(&g_repo_lock);
+    free(g_server.repo_path);
+    g_server.repo_path = copy;
+    pthread_mutex_unlock(&g_repo_lock);
+    return 0;
+}
+
 void stone_fossil_server_stop(void) {
     if (!g_server.running) return;
     g_server.running = 0;
@@ -390,7 +430,9 @@ void stone_fossil_server_stop(void) {
         g_server.listen_fd = -1;
     }
     pthread_join(g_server.thread, NULL);
+    pthread_mutex_lock(&g_repo_lock);
     free(g_server.repo_path);
     g_server.repo_path = NULL;
+    pthread_mutex_unlock(&g_repo_lock);
     g_server.port = 0;
 }

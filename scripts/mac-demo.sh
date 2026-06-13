@@ -4,7 +4,7 @@
 # Fossil engine + in-process web server can be exercised in a desktop browser
 # without any iOS signing/Xcode. This links the SAME StoneFossil.c shim used by
 # the iOS app against a macOS build of the vendored Fossil core, then starts the
-# server on a repo and opens it in your browser.
+# server on a repo and prints a URL you can open in your browser.
 #
 # Usage:
 #   scripts/mac-demo.sh [path-to-repo.fossil]

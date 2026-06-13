@@ -44,6 +44,18 @@ int stone_fossil_run(int argc, const char *const argv[], char **out_text);
  */
 int stone_fossil_server_start(const char *repo_path, int *out_port);
 
+/*
+ * Retarget the already-running server at a different repository, without
+ * restarting the socket (the port stays the same). Because each request is
+ * served by a fresh `fossil http <repo>` invocation, switching repos is just a
+ * matter of swapping the path the next request will use.
+ *
+ *   repo_path : absolute path to a .fossil repository file.
+ *
+ * Returns 0 on success, non-zero if no server is running or on failure.
+ */
+int stone_fossil_server_set_repo(const char *repo_path);
+
 /* Stop the running server, if any. Safe to call when none is running. */
 void stone_fossil_server_stop(void);
 
