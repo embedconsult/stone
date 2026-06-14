@@ -33,6 +33,13 @@ extern "C" {
 int stone_fossil_run(int argc, const char *const argv[], char **out_text);
 
 /*
+ * Set the user identity Fossil uses to attribute clone/commit/sync operations.
+ * Overrides the built-in default ("stone"). Pass a non-empty, NUL-terminated
+ * name. Safe to call at any time; takes effect on the next Fossil invocation.
+ */
+void stone_fossil_set_user(const char *user);
+
+/*
  * Start an in-process HTTP server bound to 127.0.0.1 on an OS-assigned port,
  * serving the given .fossil repository's web UI with full local access.
  *

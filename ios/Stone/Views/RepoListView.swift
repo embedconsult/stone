@@ -4,6 +4,7 @@ import SwiftUI
 struct RepoListView: View {
     @EnvironmentObject private var store: RepoStore
     @State private var showingAdd = false
+    @State private var showingSettings = false
 
     var body: some View {
         List {
@@ -32,12 +33,18 @@ struct RepoListView: View {
             RepoDetailView(repo: repo)
         }
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button { showingSettings = true } label: { Image(systemName: "gearshape") }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button { showingAdd = true } label: { Image(systemName: "plus") }
             }
         }
         .sheet(isPresented: $showingAdd) {
             AddRepoView()
+        }
+        .sheet(isPresented: $showingSettings) {
+            SettingsView()
         }
     }
 

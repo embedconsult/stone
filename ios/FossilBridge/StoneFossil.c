@@ -121,6 +121,12 @@ static void stone_init_env(void) {
     setenv("FOSSIL_USER", "stone", 0);
 }
 
+void stone_fossil_set_user(const char *user) {
+    if (user == NULL || user[0] == '\0') return;
+    setenv("USER", user, 1);
+    setenv("FOSSIL_USER", user, 1);
+}
+
 /* argv here is the FULL vector including "fossil" at index 0. */
 static int invoke_fossil(int argc, char *argv[], char **out_text) {
     pthread_once(&g_env_once, stone_init_env);

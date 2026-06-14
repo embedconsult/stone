@@ -14,6 +14,7 @@
 		768E869C09E867CD115CDEA7 /* CredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CD3D09FCE1513AC396ACAAC /* CredentialStore.swift */; };
 		79DE7AE7C2E75D34EB445476 /* AddRepoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B381B11CAD790DF201810543 /* AddRepoView.swift */; };
 		8789F77DDA3470524DD8B778 /* RepoWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D03A16783380AA7FE06F26BC /* RepoWebView.swift */; };
+		5E771500A11A5EAA00000001 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E771500A11A5EAA00000002 /* SettingsView.swift */; };
 		A5F4E90DBE08A2A6963EF69E /* RepoStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCECFED0E5D45BD3F63B711C /* RepoStore.swift */; };
 		AE2F17F33799CEA5877AA62E /* FossilCore.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0A17C29D5BBCAF5E27BD1389 /* FossilCore.xcframework */; };
 		C1834116F1706E7EDCFE4453 /* StoneApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B327B30FE75F33C0EDBF37F5 /* StoneApp.swift */; };
@@ -36,6 +37,7 @@
 		C34F67C4EB118D7638B7FDFD /* Repo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Repo.swift; sourceTree = "<group>"; };
 		CCECFED0E5D45BD3F63B711C /* RepoStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RepoStore.swift; sourceTree = "<group>"; };
 		D03A16783380AA7FE06F26BC /* RepoWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RepoWebView.swift; sourceTree = "<group>"; };
+		5E771500A11A5EAA00000002 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		E832ED8C0E3636A5D9DDEF11 /* StoneFossil.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = StoneFossil.h; sourceTree = "<group>"; };
 		F9EA2AB04F790C358050645B /* libiconv.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libiconv.tbd; path = usr/lib/libiconv.tbd; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
@@ -111,6 +113,7 @@
 				B381B11CAD790DF201810543 /* AddRepoView.swift */,
 				929ADAA2B0E5E4DDFA51199B /* RepoListView.swift */,
 				D03A16783380AA7FE06F26BC /* RepoWebView.swift */,
+				5E771500A11A5EAA00000002 /* SettingsView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -196,6 +199,7 @@
 				3CFA09B0F5D843B2B6F6F8CE /* RepoListView.swift in Sources */,
 				A5F4E90DBE08A2A6963EF69E /* RepoStore.swift in Sources */,
 				8789F77DDA3470524DD8B778 /* RepoWebView.swift in Sources */,
+				5E771500A11A5EAA00000001 /* SettingsView.swift in Sources */,
 				C1834116F1706E7EDCFE4453 /* StoneApp.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

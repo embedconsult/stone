@@ -59,6 +59,11 @@ actor FossilEngine {
         serverPort = nil
     }
 
+    /// Set the identity Fossil attributes clone/commit/sync operations to.
+    func setUser(_ user: String) {
+        user.withCString { stone_fossil_set_user($0) }
+    }
+
     enum EngineError: Error { case serverFailed }
 
     // MARK: - C argv marshaling
