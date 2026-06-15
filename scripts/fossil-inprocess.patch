@@ -19,12 +19,47 @@ all from the single HTTP request entry point, cgi_handle_http_request():
   src/cookies.c  cookie_reset_state() display-prefs cookie cache (dangling ptrs)
   src/style.c    style_reset_state()  submenu buttons/controls, header flags, JS
 
-Scope is deliberately minimal: only statics that hold request-scoped data are
-reset. Process-scoped one-time initialization (SQL function registration, table
-loads, etc.) is intentionally left untouched. Regenerate the patch if the pinned
-Fossil version changes; gen-fossil-sources.sh applies it and fails loudly if it
-no longer applies cleanly.
+It also guards one piece of *process-scoped* one-time init that the reset model
+does not cover:
 
+  src/main.c     a once-flag around the two sqlite3_config() calls. Those are
+                 only valid before SQLite initializes; on the second and later
+                 fossil_main() calls they return SQLITE_MISUSE(21). Made
+                 idempotent so they run exactly once per process.
+
+Scope is deliberately minimal: only request-scoped statics are reset, and only
+the SQLite global-config init is made idempotent. Other process-scoped one-time
+initialization (SQL function registration, table loads, etc.) is intentionally
+left untouched. Regenerate the patch if the pinned Fossil version changes;
+gen-fossil-sources.sh applies it and fails loudly if it no longer applies
+cleanly.
+
+--- a/src/main.c
++++ b/src/main.c
+@@ -735,8 +735,21 @@
+                  sqlite3_libversion());
+   }
+
+-  sqlite3_config(SQLITE_CONFIG_MULTITHREAD);
+-  sqlite3_config(SQLITE_CONFIG_LOG, fossil_sqlite_log, 0);
++  /* STONE: Make SQLite global configuration idempotent across repeated
++  ** fossil_main() calls. sqlite3_config() is only valid before SQLite is
++  ** initialized; upstream Fossil exits after every request so it is always
++  ** pristine here. In the embedded in-process server (see
++  ** scripts/fossil-inprocess.patch) fossil_main() runs many times in one
++  ** process, so every call after the first returns SQLITE_MISUSE(21). This is
++  ** process-scoped one-time init, so guard it to run exactly once. */
++  {
++    static int stone_sqlite_config_done = 0;
++    if( !stone_sqlite_config_done ){
++      sqlite3_config(SQLITE_CONFIG_MULTITHREAD);
++      sqlite3_config(SQLITE_CONFIG_LOG, fossil_sqlite_log, 0);
++      stone_sqlite_config_done = 1;
++    }
++  }
+   memset(&g, 0, sizeof(g));
+   g.now = time(0);
+   g.httpHeader = empty_blob;
 --- a/src/cgi.c
 +++ b/src/cgi.c
 @@ -801,6 +801,34 @@
