@@ -48,6 +48,16 @@ void stone_fossil_set_user(const char *user);
 void stone_fossil_set_ca_file(const char *path);
 
 /*
+ * Tell Fossil where to keep its global configuration database (~/.fossil).
+ * On iOS the system sets HOME to the app's sandbox container root, which is
+ * read-only, so Fossil's home-directory resolution fails ("home directory
+ * must be writeable"). Fossil checks FOSSIL_HOME first, so the app passes a
+ * writable directory (its Application Support dir) and this sets it. Pass a
+ * non-empty, NUL-terminated path. Takes effect on the next call.
+ */
+void stone_fossil_set_home(const char *path);
+
+/*
  * Start an in-process HTTP server bound to 127.0.0.1 on an OS-assigned port,
  * serving the given .fossil repository's web UI with full local access.
  *

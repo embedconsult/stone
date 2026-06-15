@@ -132,6 +132,11 @@ void stone_fossil_set_ca_file(const char *path) {
     setenv("SSL_CERT_FILE", path, 1);
 }
 
+void stone_fossil_set_home(const char *path) {
+    if (path == NULL || path[0] == '\0') return;
+    setenv("FOSSIL_HOME", path, 1);
+}
+
 /* argv here is the FULL vector including "fossil" at index 0. */
 static int invoke_fossil(int argc, char *argv[], char **out_text) {
     pthread_once(&g_env_once, stone_init_env);

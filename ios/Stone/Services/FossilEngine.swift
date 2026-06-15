@@ -69,6 +69,13 @@ actor FossilEngine {
         path.withCString { stone_fossil_set_ca_file($0) }
     }
 
+    /// Give Fossil a writable home for its global config DB (~/.fossil). On iOS
+    /// the system HOME is the read-only sandbox container root, so we point
+    /// FOSSIL_HOME at a writable directory instead.
+    func setHome(path: String) {
+        path.withCString { stone_fossil_set_home($0) }
+    }
+
     enum EngineError: Error { case serverFailed }
 
     // MARK: - C argv marshaling
