@@ -361,6 +361,18 @@ static void handle_connection(int cfd) {
     free(resp_path);
 }
 
+/* Serve one accepted connection, then close it. Runs on its own detached
+ * thread (see accept_loop). The Fossil work it triggers is still serialized by
+ * g_fossil_lock inside invoke_fossil; threading here only keeps a slow or idle
+ * socket from blocking other connections. */
+static void *connection_thread(void *arg) {
+    int cfd = *(int *)arg;
+    free(arg);
+    handle_connection(cfd);
+    close(cfd);
+    return NULL;
+}
+
 static void *accept_loop(void *arg) {
     (void)arg;
     while (g_server.running) {
@@ -369,8 +381,20 @@ static void *accept_loop(void *arg) {
             if (errno == EINTR) continue;
             break; /* listen socket closed -> shut down */
         }
-        handle_connection(cfd);
-        close(cfd);
+        /* Hand each connection to its own short-lived thread. A browser opens
+         * several connections per page (and speculative/preconnect sockets that
+         * may stay idle); serving them serially here would let one stalled
+         * read() block the request the page is actually waiting on. */
+        int *pfd = (int *)malloc(sizeof(int));
+        if (pfd == NULL) { close(cfd); continue; }
+        *pfd = cfd;
+        pthread_t t;
+        if (pthread_create(&t, NULL, connection_thread, pfd) != 0) {
+            free(pfd);
+            close(cfd);
+            continue;
+        }
+        pthread_detach(t);
     }
     return NULL;
 }

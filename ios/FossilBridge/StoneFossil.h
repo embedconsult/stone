@@ -64,7 +64,9 @@ void stone_fossil_set_home(const char *path);
  *   repo_path : absolute path to a .fossil repository file.
  *   out_port  : receives the chosen TCP port on success.
  *
- * The server runs on a background thread and handles one request at a time.
+ * The server runs on a background thread; each connection is handled on its
+ * own short-lived thread so an idle/slow socket can't block others, while the
+ * underlying Fossil work stays serialized internally.
  * Returns 0 on success, non-zero on failure.
  */
 int stone_fossil_server_start(const char *repo_path, int *out_port);
