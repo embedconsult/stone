@@ -1,3 +1,8 @@
 build/*
+ios/build/*
 vendor/fossil-src-2.26/*
+vendor/fossil-src.tar.gz
+vendor/libressl-4.1.0/*
+vendor/libressl-src.tar.gz
+vendor/cacert.pem
 ios/Frameworks/FossilCore.xcframework/*

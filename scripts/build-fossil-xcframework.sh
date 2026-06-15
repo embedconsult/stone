@@ -30,6 +30,15 @@ if [[ ! -f "${SRC}/bld/page_index.h" || ! -f "${SRC}/autoconfig.h" ]]; then
   exit 1
 fi
 
+# LibreSSL provides Fossil's TLS layer (clone/sync over https://). Built by
+# scripts/build-libressl-ios.sh into per-slice static libs + shared headers.
+SSL_DIR="${REPO_ROOT}/build/libressl-ios"
+SSL_INC="${SSL_DIR}/include"
+if [[ ! -d "${SSL_INC}/openssl" ]]; then
+  echo "LibreSSL not built. Run scripts/build-libressl-ios.sh first." >&2
+  exit 1
+fi
+
 # --- Flag groups copied verbatim from src/main.mk -----------------------------
 
 SQLITE_OPTIONS="-DNDEBUG=1 -DSQLITE_DQS=0 -DSQLITE_THREADSAFE=0 \
@@ -54,8 +63,11 @@ PIKCHR_OPTIONS="-DPIKCHR_TOKEN_LIMIT=10000"
 # -Dexit=stone_exit redirects Fossil's per-request process teardown into the
 # shim's longjmp (see ios/FossilBridge/StoneFossil.c) so the in-process server
 # survives each request. Applied to Fossil units only, never to sqlite/shell.
-FOSSIL_OPTIONS="-DFOSSIL_ENABLE_JSON -DFOSSIL_DYNAMIC_BUILD=1 -DHAVE_AUTOCONFIG_H -Dexit=stone_exit"
-INCLUDES="-I${SRC} -I${SRC}/src -I${SRC}/extsrc -I${SRC}/bld -I${BRIDGE}"
+# -DFOSSIL_ENABLE_SSL turns on Fossil's OpenSSL-API https transport
+# (src/http_ssl.c, served here by LibreSSL); without it, https reads silently
+# return 0 bytes.
+FOSSIL_OPTIONS="-DFOSSIL_ENABLE_JSON -DFOSSIL_ENABLE_SSL -DFOSSIL_DYNAMIC_BUILD=1 -DHAVE_AUTOCONFIG_H -Dexit=stone_exit"
+INCLUDES="-I${SRC} -I${SRC}/src -I${SRC}/extsrc -I${SRC}/bld -I${BRIDGE} -I${SSL_INC}"
 # -D__IOS_PROHIBITED= drops the compile-time "unavailable on iOS" attribute from
 # system()/popen() etc. The symbols exist at runtime; these process-spawning
 # code paths (external diff/editor) are never reached via the web-UI flow.
@@ -99,9 +111,15 @@ build_lib() {            # $1 = label  $2 = sdk  $3 = clang target triple
   # The StoneFossil bridge.
   "${base[@]}" ${COMMON} ${FOSSIL_OPTIONS} -c "${BRIDGE}/StoneFossil.c" -o "${objdir}/StoneFossil.o"
 
+  # Combine Fossil objects with this slice's LibreSSL static libs into a single
+  # libfossil.a, so the app still links exactly one artifact. libtool -static
+  # merges .o files and .a archives together.
   rm -f "${objdir}/libfossil.a"
-  "$(xcrun --sdk "${sdk}" --find ar)" rcs "${objdir}/libfossil.a" "${objdir}"/*.o
-  echo "    -> ${objdir}/libfossil.a"
+  local ssl_lib="${SSL_DIR}/${label}/lib"
+  "$(xcrun --sdk "${sdk}" --find libtool)" -static -no_warning_for_no_symbols \
+    -o "${objdir}/libfossil.a" \
+    "${objdir}"/*.o "${ssl_lib}/libssl.a" "${ssl_lib}/libcrypto.a"
+  echo "    -> ${objdir}/libfossil.a (incl. LibreSSL)"
 }
 
 build_lib "ios-arm64"     "iphoneos"        "arm64-apple-ios${IOS_MIN}"

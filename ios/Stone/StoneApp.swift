@@ -12,7 +12,12 @@ struct StoneApp: App {
                 RepoListView()
             }
             .environmentObject(store)
-            .task { await FossilEngine.shared.setUser(commitAuthor) }
+            .task {
+                await FossilEngine.shared.setUser(commitAuthor)
+                if let ca = Bundle.main.path(forResource: "cacert", ofType: "pem") {
+                    await FossilEngine.shared.setCACertificate(path: ca)
+                }
+            }
         }
     }
 }

@@ -40,6 +40,14 @@ int stone_fossil_run(int argc, const char *const argv[], char **out_text);
 void stone_fossil_set_user(const char *user);
 
 /*
+ * Point Fossil/OpenSSL at a CA certificate bundle (PEM) for verifying https
+ * remotes. iOS has no OpenSSL-readable trust store, so the app passes the path
+ * to its bundled cacert.pem. Fossil checks the SSL_CERT_FILE environment
+ * variable first, so this simply sets it. Takes effect on the next call.
+ */
+void stone_fossil_set_ca_file(const char *path);
+
+/*
  * Start an in-process HTTP server bound to 127.0.0.1 on an OS-assigned port,
  * serving the given .fossil repository's web UI with full local access.
  *

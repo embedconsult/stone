@@ -35,6 +35,10 @@ targets:
         # into FossilCore.xcframework. Exclude the .c to avoid double-building.
         excludes:
           - "StoneFossil.c"
+      # Vendored Mozilla CA bundle, copied into the app bundle as a resource so
+      # OpenSSL can verify https remotes (iOS has no OpenSSL-readable store).
+      - path: ../vendor/cacert.pem
+        buildPhase: resources
     dependencies:
       - framework: Frameworks/FossilCore.xcframework
         embed: false            # static library — linked, not embedded

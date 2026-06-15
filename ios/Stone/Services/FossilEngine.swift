@@ -64,6 +64,11 @@ actor FossilEngine {
         user.withCString { stone_fossil_set_user($0) }
     }
 
+    /// Point Fossil/OpenSSL at a CA bundle (PEM) for verifying https remotes.
+    func setCACertificate(path: String) {
+        path.withCString { stone_fossil_set_ca_file($0) }
+    }
+
     enum EngineError: Error { case serverFailed }
 
     // MARK: - C argv marshaling
