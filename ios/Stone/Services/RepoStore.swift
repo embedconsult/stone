@@ -95,6 +95,16 @@ final class RepoStore: ObservableObject {
         return result.output
     }
 
+    /// Rename a repository. Only the display label changes; the `.fossil` file
+    /// keeps its (UUID-suffixed) name, so nothing on disk needs to move.
+    func rename(_ repo: Repo, to newName: String) {
+        let trimmed = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty,
+              let idx = repos.firstIndex(where: { $0.id == repo.id }) else { return }
+        repos[idx].name = trimmed
+        save()
+    }
+
     func updateRemote(_ repo: Repo, remoteURL: String?, password: String?) {
         guard let idx = repos.firstIndex(where: { $0.id == repo.id }) else { return }
         repos[idx].remoteURL = (remoteURL?.isEmpty == true) ? nil : remoteURL

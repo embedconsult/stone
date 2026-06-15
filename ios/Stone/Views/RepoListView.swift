@@ -5,6 +5,8 @@ struct RepoListView: View {
     @EnvironmentObject private var store: RepoStore
     @State private var showingAdd = false
     @State private var showingSettings = false
+    @State private var repoToRename: Repo?
+    @State private var renameText = ""
 
     var body: some View {
         List {
@@ -24,6 +26,15 @@ struct RepoListView: View {
                                 .lineLimit(1)
                         }
                     }
+                }
+                .swipeActions(edge: .leading) {
+                    Button {
+                        renameText = repo.name
+                        repoToRename = repo
+                    } label: {
+                        Label("Rename", systemImage: "pencil")
+                    }
+                    .tint(.blue)
                 }
             }
             .onDelete(perform: deleteRepos)
@@ -45,6 +56,16 @@ struct RepoListView: View {
         }
         .sheet(isPresented: $showingSettings) {
             SettingsView()
+        }
+        .alert("Rename Repository",
+               isPresented: Binding(get: { repoToRename != nil },
+                                    set: { if !$0 { repoToRename = nil } })) {
+            TextField("Name", text: $renameText)
+            Button("Cancel", role: .cancel) { repoToRename = nil }
+            Button("Save") {
+                if let repo = repoToRename { store.rename(repo, to: renameText) }
+                repoToRename = nil
+            }
         }
     }
 
