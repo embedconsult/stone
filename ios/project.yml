@@ -55,3 +55,7 @@ targets:
         INFOPLIST_FILE: Stone/Info.plist
         # Fossil opens its own sockets for sync; WKWebView talks to the
         # loopback server. ATS local-networking exception is set in Info.plist.
+        # Automatic signing: Xcode provisions an "Apple Development" cert and a
+        # development profile for this team. Sideload/personal builds only.
+        DEVELOPMENT_TEAM: BWWLLRK896
+        CODE_SIGN_STYLE: Automatic
