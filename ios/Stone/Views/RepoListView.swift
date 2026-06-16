@@ -7,6 +7,7 @@ struct RepoListView: View {
     @State private var showingSettings = false
     @State private var repoToRename: Repo?
     @State private var renameText = ""
+    @State private var repoToDelete: Repo?
 
     var body: some View {
         List {
@@ -27,7 +28,14 @@ struct RepoListView: View {
                         }
                     }
                 }
-                .swipeActions(edge: .leading) {
+                // allowsFullSwipe: false so a long swipe can't fire the
+                // destructive action without a deliberate tap + confirmation.
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    Button(role: .destructive) {
+                        repoToDelete = repo
+                    } label: {
+                        Label("Delete", systemImage: "trash")
+                    }
                     Button {
                         renameText = repo.name
                         repoToRename = repo
@@ -37,7 +45,6 @@ struct RepoListView: View {
                     .tint(.blue)
                 }
             }
-            .onDelete(perform: deleteRepos)
         }
         .navigationTitle("Stone")
         .navigationDestination(for: Repo.self) { repo in
@@ -67,9 +74,18 @@ struct RepoListView: View {
                 repoToRename = nil
             }
         }
-    }
-
-    private func deleteRepos(_ offsets: IndexSet) {
-        for index in offsets { store.delete(store.repos[index]) }
+        .confirmationDialog("Delete Repository",
+                            isPresented: Binding(get: { repoToDelete != nil },
+                                                 set: { if !$0 { repoToDelete = nil } }),
+                            titleVisibility: .visible,
+                            presenting: repoToDelete) { repo in
+            Button("Delete \(repo.name)", role: .destructive) {
+                store.delete(repo)
+                repoToDelete = nil
+            }
+            Button("Cancel", role: .cancel) { repoToDelete = nil }
+        } message: { _ in
+            Text("This permanently deletes the local repository file. This cannot be undone.")
+        }
     }
 }
