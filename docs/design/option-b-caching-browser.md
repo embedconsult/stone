@@ -126,6 +126,42 @@ carry a TTL and a "last good" copy used as offline fallback.
 5. **Hook extension point.** `/hook/<name>` registry (in-process CGI analogue).
 6. **Mobile skin.** Apply a mobile-optimized view via Fossil's *own* skin
    mechanism rather than rewriting pages (anti-drift).
+7. **Agent-aware optimized-client layer.** See §10 — native Sessions/Thread over
+   the JSON endpoints, `:8443` SSE consumer, and cookie-forward posting, built on
+   the Remote-cached read foundation.
+
+## 10. Agent-aware optimized client (ticket #552b1261)
+
+Beyond a generic Fossil browser, Stone should be an **optimized client for
+`ollama.openbeagle.org` agent-hosted repos**. Those hosts are standard Fossil
+(repolist CGI) *plus* an agent layer: an `/ext/agent` console + Thread UI,
+session JSON endpoints, and a `:8443` SSE live-events stream. Stone already
+clones/syncs them, so the Option B content-addressed cache (§4) is the right
+read foundation; this section adds the value layer on top.
+
+**Clean client/server split (resolves the §6 CGI caveat):** §6 rules out
+*serving* `/ext` locally in-process. Against these hosts Stone is a *client* of
+the remotely-served `/ext`, so the restriction does not bite. The rule is:
+
+- **Local clone → offline browse/read** (embedded Fossil, `/local`).
+- **Live agent (sessions, tasks, posting) → always the remote server** (HTTPS
+  client, never served locally).
+
+**Speak the endpoints natively** instead of rendering opaque HTML:
+
+| Endpoint                       | Returns        | Stone use                                  |
+|--------------------------------|----------------|--------------------------------------------|
+| `?session_posts=<root>`        | thread posts JSON | native Sessions/Thread UI               |
+| `?session_live_url=<root>`     | signed SSE URL (per-project HMAC token) | mint then connect SSE |
+| turn-status JSON               | turn state     | live status in Thread UI                   |
+| `:8443` SSE live-events        | `turn_started` / `turn_heartbeat` push | watch an agent work live |
+| `/forume2` (cookie-forward)    | posts reply    | post a forum reply **as the human**        |
+
+**Auth — login + cookie-forward.** The agent surface is login-gated (anonymous
+→ 403 on `/ext/agent`; tiered caps). Stone must obtain a Fossil **login cookie**
+via `/login` using the Keychain credential, then forward that cookie to the JSON
+endpoints, `/forume2`, and the `session_live_url` token mint. As a native client
+there is no browser CSP/CORS to fight, so this is simpler than the web path.
 
 ## 6. CGI / hook verdict
 
@@ -157,8 +193,15 @@ This gives the *extension-point* benefit of CGI without spawning processes.
 
 ## 9. Open questions (need decision before/with implementation)
 
-1. **Remote-browse auth scope.** Start read-only against *public* repos only, or
-   carry the Keychain credential into the remote proxy from day one (to browse
-   private repos)?
+1. ~~**Remote-browse auth scope.**~~ **RESOLVED** by ticket #552b1261 toward
+   **carry-credential**: the agent surface is login-gated (anonymous → 403), so
+   public-only mode can't see it. Stone obtains a Fossil login cookie via
+   `/login` from the Keychain credential and forwards it (see §10). The remote
+   *read* proxy can still serve public repos anonymously; the *agent* layer
+   requires the cookie.
 2. **Mobile skin approach.** Ship a custom Fossil skin, or rely on Fossil's
    existing responsive defaults plus a viewport/meta shim?
+3. **Agent views: native vs WKWebView.** Render Sessions/Thread as a native
+   SwiftUI view over JSON (best mobile UX, matches "optimized client"), or embed
+   the remote `/ext/agent` HTML in a WKWebView with the cookie injected
+   (faster to ship, less drift)? (see scoping in §10 gaps).
