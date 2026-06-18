@@ -57,23 +57,37 @@ No C-bridge changes.
 post a reply as the human.
 
 **Sub-units:**
-1. **JSON models + fetch.** Decode `?session_posts=<root>` (thread posts) and
-   turn-status JSON into Swift `Codable` models. Needs a captured sample of each
-   payload shape before coding (request from a live repo).
+1. **JSON models + fetch.** Decode the agent endpoints into Swift `Codable`
+   models. Known contracts (maintainer, 2026-06-18):
+   - `GET <repo>/ext/agent?session_posts=<root>` →
+     `{ ok, posts: [{ hash, user, mtime, role, html }] }`
+   - `GET <repo>/ext/agent?session_live_url=<root>` → the signed `:8443` SSE URL
+     (mints the per-project HMAC token).
+   Still want a captured live sample of turn-status JSON to confirm shape.
 2. **Sessions/Thread SwiftUI view.** List threads → thread detail showing posts;
    read-only first.
 3. **SSE consumer.** Connect to the `:8443` live-events stream (URL minted by
-   `session_live_url`). SSE = a long-lived `text/event-stream` `URLSession` data
-   task parsing `event:`/`data:` frames; surface `turn_started` /
-   `turn_heartbeat` as live status. Needs lifecycle handling (connect on view
-   appear, tear down on disappear, reconnect/backoff).
-4. **Reply composer.** A compose field that posts via cookie-forward `/forume2`
-   (the human-authored reply path). Write action → confirm before send
-   (consistent with the destructive-action guarding principle for anything that
-   leaves the device).
+   `session_live_url`, which carries the per-project HMAC token). SSE = a
+   long-lived `text/event-stream` `URLSession` data task parsing `event:`/`data:`
+   frames; surface `turn_started` / `turn_heartbeat` / **`turn_finished`** as live
+   status. Needs lifecycle handling (connect on view appear, tear down on
+   disappear, reconnect/backoff).
+4. **Reply composer (the Fossil forum CSRF dance).** Posting as the human is
+   **not** a single POST — it's Fossil's forum reply flow:
+   1. `GET <repo>/forumedit?fpid=<H>&reply` (authenticated with the login cookie).
+   2. Scrape `name="csrf" value=".."` out of the returned reply editor HTML.
+   3. `POST <repo>/forume2` with the `csrf` token + a `Referer` header (preview,
+      then submit).
+   Reference implementation: **`ollama-codex src/forum_writer.cr`**. Requires the
+   login cookie **and forum-reply capability** on that repo (cap 3/4, or s/a). A
+   repo not provisioned with forum caps/enable fails with **"no csrf token in
+   reply editor"** (observed live on `blabl`, 2026-06-17). **Stone must surface
+   auth/cap failures distinctly** (e.g. "not permitted to post on this repo")
+   rather than as a generic error. Write action → confirm before send (consistent
+   with guarding anything that leaves the device).
 
-**Risks / unknowns:** exact JSON schemas; SSE auth (cookie vs token in URL);
-`/forume2` form fields + any CSRF; turn-status polling vs SSE overlap.
+**Risks / unknowns:** exact JSON schemas; SSE token lifetime; turn-status polling
+vs SSE overlap; detecting the no-csrf cap-failure cleanly vs other HTML errors.
 
 **Estimated surface:** several new files (models, 2–3 views, SSE client). Largest
 of the three gaps.
@@ -109,5 +123,15 @@ Gap 3 is decided up front (native) and shapes 2a–2c.
 - D1: `username` on `Repo` vs. `user:password` in Keychain? (Gap 1)
 - D2: Persist the login cookie in Keychain for reuse, or re-login per launch?
 - D3: Confirm we can obtain real sample payloads from a live
-  `ollama.openbeagle.org` repo (blocks Gap 2).
+  `ollama.openbeagle.org` repo (blocks Gap 2) — turn-status JSON + SSE frames +
+  the `forumedit`/`forume2` form.
 - D4: Confirm Gap 3 = native (assumed above).
+
+---
+
+> **Note (2026-06-18):** This scoping covers the *agent-client* (anywhere-coding)
+> plane. The maintainer has since expanded the vision to a multi-plane **gateway**
+> — see [vision-gateway.md](vision-gateway.md). The **journaling** plane
+> (embedded offline-first write) is positioned as the nearer, lower-risk pillar
+> and is scoped there; the agent-client work here builds on the same auth + the
+> Option B read foundation.
