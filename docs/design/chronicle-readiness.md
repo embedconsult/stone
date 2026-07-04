@@ -22,9 +22,20 @@ vector store is being proven in Ollama-Codex first and adopted as-is.
 These four are the plug-in points. Building against them now costs little; not
 doing so forces rework later.
 
-1. **technote-id == EventKit UUID** (string, verbatim). ⇒ Stone's technote write
-   path **must accept a caller-chosen technote-id**, not only auto-generate one.
-   This is idempotent addressability for calendar events / journal entries.
+1. **technote-id = lowercase SHA1(EventKit UUID string)** — 40 hex chars.
+   *(Amended 2026-06-18. The original "technote-id == EventKit UUID verbatim" is
+   **unimplementable**: the enduring Fossil file format requires an E-card id to
+   be a 40-char lowercase-hex string. An EventKit UUID is 36 chars, uppercase,
+   hyphenated — not a legal id no matter what the CLI exposes. This is a
+   published-standard constraint, not an `event.c` limitation, so there is no
+   "hex vs UUID" decision to make — the standard decides.)*
+   SHA1 of the UUID string emits exactly 40 hex chars and is a **pure function**,
+   so idempotent addressing survives with no lookup table, no shared state, no
+   sync problem — any device computes the id from the UUID directly. For
+   human-auditable reverse linkage, **also record the raw UUID as a `T` card**
+   (self-applied tag) on the technote; tags are artifacts and sync.
+   ⇒ Stone's technote write path **must accept a caller-chosen technote-id** (the
+   SHA1) and set a UUID tag.
 2. **Wiki page names `/health` and `/location`** — long-lived, no date suffixes,
    receive **appended** records. ⇒ need wiki create/update *and* append, and
    tolerate large page histories.
@@ -118,9 +129,22 @@ four §6 contracts are load-bearing.
   (anti-drift: minimal, upstream-shaped), **or** a bridge path that assembles the
   event artifact directly with the chosen id. This is the **first artifact-client
   gap** and a prerequisite for the journaling plane.
-  - C1a: **Id format** — stock ids are 40-char hex; an EventKit UUID is a 36-char
-    dashed string. Confirm Fossil accepts an arbitrary-format id in the `E` card /
-    `sym-` tag (or decide to store a normalized form and map).
+  - C1a: **Id format — RESOLVED by the file-format standard, not a decision.**
+    E-card ids must be 40-char lowercase hex, so the id Stone passes is
+    `SHA1(EventKit UUID)` (see amended contract 1), with the raw UUID recorded as
+    a `T` card for reverse linkage. This removes the earlier "hex vs UUID"
+    question entirely.
+  - C1b: **Chosen approach — the patch (not the bridge).** `event_commit_common`
+    already accepts `zId`; the fix is ~10 lines of option plumbing in
+    `event_cmd_commit` to thread a new `--technote-id` (exposing existing,
+    reviewed logic — no new logic). Submit **upstream to Fossil** as an explicit
+    goal: if it lands, the write path carries **zero** vendored debt; until then
+    it's a trivially readable diff against a slow-moving file. **Reject the
+    bridge** for the production path: assembling the E-card artifact in
+    Swift/Crystal is easy, but *injecting* a hand-built artifact needs unstable
+    test commands or speaking the xfer protocol — that injection half is the
+    high-debt trap. (Assembly-in-code is worth doing once as a teaching artifact
+    for the docs, not as the write path.)
 - C2: WAL + file-protection class choice given the in-process Fossil server and
   any future extension (Share/Widgets) touching the same DB.
 - C3: Repo-size UX — where/when to surface size and the media-resolution policy.
