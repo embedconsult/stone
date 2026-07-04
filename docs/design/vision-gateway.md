@@ -31,6 +31,13 @@ recommended *next* build target after the Option B read foundation, ahead of the
 full agent-control plane, because it reuses existing clone/sync and has no remote
 live-protocol dependency.
 
+> **Forward-compat:** this plane is where **Chronicle** (journaling + semantic
+> search) later plugs in. See [chronicle-readiness.md](chronicle-readiness.md)
+> for the contracts to freeze now — chiefly **caller-chosen technote-ids**
+> (`technote-id == EventKit UUID`), wiki append to `/health`/`/location`, and the
+> "sync moves artifacts, not the embedding table; search is a remote `/ext` call"
+> boundary.
+
 ### 3. Remote live control = ANYWHERE CODING
 The phone as cockpit for a **remote** agent (daemon + models stay server-side).
 This is the agent-client layer scoped in
@@ -42,8 +49,11 @@ Maintainer direction (2026-06-18): "integrate a lot of logging features,
 including tying geolocation into a fossil database." Structured / location-tagged
 log capture, recorded as **Fossil artifacts** (consistent with the journaling
 substrate), offline-first then synced. Conceptually adjacent to plane 2 — a
-journal of *machine-captured* events rather than human-authored entries.
-(Privacy/consent for location data is an explicit open question; see below.)
+journal of *machine-captured* events rather than human-authored entries. Chronicle
+already models health/location as the long-lived wiki pages `/health` and
+`/location` ([chronicle-readiness.md](chronicle-readiness.md) contract 2), so this
+plane and Chronicle share substrate. (Privacy/consent for location data is an
+explicit open question; see below.)
 
 ## The bridge: note → ticket → session
 A journal entry captured offline can, on sync, become a **ticket / task prompt**,
