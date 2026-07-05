@@ -59,7 +59,13 @@ doing so forces rework later.
    one exists), and the writer appends only records **strictly newer than the
    newest timestamp already on the page.** The page itself is the high-water mark,
    so the writer stays **stateless** — the same idempotency-by-construction that
-   contract 1 gets from `SHA1(UUID)`.)*
+   contract 1 gets from `SHA1(UUID)`. **Tie edge case (amended 2026-07-04):**
+   HealthKit can emit multiple samples with **identical** timestamps (different
+   devices/sources); "strictly newer" alone would silently drop a later-arriving
+   twin. Refinement: records **at the high-water timestamp exactly** are
+   deduplicated by **sample UUID**; strictly-newer applies only **beyond** it.
+   The writer is still stateless — the page already carries every UUID at its
+   newest timestamp, which is all the dedup needs.)*
 3. **`fx_embedding` table schema:**
    `technote_id TEXT PRIMARY KEY, model TEXT NOT NULL, vec BLOB NOT NULL`
    (768 × 4 = 3,072-byte float32 BLOBs to start; `model` is the compatibility
