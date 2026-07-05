@@ -115,6 +115,34 @@ four §6 contracts are load-bearing.
 - **Agent-client auth** ([agent-client-scoping.md](agent-client-scoping.md)): the
   same login-cookie path feeds `/ext/search` and other `/ext` calls (contract 4).
 
+## Patch scope: `--technote-id` (C1 implementation)
+
+Concrete, ~10-line change exposing already-reviewed logic. Call chain today:
+`wiki_cmd` (`src/wiki.c`) parses `--technote*` options and computes `rid`, then
+calls `event_cmd_commit(zMETime, rid, …)` (`wiki.c:2486`) →
+`event_cmd_commit` (`src/event.c:583`) which, when `rid==0`, generates
+`zId = randomblob(20)` (`event.c:595`) → `event_commit_common(rid, zId, …)`
+(already accepts `zId`).
+
+Change:
+1. `src/wiki.c` (~`2416`, beside the other `find_option` calls): add
+   `const char *zTNId = find_option("technote-id", NULL, 1);` and pass it into
+   `event_cmd_commit`.
+2. `src/event.c` `event_cmd_commit`: add a `const char *zGivenId` param; when
+   `rid==0 && zGivenId` use it instead of `randomblob(20)`. **Validate** it is a
+   40-char lowercase-hex string (`fossil_fatal` otherwise) — enforces the E-card
+   format standard so contract 1's `SHA1(UUID)` is the intended input.
+3. `event_commit_common` — unchanged.
+4. Also allow a self-applied `T` card for the raw-UUID tag (contract 1); if the
+   existing `--technote-tags` path suffices, no extra code — just pass
+   `uuid:<raw>` as a tag.
+
+**Carry + upstream:** land as a hunk in `scripts/fossil-inprocess.patch` (same
+mechanism as the SQLITE_MISUSE once-guard) so it regenerates with the vendored
+tree. **Submit upstream to the Fossil project as an explicit goal** — it's a
+clean, general feature (deterministic technote ids) worth offering; if accepted,
+the write path carries zero vendored debt.
+
 ## Open questions
 
 - C1: **VERIFIED — caller-chosen technote-id is NOT reachable via stock Fossil.**
