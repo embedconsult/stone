@@ -1,15 +1,19 @@
 # Chronicle Readiness: contracts & boundaries Stone must honor
 
-Status: **Readiness brief — for review**
-Date: 2026-06-18
-Relationship: this is the forward-compatibility contract for the **journaling**
-plane of [vision-gateway.md](vision-gateway.md). Stone is **not** building
-Chronicle; it must only avoid choices that would force a rewrite when Chronicle
-lands.
+Status: **Journaling-plane design, implemented in Stone.**
+Date: 2026-06-18 (unified 2026-06-18)
+Relationship: **Chronicle names the journal repository, not an application.**
+There is no separate Chronicle app — Stone is the single iPhone app, and this is
+the design for the **journaling plane** of [vision-gateway.md](vision-gateway.md),
+implemented directly in Stone. All four §6 contracts derive from Fossil's design
+and the phone's constraints (identical whether or not the app is split), so
+nothing below changes under unification; only the "future app plugs in later"
+framing is retired.
 
 ## What Chronicle is (one paragraph)
 
-Chronicle records a person's life streams into a Fossil repo: journal entries and
+Chronicle (the journal **repository**) records a person's life streams into a
+Fossil repo: journal entries and
 calendar events as **TechNotes** (one per event, keyed by EventKit UUID), health
 and location data as **wiki pages** (`/health`, `/location`), photos/voice
 transcripts as **attachment artifacts**. Server-side Crystal CGI helpers under
@@ -47,6 +51,15 @@ doing so forces rework later.
 2. **Wiki page names `/health` and `/location`** — long-lived, no date suffixes,
    receive **appended** records. ⇒ need wiki create/update *and* append, and
    tolerate large page histories.
+   *(Amended 2026-06-18 — idempotent append. Wiki append is not naturally
+   idempotent: a writer killed mid-sync, or retrying after an ambiguous failure,
+   would append the same health/location records twice, and nothing in the append
+   model prevents it — unlike contract 1's content-addressed ids. Rule: **every
+   appended record carries its source timestamp** (the HealthKit sample UUID where
+   one exists), and the writer appends only records **strictly newer than the
+   newest timestamp already on the page.** The page itself is the high-water mark,
+   so the writer stays **stateless** — the same idempotency-by-construction that
+   contract 1 gets from `SHA1(UUID)`.)*
 3. **`fx_embedding` table schema:**
    `technote_id TEXT PRIMARY KEY, model TEXT NOT NULL, vec BLOB NOT NULL`
    (768 × 4 = 3,072-byte float32 BLOBs to start; `model` is the compatibility
@@ -93,6 +106,8 @@ Stone's search surface is therefore small:
 of an embedding model) and on-device vector scan. Known feasible upgrade path
 (vectors as Fossil unversioned files + a one-file brute-force scan port) but it's
 optimization before measured need and doubles the model-discipline surface.
+**Unfreeze trigger:** *measured* search latency against the remote `/ext/search`
+call, or demonstrated offline-search demand. Absent that evidence, do not build.
 
 ## iOS-specific preparations
 
@@ -103,7 +118,10 @@ optimization before measured need and doubles the model-discipline surface.
    that sync forever; Fossil has **no shallow clone**. Photos/audio will dominate
    repo size. ⇒ record media at sane resolutions, **surface repo size to the
    user**, and leave room in the storage layout for a future "large media as
-   unversioned files" policy.
+   unversioned files" policy. **Unfreeze trigger:** the contract-3 repo-size
+   surface showing real journal repositories crossing a storage pain threshold
+   on device. Absent that evidence, keep media as ordinary content-addressed
+   artifacts.
 3. **SQLite hygiene.** The clone is a SQLite DB: enable **WAL**, set an
    appropriate iOS **file-protection class**, and **never** touch the repo DB
    from two processes (app + extension) without Fossil's locking.
