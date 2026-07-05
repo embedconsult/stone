@@ -14,7 +14,7 @@ calendar events as **TechNotes** (one per event, keyed by EventKit UUID), health
 and location data as **wiki pages** (`/health`, `/location`), photos/voice
 transcripts as **attachment artifacts**. Server-side Crystal CGI helpers under
 Fossil's `/ext` provide cross-stream temporal queries, export, and **semantic
-search** over an `embedding` table of vector BLOBs in the repo's SQLite DB. The
+search** over an `fx_embedding` table of vector BLOBs in the repo's SQLite DB. The
 vector store is being proven in Ollama-Codex first and adopted as-is.
 
 ## Contracts to FREEZE now (§6 — load-bearing)
@@ -25,24 +25,41 @@ doing so forces rework later.
 1. **technote-id = lowercase SHA1(EventKit UUID string)** — 40 hex chars.
    *(Amended 2026-06-18. The original "technote-id == EventKit UUID verbatim" is
    **unimplementable**: the enduring Fossil file format requires an E-card id to
-   be a 40-char lowercase-hex string. An EventKit UUID is 36 chars, uppercase,
+   be a 40-char lowercase-hex string (verified: `www/fileformat.wiki:499`, "The
+   technote-id must be a 40-character lower-case hexadecimal string"). An EventKit
+   UUID is 36 chars, uppercase,
    hyphenated — not a legal id no matter what the CLI exposes. This is a
    published-standard constraint, not an `event.c` limitation, so there is no
    "hex vs UUID" decision to make — the standard decides.)*
    SHA1 of the UUID string emits exactly 40 hex chars and is a **pure function**,
    so idempotent addressing survives with no lookup table, no shared state, no
-   sync problem — any device computes the id from the UUID directly. For
-   human-auditable reverse linkage, **also record the raw UUID as a `T` card**
-   (self-applied tag) on the technote; tags are artifacts and sync.
+   sync problem — any device computes the id from the UUID directly. *(SHA1 is
+   used here purely as a deterministic 40-hex **name derivation** from unique,
+   trusted inputs — not for collision resistance — so its cryptographic
+   deprecation is irrelevant and its output length is exactly what the E-card
+   standard demands.)* For human-auditable reverse linkage, **also record the raw
+   UUID as a self-applied tag named `uuid-<raw-uuid>`** (a `T` card); tags are
+   artifacts and sync, and exact tag-name lookup via `tagxref` is the cheap
+   indexed path in every stock binary — prefer a hyphenated tag *name* over a
+   `name:value` hybrid.
    ⇒ Stone's technote write path **must accept a caller-chosen technote-id** (the
-   SHA1) and set a UUID tag.
+   SHA1) and set the `uuid-` tag.
 2. **Wiki page names `/health` and `/location`** — long-lived, no date suffixes,
    receive **appended** records. ⇒ need wiki create/update *and* append, and
    tolerate large page histories.
-3. **`embedding` table schema:**
+3. **`fx_embedding` table schema:**
    `technote_id TEXT PRIMARY KEY, model TEXT NOT NULL, vec BLOB NOT NULL`
    (768 × 4 = 3,072-byte float32 BLOBs to start; `model` is the compatibility
    key enforcing same-model discipline).
+   *(Amended 2026-06-18 — the `fx_` prefix is load-bearing, not cosmetic. A stock
+   `fossil rebuild` DROPs every repository table outside Fossil's whitelist except
+   those matching `GLOB 'fx_*'` (verified: `src/rebuild.c:407`,
+   `AND name NOT GLOB 'fx_*'`). A table named `embedding` would be silently
+   destroyed on the first server-side rebuild; `fx_embedding` survives. The final
+   name must match whatever `fx_`-prefixed name Ollama-Codex lands on, since
+   Chronicle adopts that vector store as-is. This amendment costs Stone **zero
+   code** — by contract 4 Stone only ever calls `/ext/search`, never the table —
+   which is contract 4 already proving its worth.)*
 4. **`/ext` endpoints are the ONLY server-intelligence interface.** Stone never
    queries repo tables over the network directly — keeps the client thin, server
    logic in one-file readable Crystal CGI.
@@ -62,7 +79,7 @@ Fossil sync moves **artifacts** (and unversioned files if enabled). It does
 
 **Plan of record: search is a SERVER responsibility.** The phone can't run
 Ollama, and vectors are only meaningful with the exact model that produced them
-(same-model discipline; the `embedding.model` column enforces/audits this).
+(same-model discipline; the `fx_embedding.model` column enforces/audits this).
 
 Stone's search surface is therefore small:
 - One HTTP call to a Crystal `/ext` endpoint, e.g.
@@ -135,7 +152,8 @@ Change:
 3. `event_commit_common` — unchanged.
 4. Also allow a self-applied `T` card for the raw-UUID tag (contract 1); if the
    existing `--technote-tags` path suffices, no extra code — just pass
-   `uuid:<raw>` as a tag.
+   `uuid-<raw>` as a tag **name** (hyphenated name, not a `name:value` hybrid, so
+   it resolves via the indexed `tagxref` exact-name path in stock binaries).
 
 **Carry + upstream:** land as a hunk in `scripts/fossil-inprocess.patch` (same
 mechanism as the SQLITE_MISUSE once-guard) so it regenerates with the vendored
@@ -174,5 +192,12 @@ the write path carries zero vendored debt.
     high-debt trap. (Assembly-in-code is worth doing once as a teaching artifact
     for the docs, not as the write path.)
 - C2: WAL + file-protection class choice given the in-process Fossil server and
-  any future extension (Share/Widgets) touching the same DB.
+  any future extension (Share/Widgets) touching the same DB. **The interaction to
+  watch:** `NSFileProtectionComplete` makes the repo DB unreadable while the
+  device is locked — which is exactly when a BGTaskScheduler sync tends to fire,
+  so it would silently break offline-first sync.
+  **`NSFileProtectionCompleteUntilFirstUserAuthentication`** keeps sync alive
+  after first unlock without giving up protection, and is the likely choice. A
+  future Share-extension additionally forces the DB into an **app-group
+  container**, where Fossil's POSIX locking needs verifying (spike-shaped).
 - C3: Repo-size UX — where/when to surface size and the media-resolution policy.
