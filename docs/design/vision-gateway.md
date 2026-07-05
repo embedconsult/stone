@@ -33,11 +33,11 @@ plane, implemented directly in Stone.
 plane 4 folds in here; the split is *who writes*, not separate planes — same
 repo, same contracts, same role):
 - **authored** — human-written entries (technotes preferred / wiki / forum);
-  idempotent via contract 1 (SHA1 technote-ids); needs **UI**.
+  idempotent via contract 1; needs **UI**.
 - **captured** — machine streams (`/health`, `/location`, and other structured
-  location-tagged logs); idempotent via the contract-2 high-water rule; needs
-  **background scheduling**. This is the "tie geolocation into a Fossil database"
-  ambition (maintainer, 2026-06-18), realized as ordinary Fossil artifacts.
+  location-tagged logs); idempotent via contract 2; needs **background
+  scheduling**. This is the "tie geolocation into a Fossil database" ambition
+  (maintainer, 2026-06-18), realized as ordinary Fossil artifacts.
 
 Fossil-native substrate (no bespoke storage): **technotes** (timestamped
 timeline journal — most on-brand, the default), **wiki** (long-form + the
@@ -48,25 +48,19 @@ recommended *next* build target after the Option B read foundation, ahead of the
 full agent-control plane, because it reuses existing clone/sync and has no remote
 live-protocol dependency.
 
-Its four load-bearing contracts (all derived from Fossil's format + the phone's
-constraints):
-- **Caller-chosen technote-ids** = `SHA1(EventKit UUID)` (40-char lowercase hex,
-  the format-required shape; verbatim UUID is illegal), with the raw UUID kept as
-  a `uuid-<raw>` tag for reverse lookup.
-- **Wiki append** to the long-lived `/health` and `/location` pages, done
-  **idempotently** (each record carries its source timestamp; the page is the
-  high-water mark; the writer stays stateless).
-- **`fx_embedding` table** (the `fx_` prefix is load-bearing — a stock
-  `fossil rebuild` drops any non-whitelisted table not matching `fx_*`).
-- **`/ext` is the only server-intelligence interface**; sync moves artifacts,
-  **not** the `fx_embedding` vectors, so **search is a remote `/ext/search`
-  call** resolved against the local clone.
+Its four load-bearing contracts — **defined in
+[chronicle-readiness.md](chronicle-readiness.md), which owns them; do not
+restate here:**
+1. Caller-chosen technote-ids.
+2. Idempotent wiki append to `/health` + `/location`.
+3. The `fx_`-prefixed vector table.
+4. `/ext` as the only server-intelligence interface (search is remote).
 
 **Build now (this plane's roadmap):** full Fossil *artifact* client — technotes
 with caller-chosen IDs, wiki create/append, attachments — plus the capture UI +
-sync-outbox. **Know now (freeze, don't build):** the `fx_embedding` schema and
-the remote-search boundary, so the semantic layer lands later without rework. See
-chronicle-readiness.md "Build now vs. know now" for the split.
+sync-outbox. **Know now (freeze, don't build):** contracts 3 and 4 (the vector
+table and the remote-search boundary), so the semantic layer lands later without
+rework. See chronicle-readiness.md "Build now vs. know now" for the split.
 
 ### 3. Remote live control = ANYWHERE CODING
 The phone as cockpit for a **remote** agent (daemon + models stay server-side).
