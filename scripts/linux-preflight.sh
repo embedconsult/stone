@@ -8,8 +8,11 @@
 # Usage:
 #   IOS_SDK_PATH=/path/to/iPhoneOS.sdk bash scripts/linux-preflight.sh
 #
-# IOS_SDK_PATH must point to an iPhoneOS.sdk directory copied from a Mac.
-# On the Mac (xcrun's path is usually a symlink like iPhoneOS.sdk ->
+# If IOS_SDK_PATH is unset and /opt/iPhoneOS.sdk exists (e.g. bind-mounted
+# into this sandbox), it is used automatically — no export needed.
+#
+# Otherwise IOS_SDK_PATH must point to an iPhoneOS.sdk directory copied from
+# a Mac. On the Mac (xcrun's path is usually a symlink like iPhoneOS.sdk ->
 # iPhoneOSNN.N.sdk, so resolve it first or tar archives the symlink itself;
 # --no-mac-metadata/--no-fflags/--no-acls/--no-xattrs stop bsdtar writing the
 # SCHILY.* extended headers that GNU tar on Linux doesn't understand):
@@ -46,13 +49,25 @@ else
   fail "ar not found  (debian/ubuntu: apt install binutils  |  rhel/amzn: dnf install binutils)"
 fi
 
+# Default to the sandbox-mounted SDK when no explicit override was given.
+if [[ -z "${IOS_SDK_PATH:-}" && -d /opt/iPhoneOS.sdk/usr/include ]]; then
+  IOS_SDK_PATH=/opt/iPhoneOS.sdk
+fi
+
 echo ""
 echo "--- iOS SDK (required — must be copied from a Mac with Xcode) ---"
 if [[ -n "${IOS_SDK_PATH:-}" ]]; then
   if [[ -d "${IOS_SDK_PATH}/usr/include" ]]; then
-    # Extract the SDK version from SDKSettings.plist with grep (no plutil on Linux).
-    SDK_VER="$(grep -A1 '<key>Version</key>' "${IOS_SDK_PATH}/SDKSettings.plist" 2>/dev/null \
-               | grep -m1 string | sed 's|.*<string>\(.*\)</string>.*|\1|' || echo unknown)"
+    # Prefer SDKSettings.json (plain JSON; recent Xcode ships SDKSettings.plist
+    # as a binary plist, which grep can't parse and no plutil exists on Linux).
+    SDK_VER="$(grep -o '"Version"[[:space:]]*:[[:space:]]*"[^"]*"' "${IOS_SDK_PATH}/SDKSettings.json" 2>/dev/null \
+               | head -1 | sed 's/.*:[[:space:]]*"\(.*\)"/\1/')"
+    if [[ -z "${SDK_VER}" ]]; then
+      # Fall back to XML-plist parsing for older SDKs that don't ship the JSON form.
+      SDK_VER="$(grep -A1 '<key>Version</key>' "${IOS_SDK_PATH}/SDKSettings.plist" 2>/dev/null \
+                 | grep -m1 string | sed 's|.*<string>\(.*\)</string>.*|\1|')"
+    fi
+    SDK_VER="${SDK_VER:-unknown}"
     ok "IOS_SDK_PATH=${IOS_SDK_PATH}  (SDK version: ${SDK_VER})"
   else
     fail "IOS_SDK_PATH=${IOS_SDK_PATH} set but missing usr/include — does not look like a valid iOS SDK"

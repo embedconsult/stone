@@ -35,6 +35,11 @@ WORK="${REPO_ROOT}/build/fossil-ios"
 
 # --- Prereq checks ---
 
+# Default to the sandbox-mounted SDK when no explicit override was given.
+if [[ -z "${IOS_SDK_PATH:-}" && -d /opt/iPhoneOS.sdk/usr/include ]]; then
+  IOS_SDK_PATH=/opt/iPhoneOS.sdk
+fi
+
 if [[ -z "${IOS_SDK_PATH:-}" ]]; then
   echo "Error: IOS_SDK_PATH is not set. Run scripts/linux-preflight.sh for instructions." >&2
   exit 1
@@ -94,8 +99,13 @@ SHELL_OPTIONS="${SQLITE_OPTIONS} -Dmain=sqlite3_shell -DSQLITE_SHELL_IS_UTF8=1 \
 
 PIKCHR_OPTIONS="-DPIKCHR_TOKEN_LIMIT=10000"
 
+# FOSSIL_OMIT_DNS: src/smtp.c's DNS MX-lookup path (unused — Stone never sends
+# mail) needs C_IN/T_MX from arpa/nameser_compat.h. The SDK's arpa/nameser.h
+# only auto-includes that header when __APPLE__ is undefined, so it never
+# fires for an arm64-apple-ios target and the file fails to compile without
+# this. Applies to any Apple-target build, not just this Linux cross-compile.
 FOSSIL_OPTIONS="-DFOSSIL_ENABLE_JSON -DFOSSIL_ENABLE_SSL -DFOSSIL_DYNAMIC_BUILD=1 \
--DHAVE_AUTOCONFIG_H -Dexit=stone_exit"
+-DHAVE_AUTOCONFIG_H -DFOSSIL_OMIT_DNS -Dexit=stone_exit"
 
 INCLUDES="-I${SRC} -I${SRC}/src -I${SRC}/extsrc -I${SRC}/bld -I${BRIDGE} -I${SSL_INC}"
 

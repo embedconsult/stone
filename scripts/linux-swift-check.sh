@@ -36,6 +36,11 @@ fi
 SWIFT_VER="$(swiftc --version 2>&1 | head -1)"
 echo "Swift:    ${SWIFT_VER}"
 
+# Default to the sandbox-mounted SDK when no explicit override was given.
+if [[ -z "${IOS_SDK_PATH:-}" && -d /opt/iPhoneOS.sdk/usr/include ]]; then
+  IOS_SDK_PATH=/opt/iPhoneOS.sdk
+fi
+
 # Collect Swift sources (StoneApp + models/services/views).
 SWIFT_SOURCES=()
 while IFS= read -r -d '' f; do

@@ -27,6 +27,11 @@ WORK="${REPO_ROOT}/build/libressl-ios"
 
 # --- Prereq checks ---
 
+# Default to the sandbox-mounted SDK when no explicit override was given.
+if [[ -z "${IOS_SDK_PATH:-}" && -d /opt/iPhoneOS.sdk/usr/include ]]; then
+  IOS_SDK_PATH=/opt/iPhoneOS.sdk
+fi
+
 if [[ -z "${IOS_SDK_PATH:-}" ]]; then
   echo "Error: IOS_SDK_PATH is not set." >&2
   echo "  Run: bash scripts/linux-preflight.sh  for setup instructions." >&2
@@ -66,8 +71,11 @@ build_arch() {  # $1=label  $2=triple
     # --host=aarch64-apple-darwin puts autoconf in cross mode so it never
     # executes test binaries against the target. CC/-target/-isysroot select
     # the iOS arm64 toolchain. Static only (iOS forbids dynamic loading).
+    # -fuse-ld=lld: on Linux, clang's default linker is GNU ld/bfd, which
+    # cannot emit Mach-O; ld.lld (LLVM's Mach-O-capable linker) ships
+    # alongside clang and is what actually produces the arm64-apple-ios binary.
     CC="${CC}" \
-    CFLAGS="-isysroot ${IOS_SDK_PATH} -target ${triple} -Os -fno-common" \
+    CFLAGS="-isysroot ${IOS_SDK_PATH} -target ${triple} -fuse-ld=lld -Os -fno-common" \
     ./configure --host=aarch64-apple-darwin \
                 --disable-shared --enable-static \
                 --disable-dependency-tracking >/dev/null

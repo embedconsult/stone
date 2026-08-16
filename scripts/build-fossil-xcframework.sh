@@ -66,7 +66,13 @@ PIKCHR_OPTIONS="-DPIKCHR_TOKEN_LIMIT=10000"
 # -DFOSSIL_ENABLE_SSL turns on Fossil's OpenSSL-API https transport
 # (src/http_ssl.c, served here by LibreSSL); without it, https reads silently
 # return 0 bytes.
-FOSSIL_OPTIONS="-DFOSSIL_ENABLE_JSON -DFOSSIL_ENABLE_SSL -DFOSSIL_DYNAMIC_BUILD=1 -DHAVE_AUTOCONFIG_H -Dexit=stone_exit"
+# -DFOSSIL_OMIT_DNS: src/smtp.c's DNS MX-lookup path (unused — Stone never
+# sends mail) needs C_IN/T_MX from arpa/nameser_compat.h. The SDK's
+# arpa/nameser.h only auto-includes that header when __APPLE__ is undefined,
+# so it never fires when actually targeting arm64-apple-ios and the file
+# fails to compile without this, even when configure/autoconfig.h is
+# generated on macOS itself.
+FOSSIL_OPTIONS="-DFOSSIL_ENABLE_JSON -DFOSSIL_ENABLE_SSL -DFOSSIL_DYNAMIC_BUILD=1 -DHAVE_AUTOCONFIG_H -DFOSSIL_OMIT_DNS -Dexit=stone_exit"
 INCLUDES="-I${SRC} -I${SRC}/src -I${SRC}/extsrc -I${SRC}/bld -I${BRIDGE} -I${SSL_INC}"
 # -D__IOS_PROHIBITED= drops the compile-time "unavailable on iOS" attribute from
 # system()/popen() etc. The symbols exist at runtime; these process-spawning
