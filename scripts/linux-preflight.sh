@@ -9,13 +9,17 @@
 #   IOS_SDK_PATH=/path/to/iPhoneOS.sdk bash scripts/linux-preflight.sh
 #
 # IOS_SDK_PATH must point to an iPhoneOS.sdk directory copied from a Mac.
-# On the Mac:
-#   SDK=$(xcrun --sdk iphoneos --show-sdk-path)
-#   tar -czf iPhoneOS.sdk.tar.gz -C "$(dirname "$SDK")" "$(basename "$SDK")"
+# On the Mac (xcrun's path is usually a symlink like iPhoneOS.sdk ->
+# iPhoneOSNN.N.sdk, so resolve it first or tar archives the symlink itself;
+# --no-mac-metadata/--no-fflags/--no-acls/--no-xattrs stop bsdtar writing the
+# SCHILY.* extended headers that GNU tar on Linux doesn't understand):
+#   SDK=$(cd "$(xcrun --sdk iphoneos --show-sdk-path)" && pwd -P)
+#   tar --no-mac-metadata --no-fflags --no-acls --no-xattrs \
+#       -czf iPhoneOS.sdk.tar.gz -C "$(dirname "$SDK")" "$(basename "$SDK")"
 #   scp iPhoneOS.sdk.tar.gz user@linux-host:
 # On Linux:
 #   tar -xzf iPhoneOS.sdk.tar.gz
-#   export IOS_SDK_PATH="$PWD/iPhoneOSNN.sdk"
+#   export IOS_SDK_PATH="$PWD/iPhoneOSNN.N.sdk"   # matches the resolved name above
 
 set -euo pipefail
 
@@ -57,14 +61,15 @@ else
   fail "IOS_SDK_PATH not set"
   echo ""
   echo "  Copy the SDK from your Mac (run these commands ON THE MAC):"
-  echo '    SDK=$(xcrun --sdk iphoneos --show-sdk-path)'
-  echo '    tar -czf iPhoneOS.sdk.tar.gz -C "$(dirname "$SDK")" "$(basename "$SDK")"'
+  echo '    SDK=$(cd "$(xcrun --sdk iphoneos --show-sdk-path)" && pwd -P)   # resolve symlink'
+  echo '    tar --no-mac-metadata --no-fflags --no-acls --no-xattrs \'
+  echo '        -czf iPhoneOS.sdk.tar.gz -C "$(dirname "$SDK")" "$(basename "$SDK")"'
   echo '    scp iPhoneOS.sdk.tar.gz user@this-linux-host:~/'
   echo ""
   echo "  Then on this Linux machine:"
   echo '    cd ~/'
   echo '    tar -xzf iPhoneOS.sdk.tar.gz'
-  echo '    export IOS_SDK_PATH="$HOME/iPhoneOS17.x.sdk"   # adjust version'
+  echo '    export IOS_SDK_PATH="$HOME/iPhoneOSNN.N.sdk"   # matches the resolved name above'
 fi
 
 echo ""
