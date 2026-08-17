@@ -128,6 +128,13 @@ verify_xcframework() {
   echo "device + simulator arm64 slices present ($((sz / 1024 / 1024)) MB device slice)"
 }
 
+# ARCHS=arm64 on both: a `generic/...` destination isn't tied to a concrete
+# booted simulator/device, so Xcode can't detect one "active" arch and
+# defaults to building the project's whole ARCHS list instead (arm64 +
+# x86_64 for the simulator SDK, via $(ARCHS_STANDARD)). FossilCore.xcframework
+# only ships arm64 slices (device and simulator), so an x86_64 simulator
+# link fails with undefined stone_fossil_* symbols otherwise. iOS device has
+# no x86_64 arch anyway, so this is a no-op there -- kept for symmetry.
 build_simulator() {
   local derived="${REPO_ROOT}/ios/build/acceptance-sim"
   rm -rf "${derived}"
@@ -135,6 +142,7 @@ build_simulator() {
     -project "${PROJECT}" -scheme "${SCHEME}" -configuration Debug \
     -destination 'generic/platform=iOS Simulator' \
     -derivedDataPath "${derived}" \
+    ARCHS=arm64 ONLY_ACTIVE_ARCH=NO \
     CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
     "${XCODE_ACTIONS[@]}"
 }
@@ -146,6 +154,7 @@ build_device() {
     -project "${PROJECT}" -scheme "${SCHEME}" -configuration Debug \
     -destination 'generic/platform=iOS' \
     -derivedDataPath "${derived}" \
+    ARCHS=arm64 ONLY_ACTIVE_ARCH=NO \
     CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
     "${XCODE_ACTIONS[@]}"
 }
