@@ -21,7 +21,16 @@
 #     natively on macOS, if you want that kind of check too.)
 #
 # Usage:
-#   scripts/mac-acceptance-test.sh
+#   scripts/mac-acceptance-test.sh           # fast: skips steps already up to date
+#   scripts/mac-acceptance-test.sh --clean   # forces every step to redo its work
+#                                             # from scratch (the real "prove it
+#                                             # builds clean" run -- do this before
+#                                             # actually merging/shipping)
+#
+# The underlying fetch/generate/build scripts are individually idempotent
+# (each skips its own work if already up to date; --clean sets FORCE=1 to
+# override that on all of them). xcodebuild itself also gets `clean` added
+# to its action under --clean.
 #
 # Every step's full output is captured under build/acceptance-logs/ so a
 # failure points straight at the relevant log instead of a wall of xcodebuild
@@ -31,6 +40,14 @@ set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "${REPO_ROOT}"
+
+CLEAN=false
+XCODE_ACTIONS=(build)
+if [[ "${1:-}" == "--clean" ]]; then
+  CLEAN=true
+  export FORCE=1
+  XCODE_ACTIONS=(clean build)
+fi
 
 PROJECT="${REPO_ROOT}/ios/Stone.xcodeproj"
 SCHEME="Stone"
@@ -119,7 +136,7 @@ build_simulator() {
     -destination 'generic/platform=iOS Simulator' \
     -derivedDataPath "${derived}" \
     CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-    build
+    "${XCODE_ACTIONS[@]}"
 }
 
 build_device() {
@@ -130,7 +147,7 @@ build_device() {
     -destination 'generic/platform=iOS' \
     -derivedDataPath "${derived}" \
     CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-    build
+    "${XCODE_ACTIONS[@]}"
 }
 
 # verify_app_binary APP_BUNDLE WANT_ARCH
@@ -151,6 +168,11 @@ verify_app_binary() {
 }
 
 echo "=== Stone iOS build — Mac acceptance test ==="
+if ${CLEAN}; then
+  echo "(--clean: every step forced to redo its work from scratch)"
+else
+  echo "(fast mode: steps already up to date are skipped -- use --clean to force a full rebuild)"
+fi
 echo ""
 
 require "macOS host"            check_macos

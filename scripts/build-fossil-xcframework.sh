@@ -24,6 +24,12 @@ SRC="${REPO_ROOT}/vendor/fossil-src-${FOSSIL_VERSION}"
 BRIDGE="${REPO_ROOT}/ios/FossilBridge"
 OUT="${REPO_ROOT}/ios/Frameworks"
 WORK="${REPO_ROOT}/build/fossil-ios"
+FW="${OUT}/FossilCore.xcframework"
+
+if [[ -z "${FORCE:-}" && -f "${FW}/ios-arm64/libfossil.a" && -f "${FW}/ios-arm64-simulator/libfossil.a" ]]; then
+  echo "FossilCore.xcframework already built at ${FW}; skipping (set FORCE=1 to rebuild)"
+  exit 0
+fi
 
 if [[ ! -f "${SRC}/bld/page_index.h" || ! -f "${SRC}/autoconfig.h" ]]; then
   echo "Generated sources missing. Run scripts/gen-fossil-sources.sh first." >&2
@@ -137,7 +143,6 @@ build_lib "ios-arm64-sim" "iphonesimulator" "arm64-apple-ios${IOS_MIN}-simulator
 # no dependency on the CoreSimulator toolchain — it is just a directory layout
 # plus an Info.plist describing each slice.
 
-FW="${OUT}/FossilCore.xcframework"
 rm -rf "${FW}"
 mkdir -p "${FW}/ios-arm64" "${FW}/ios-arm64-simulator"
 cp "${WORK}/ios-arm64/libfossil.a"     "${FW}/ios-arm64/libfossil.a"

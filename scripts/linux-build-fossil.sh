@@ -32,6 +32,12 @@ SRC="${REPO_ROOT}/vendor/fossil-src-${FOSSIL_VERSION}"
 BRIDGE="${REPO_ROOT}/ios/FossilBridge"
 OUT="${REPO_ROOT}/ios/Frameworks"
 WORK="${REPO_ROOT}/build/fossil-ios"
+FW="${OUT}/FossilCore.xcframework"
+
+if [[ -z "${FORCE:-}" && -f "${FW}/ios-arm64/libfossil.a" ]]; then
+  echo "FossilCore.xcframework (ios-arm64) already built at ${FW}; skipping (set FORCE=1 to rebuild)"
+  exit 0
+fi
 
 # --- Prereq checks ---
 
@@ -176,7 +182,6 @@ build_lib "ios-arm64" "arm64-apple-ios${IOS_MIN}"
 # rewrite Info.plist. For Linux CI purposes the device slice alone confirms the
 # C code compiles cleanly.
 
-FW="${OUT}/FossilCore.xcframework"
 rm -rf "${FW}"
 mkdir -p "${FW}/ios-arm64"
 cp "${WORK}/ios-arm64/libfossil.a" "${FW}/ios-arm64/libfossil.a"

@@ -4,8 +4,11 @@
 #
 # Single purpose: place a clean LibreSSL portable source tree under vendor/.
 # LibreSSL provides Fossil's TLS layer (src/http_ssl.c uses the OpenSSL API,
-# which LibreSSL implements) so clone/sync over https:// works. Idempotent:
-# re-running re-extracts a fresh tree.
+# which LibreSSL implements) so clone/sync over https:// works.
+#
+# Skips re-extracting if ${SRC_DIR} already exists, since the version is
+# pinned in the path -- a version bump gets a new SRC_DIR automatically, so an
+# existing one is always the right content. Set FORCE=1 to re-extract anyway.
 #
 set -euo pipefail
 
@@ -15,6 +18,11 @@ VENDOR_DIR="${REPO_ROOT}/vendor"
 SRC_DIR="${VENDOR_DIR}/libressl-${LIBRESSL_VERSION}"
 TARBALL="${VENDOR_DIR}/libressl-src.tar.gz"
 URL="https://ftp.openbsd.org/pub/OpenBSD/LibreSSL/libressl-${LIBRESSL_VERSION}.tar.gz"
+
+if [[ -d "${SRC_DIR}" && -z "${FORCE:-}" ]]; then
+  echo "LibreSSL source already present at ${SRC_DIR}  (set FORCE=1 to re-extract)"
+  exit 0
+fi
 
 mkdir -p "${VENDOR_DIR}"
 

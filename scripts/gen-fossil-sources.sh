@@ -11,6 +11,11 @@
 # self-contained. `make` also builds a host `fossil` binary as a side effect,
 # which is a handy sanity check that the source tree is coherent.
 #
+# Skips configure+make entirely if the expected output already exists (set
+# FORCE=1 to force regeneration) -- this is the slow step (autosetup's
+# feature-probing), and scripts/fetch-fossil.sh no longer wipes ${SRC_DIR} on
+# every run, so a prior run's output survives to make this skip meaningful.
+#
 set -euo pipefail
 
 FOSSIL_VERSION="2.26"
@@ -24,6 +29,25 @@ if [[ ! -d "${SRC_DIR}" ]]; then
 fi
 
 cd "${SRC_DIR}"
+
+if [[ -z "${FORCE:-}" ]]; then
+  ALREADY_GENERATED=true
+  for required in bld/VERSION.h bld/page_index.h bld/builtin_data.h autoconfig.h; do
+    [[ -f "${required}" ]] || ALREADY_GENERATED=false
+  done
+  # Only glob bld/*_.c once the required headers confirm bld/ exists -- on a
+  # fresh checkout bld/ isn't there yet, and `ls` on a non-matching glob exits
+  # non-zero, which combined with pipefail+errexit would otherwise abort the
+  # whole script here with no output at all.
+  EXISTING_COUNT=0
+  if [[ "${ALREADY_GENERATED}" == "true" ]]; then
+    EXISTING_COUNT="$(ls bld/*_.c 2>/dev/null | wc -l | tr -d ' ')" || true
+  fi
+  if [[ "${ALREADY_GENERATED}" == "true" && "${EXISTING_COUNT}" -ge 100 ]]; then
+    echo "Fossil sources already generated (${EXISTING_COUNT} translated sources); skipping (set FORCE=1 to regenerate)."
+    exit 0
+  fi
+fi
 
 # Apply the in-process serving patch (idempotent). Fossil is process-per-request
 # upstream; this patch resets request-scoped file-scope statics so fossil_main()
@@ -51,7 +75,7 @@ echo "Configuring Fossil (host, no SSL/Tcl/FuseFS)..."
 echo "Generating sources + autoconfig.h (also builds a host fossil binary)..."
 make >/dev/null
 
-GEN_COUNT="$(ls bld/*_.c 2>/dev/null | wc -l | tr -d ' ')"
+GEN_COUNT="$(ls bld/*_.c 2>/dev/null | wc -l | tr -d ' ')" || true
 for required in bld/VERSION.h bld/page_index.h bld/builtin_data.h autoconfig.h; do
   if [[ ! -f "${required}" ]]; then
     echo "ERROR: expected generated file missing: ${required}" >&2
