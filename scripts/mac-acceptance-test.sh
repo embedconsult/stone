@@ -135,6 +135,14 @@ verify_xcframework() {
 # only ships arm64 slices (device and simulator), so an x86_64 simulator
 # link fails with undefined stone_fossil_* symbols otherwise. iOS device has
 # no x86_64 arch anyway, so this is a no-op there -- kept for symmetry.
+#
+# ENABLE_DEBUG_DYLIB=NO: Xcode 15+ Debug builds split the app into a thin
+# `Stone` loader binary plus the actual linked code in a separate
+# `Stone.debug.dylib`, for faster incremental debugging. That breaks
+# verify_app_binary()'s "Stone" symbol check below (it would need to look in
+# the dylib instead), and isn't how a real Release/Archive build links
+# anyway -- disabling it here makes Debug link like Release: one
+# self-contained executable, which is what we actually want to verify.
 build_simulator() {
   local derived="${REPO_ROOT}/ios/build/acceptance-sim"
   rm -rf "${derived}"
@@ -142,7 +150,7 @@ build_simulator() {
     -project "${PROJECT}" -scheme "${SCHEME}" -configuration Debug \
     -destination 'generic/platform=iOS Simulator' \
     -derivedDataPath "${derived}" \
-    ARCHS=arm64 ONLY_ACTIVE_ARCH=NO \
+    ARCHS=arm64 ONLY_ACTIVE_ARCH=NO ENABLE_DEBUG_DYLIB=NO \
     CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
     "${XCODE_ACTIONS[@]}"
 }
@@ -154,7 +162,7 @@ build_device() {
     -project "${PROJECT}" -scheme "${SCHEME}" -configuration Debug \
     -destination 'generic/platform=iOS' \
     -derivedDataPath "${derived}" \
-    ARCHS=arm64 ONLY_ACTIVE_ARCH=NO \
+    ARCHS=arm64 ONLY_ACTIVE_ARCH=NO ENABLE_DEBUG_DYLIB=NO \
     CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
     "${XCODE_ACTIONS[@]}"
 }
