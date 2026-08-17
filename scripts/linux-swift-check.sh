@@ -19,6 +19,20 @@
 #   swift sdk install <bundle-url>
 #   # e.g. for Swift 6.x on arm64-apple-ios17.0, check swift.org/download
 #
+# On Alpine/musl hosts: there is no official musl-hosted swiftc, and neither
+# workaround pans out — confirmed by hand:
+#   - Running the official glibc toolchain under gcompat gets past missing
+#     libncurses/libtinfo, but swift-frontend itself aborts
+#     (std::system_error, SIGABRT) on plain `-version`: a C++
+#     exception/threading ABI mismatch gcompat can't paper over.
+#   - Building the compiler from source targeting musl-as-host hits missing
+#     build deps beyond libuuid (this isn't the officially supported
+#     Static Linux SDK path, which cross-compiles musl *targets* from a
+#     glibc host, not a musl-hosted compiler).
+# If you need Swift type-checking on a non-glibc host, run this script
+# inside an official Swift container instead (e.g. `swift:6.3.3-amazonlinux2`
+# from Docker Hub) rather than chasing native Alpine support further.
+#
 # Usage:
 #   IOS_SDK_PATH=/path/to/iPhoneOS.sdk bash scripts/linux-swift-check.sh
 
