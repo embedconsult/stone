@@ -121,8 +121,8 @@ verify_xcframework() {
   local sim="${fw}/ios-arm64-simulator/libfossil.a"
   [[ -f "${dev}" ]] || { echo "missing ${dev}"; return 1; }
   [[ -f "${sim}" ]] || { echo "missing ${sim}"; return 1; }
-  lipo -info "${dev}" 2>&1 | grep -q arm64 || { echo "device slice missing arm64: $(lipo -info "${dev}" 2>&1)"; return 1; }
-  lipo -info "${sim}" 2>&1 | grep -q arm64 || { echo "simulator slice missing arm64: $(lipo -info "${sim}" 2>&1)"; return 1; }
+  lipo -info "${dev}" 2>&1 | grep arm64 >/dev/null || { echo "device slice missing arm64: $(lipo -info "${dev}" 2>&1)"; return 1; }
+  lipo -info "${sim}" 2>&1 | grep arm64 >/dev/null || { echo "simulator slice missing arm64: $(lipo -info "${sim}" 2>&1)"; return 1; }
   local sz; sz=$(stat -f%z "${dev}")
   [[ "${sz}" -gt 5000000 ]] || { echo "device libfossil.a suspiciously small (${sz} bytes) -- Fossil may not have linked in fully"; return 1; }
   echo "device + simulator arm64 slices present ($((sz / 1024 / 1024)) MB device slice)"
@@ -136,13 +136,14 @@ verify_xcframework() {
 # link fails with undefined stone_fossil_* symbols otherwise. iOS device has
 # no x86_64 arch anyway, so this is a no-op there -- kept for symmetry.
 #
-# ENABLE_DEBUG_DYLIB=NO: Xcode 15+ Debug builds split the app into a thin
-# `Stone` loader binary plus the actual linked code in a separate
-# `Stone.debug.dylib`, for faster incremental debugging. That breaks
-# verify_app_binary()'s "Stone" symbol check below (it would need to look in
-# the dylib instead), and isn't how a real Release/Archive build links
-# anyway -- disabling it here makes Debug link like Release: one
-# self-contained executable, which is what we actually want to verify.
+# ENABLE_DEBUG_DYLIB=NO: Xcode 15+ Debug builds can split the app into a
+# thin `Stone` loader binary plus the actual linked code in a separate
+# `Stone.debug.dylib`, for faster incremental debugging -- not how a real
+# Release/Archive build links, so disabling it here makes Debug match that.
+# (This turned out NOT to be the cause of an earlier verify_app_binary
+# false-negative here -- that was a grep -q/pipefail bug, see the comment
+# there. Kept anyway since it's still the more representative thing to
+# build against.)
 build_simulator() {
   local derived="${REPO_ROOT}/ios/build/acceptance-sim"
   rm -rf "${derived}"
@@ -180,17 +181,29 @@ build_device() {
 # pinned that down in practice. On failure, dumps every Mach-O found plus
 # any stone_*/fossil-ish symbols actually present in the main executable,
 # so a real fix can be made from evidence instead of another guess.
+#
+# IMPORTANT: never pipe a subprocess into `grep -q` under `set -o pipefail`
+# (active for this whole script). `nm` on a multi-megabyte Swift binary
+# streams thousands of symbol lines; `grep -q` exits the instant it finds a
+# match and closes its end of the pipe while `nm` is still writing, killing
+# `nm` with SIGPIPE. pipefail then reports the WHOLE pipeline as failed
+# (nm's signal-death, not grep's result) even though grep genuinely found
+# the match -- this is exactly what caused a real false-negative here
+# ("stone_fossil_run not found" while it was plainly visible in the
+# non-quiet diagnostic dump a few lines below in the same run). Use a
+# non-quiet `grep PATTERN >/dev/null` instead: it reads to EOF, so the
+# producer always exits normally.
 verify_app_binary() {
   local app="$1" want_arch="$2"
   local exe="${app}/Stone"
   [[ -d "${app}" ]] || { echo "app bundle missing: ${app}"; return 1; }
   [[ -x "${exe}" ]] || { echo "executable missing: ${exe}"; return 1; }
-  file "${exe}" | grep -q "Mach-O" || { echo "not a Mach-O binary: $(file "${exe}")"; return 1; }
-  lipo -info "${exe}" 2>&1 | grep -q "${want_arch}" || { echo "arch ${want_arch} not found: $(lipo -info "${exe}" 2>&1)"; return 1; }
+  file "${exe}" | grep "Mach-O" >/dev/null || { echo "not a Mach-O binary: $(file "${exe}")"; return 1; }
+  lipo -info "${exe}" 2>&1 | grep "${want_arch}" >/dev/null || { echo "arch ${want_arch} not found: $(lipo -info "${exe}" 2>&1)"; return 1; }
 
   local hit="" f
   while IFS= read -r -d '' f; do
-    if file "${f}" 2>/dev/null | grep -q "Mach-O" && nm "${f}" 2>/dev/null | grep -q "stone_fossil_run"; then
+    if file "${f}" 2>/dev/null | grep "Mach-O" >/dev/null && nm "${f}" 2>/dev/null | grep "stone_fossil_run" >/dev/null; then
       hit="${f}"
       break
     fi
@@ -204,7 +217,7 @@ verify_app_binary() {
 
   echo "stone_fossil_run not found in any Mach-O file under ${app}"
   echo "Mach-O files in the bundle:"
-  find "${app}" -type f -exec sh -c 'file "$1" 2>/dev/null | grep -q Mach-O && echo "  $1  ($(stat -f%z "$1") bytes)"' _ {} \;
+  find "${app}" -type f -exec sh -c 'file "$1" 2>/dev/null | grep Mach-O >/dev/null && echo "  $1  ($(stat -f%z "$1") bytes)"' _ {} \;
   echo "Symbols in ${exe} matching stone_/fossil:"
   nm "${exe}" 2>&1 | grep -iE 'stone_|fossil' | sed 's/^/  /'
   return 1
