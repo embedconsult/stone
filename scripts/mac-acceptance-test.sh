@@ -172,6 +172,14 @@ build_device() {
 # Fossil's C core actually made it into the link (checked via a symbol that
 # Swift calls directly, per ios/Stone/Services/FossilEngine.swift) -- so a
 # silently-stubbed-out static lib wouldn't pass.
+#
+# Searches every Mach-O file in the bundle for the symbol, not just the
+# top-level executable: Xcode's Debug build layout (debug-dylib splitting,
+# embedded frameworks, etc.) has moved where linked code actually lives
+# across Xcode versions, and ENABLE_DEBUG_DYLIB=NO above has not reliably
+# pinned that down in practice. On failure, dumps every Mach-O found plus
+# any stone_*/fossil-ish symbols actually present in the main executable,
+# so a real fix can be made from evidence instead of another guess.
 verify_app_binary() {
   local app="$1" want_arch="$2"
   local exe="${app}/Stone"
@@ -179,9 +187,27 @@ verify_app_binary() {
   [[ -x "${exe}" ]] || { echo "executable missing: ${exe}"; return 1; }
   file "${exe}" | grep -q "Mach-O" || { echo "not a Mach-O binary: $(file "${exe}")"; return 1; }
   lipo -info "${exe}" 2>&1 | grep -q "${want_arch}" || { echo "arch ${want_arch} not found: $(lipo -info "${exe}" 2>&1)"; return 1; }
-  nm "${exe}" 2>/dev/null | grep -q "stone_fossil_run" || { echo "stone_fossil_run not found in binary -- Fossil core may not be statically linked in"; return 1; }
-  local sz; sz=$(stat -f%z "${exe}")
-  echo "${exe} -- Mach-O ${want_arch}, $((sz / 1024 / 1024)) MB, Fossil core linked"
+
+  local hit="" f
+  while IFS= read -r -d '' f; do
+    if file "${f}" 2>/dev/null | grep -q "Mach-O" && nm "${f}" 2>/dev/null | grep -q "stone_fossil_run"; then
+      hit="${f}"
+      break
+    fi
+  done < <(find "${app}" -type f -print0)
+
+  if [[ -n "${hit}" ]]; then
+    local sz; sz=$(stat -f%z "${exe}")
+    echo "${exe} -- Mach-O ${want_arch}, $((sz / 1024 / 1024)) MB, Fossil core linked (symbol found in ${hit#"${app}"/})"
+    return 0
+  fi
+
+  echo "stone_fossil_run not found in any Mach-O file under ${app}"
+  echo "Mach-O files in the bundle:"
+  find "${app}" -type f -exec sh -c 'file "$1" 2>/dev/null | grep -q Mach-O && echo "  $1  ($(stat -f%z "$1") bytes)"' _ {} \;
+  echo "Symbols in ${exe} matching stone_/fossil:"
+  nm "${exe}" 2>&1 | grep -iE 'stone_|fossil' | sed 's/^/  /'
+  return 1
 }
 
 echo "=== Stone iOS build — Mac acceptance test ==="
