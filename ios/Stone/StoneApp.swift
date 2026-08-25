@@ -8,10 +8,14 @@ struct StoneApp: App {
 
     var body: some Scene {
         WindowGroup {
-            NavigationStack {
-                RepoListView()
+            ZStack {
+                NavigationStack {
+                    RepoListView()
+                }
+                .environmentObject(store)
+
+                BuildIdentityOverlay()
             }
-            .environmentObject(store)
             .task {
                 await FossilEngine.shared.setUser(commitAuthor)
                 if let ca = Bundle.main.path(forResource: "cacert", ofType: "pem") {
