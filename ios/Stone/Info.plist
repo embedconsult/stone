@@ -36,5 +36,10 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<!-- gpcr speech editing: dictate a phrase with SFSpeechRecognizer. -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Stone uses the microphone to dictate phrases for gp-crystal speech editing.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Stone uses on-device speech recognition to turn dictated phrases into gp-crystal edit commands.</string>
 </dict>
 </plist>
