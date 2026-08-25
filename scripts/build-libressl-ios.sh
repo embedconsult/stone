@@ -29,6 +29,12 @@ build_arch() {            # $1 = label  $2 = sdk  $3 = clang target triple
   local label="$1" sdk="$2" triple="$3"
   local bdir="${WORK}/src-${label}"
   local out="${WORK}/${label}"
+
+  if [[ -z "${FORCE:-}" && -f "${out}/lib/libssl.a" && -f "${out}/lib/libcrypto.a" ]]; then
+    echo "==> LibreSSL for ${label} already built; skipping (set FORCE=1 to rebuild)"
+    return
+  fi
+
   local sysroot; sysroot="$(xcrun --sdk "${sdk}" --show-sdk-path)"
   local cc; cc="$(xcrun --sdk "${sdk}" --find clang)"
   echo "==> Building LibreSSL for ${label} (${triple})"
@@ -36,6 +42,18 @@ build_arch() {            # $1 = label  $2 = sdk  $3 = clang target triple
   rm -rf "${bdir}" "${out}"
   mkdir -p "${out}/lib"
   cp -R "${SRC}" "${bdir}"
+
+  # cp -R does not preserve source mtimes, and per-file copy timing can leave
+  # aclocal.m4/configure.ac looking "newer" than the generated configure/
+  # Makefile.in purely by copy-order luck. That trips automake's
+  # maintainer-mode auto-remake rules under `make`, which reruns the system's
+  # (different, newer) autoconf/automake and can produce a libtool script
+  # that fails to substitute its extended shell functions -- surfacing as
+  # cascading conftest/libtoolT errors and "no rule to make target
+  # .../libcrypto.la". Stamping every copied file to an identical mtime
+  # means nothing ever looks newer than anything else, so the auto-remake
+  # rules never fire.
+  find "${bdir}" -exec touch -t 202001010000 {} +
 
   (
     cd "${bdir}"
