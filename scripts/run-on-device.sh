@@ -28,6 +28,11 @@ SCHEME="Stone"
 BUNDLE_ID="com.stone.app"
 DERIVED="${REPO_ROOT}/ios/build/dd"
 
+# Rebuild the untracked embedded Fossil framework whenever its bridge inputs
+# changed. The helper is a no-op when the cached framework still matches.
+echo "==> Checking embedded Fossil framework"
+bash "${REPO_ROOT}/scripts/build-fossil-xcframework.sh"
+
 # Resolve the paired physical device. Two identifiers are needed:
 #   - hardware UDID  -> xcodebuild -destination id=
 #   - CoreDevice id  -> devicectl install/launch

@@ -36,7 +36,7 @@ actor RemoteSession {
             case .notAuthenticated:
                 return "Not permitted — the login was rejected or lacks access on this repository."
             case .noCredentials:
-                return "No username/password is configured for this remote."
+                return "No remote login is configured. Settings > Commit Author is local-only; use a remote URL containing its login name and save that remote's password when cloning."
             case .http(let code):
                 return "The remote returned HTTP \(code)."
             case .badResponse:

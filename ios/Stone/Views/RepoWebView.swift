@@ -7,6 +7,7 @@ import WebKit
 struct RepoWebView: UIViewRepresentable {
     let baseURL: URL
     var onURLChange: ((URL) -> Void)?
+    var onLoadFailure: ((String) -> Void)?
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
@@ -38,6 +39,24 @@ struct RepoWebView: UIViewRepresentable {
                 parent.onURLChange?(url)
             }
         }
+
+        func webView(_ webView: WKWebView,
+                     didFailProvisionalNavigation navigation: WKNavigation!,
+                     withError error: Error) {
+            report(error)
+        }
+
+        func webView(_ webView: WKWebView,
+                     didFail navigation: WKNavigation!,
+                     withError error: Error) {
+            report(error)
+        }
+
+        private func report(_ error: Error) {
+            let nsError = error as NSError
+            guard nsError.code != NSURLErrorCancelled else { return }
+            parent.onLoadFailure?(nsError.localizedDescription)
+        }
     }
 }
 
@@ -60,7 +79,12 @@ struct RepoDetailView: View {
     var body: some View {
         Group {
             if let url = baseURL {
-                RepoWebView(baseURL: url, onURLChange: { currentURL = $0 })
+                RepoWebView(baseURL: url,
+                            onURLChange: { currentURL = $0 },
+                            onLoadFailure: { message in
+                                baseURL = nil
+                                errorText = "Couldn't load the local Fossil page: \(message)"
+                            })
                     .ignoresSafeArea(edges: .bottom)
             } else if let errorText {
                 ContentUnavailableView("Couldn't start Fossil",
