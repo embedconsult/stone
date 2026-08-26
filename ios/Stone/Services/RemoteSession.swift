@@ -125,7 +125,7 @@ actor RemoteSession {
     }
 
     private func extractCSRF(from html: String) -> String? {
-        let pattern = "name=\"csrf\" value=\"([^"]*)\""
+        let pattern = "name=\"csrf\" value=\"([^\"]*)\""
         guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { return nil }
         let nsRange = NSRange(html.startIndex..<html.endIndex, in: html)
         guard let match = regex.firstMatch(in: html, options: [], range: nsRange),
