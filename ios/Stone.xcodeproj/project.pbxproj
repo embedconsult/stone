@@ -17,6 +17,7 @@
 		5E771500A11A5EAA00000001 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E771500A11A5EAA00000002 /* SettingsView.swift */; };
 		5E771500A11A5EAA00000005 /* RemoteSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E771500A11A5EAA00000007 /* RemoteSession.swift */; };
 		5E771500A11A5EAA00000004 /* cacert.pem in Resources */ = {isa = PBXBuildFile; fileRef = 5E771500A11A5EAA00000003 /* cacert.pem */; };
+		A71C0A8E1F1D4A8B9C0D1E2F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A71C0A8D1F1D4A8B9C0D1E2F /* Assets.xcassets */; };
 		F33BB7558B0F18E48B07814C /* GpcrEditClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2C8DFAE73FE049A388C3317 /* GpcrEditClient.swift */; };
 		90E2445BED37E2BD6DD43370 /* PhraseRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1858E564976384C5C2DEE5A7 /* PhraseRecognizer.swift */; };
 		058A00114029F0A4BA45822F /* GpcrEditView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76D528A1F250627ADF2E8367 /* GpcrEditView.swift */; };
@@ -46,6 +47,7 @@
 		5E771500A11A5EAA00000002 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		5E771500A11A5EAA00000007 /* RemoteSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteSession.swift; sourceTree = "<group>"; };
 		5E771500A11A5EAA00000003 /* cacert.pem */ = {isa = PBXFileReference; lastKnownFileType = text; name = cacert.pem; path = ../vendor/cacert.pem; sourceTree = SOURCE_ROOT; };
+		A71C0A8D1F1D4A8B9C0D1E2F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A2C8DFAE73FE049A388C3317 /* GpcrEditClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GpcrEditClient.swift; sourceTree = "<group>"; };
 		1858E564976384C5C2DEE5A7 /* PhraseRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhraseRecognizer.swift; sourceTree = "<group>"; };
 		76D528A1F250627ADF2E8367 /* GpcrEditView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GpcrEditView.swift; sourceTree = "<group>"; };
@@ -74,6 +76,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				5E771500A11A5EAA00000004 /* cacert.pem in Resources */,
+				A71C0A8E1F1D4A8B9C0D1E2F /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -113,6 +116,7 @@
 			isa = PBXGroup;
 			children = (
 				13F0E07DC202C76EE911220E /* Info.plist */,
+				A71C0A8D1F1D4A8B9C0D1E2F /* Assets.xcassets */,
 				5E771500A11A5EAA00000003 /* cacert.pem */,
 				1BE573DFBCB425BFAD6EF42D /* Stone-Bridging-Header.h */,
 				B327B30FE75F33C0EDBF37F5 /* StoneApp.swift */,
