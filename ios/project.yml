@@ -53,6 +53,9 @@ targets:
         HEADER_SEARCH_PATHS:
           - $(SRCROOT)/FossilBridge
         INFOPLIST_FILE: Stone/Info.plist
+        # App icon lives in Stone/Assets.xcassets (single 1024x1024 universal
+        # icon; Xcode derives all sizes). XcodeGen does not set this default.
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         # Fossil opens its own sockets for sync; WKWebView talks to the
         # loopback server. ATS local-networking exception is set in Info.plist.
         # Automatic signing: Xcode provisions an "Apple Development" cert and a
