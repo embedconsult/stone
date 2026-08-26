@@ -98,30 +98,30 @@ actor RemoteSession {
         }
     }
 
-    /// Posts a reply to a forum thread. 
-    /// Follows the Fossil CSRF dance: GET /forumedit -> scrape csrf -> POST /forume2.
+    /// Posts a reply to a forum thread. Follows Fossil's CSRF flow:
+    /// GET /forumedit -> scrape csrf -> POST /forume2.
     func postReply(fpid: String, text: String) async throws {
         if !loggedIn { try await login() }
 
         // 1. Get the reply editor page to scrape the CSRF token
-        let editorData = try await get("forumedit", query: [URLQueryItem(name: "fpid", value: fpid), URLQueryItem(name: "reply", value: "")])
+        let editorData = try await get("forumedit", query: [
+            URLQueryItem(name: "fpid", value: fpid),
+            URLQueryItem(name: "reply", value: "1")
+        ])
         guard let html = String(data: editorData, encoding: .utf8) else { throw RemoteError.badResponse }
 
         // 2. Scrape the CSRF token
         guard let csrf = extractCSRF(from: html) else { throw RemoteError.notAuthenticated }
 
-        // 3. POST the reply
-        var req = URLRequest(url: url(for: "forume2"))
-        req.httpMethod = "POST"
-        req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
-        req.setValue(url(for: "forumedit").absoluteString, forHTTPHeaderField: "Referer")
-        
-        let fields = ["csrf": csrf, "reply": text]
-        req.httpBody = formEncoded(fields)
-
-        let (_, response) = try await urlSession.data(for: req)
-        guard let http = response as? HTTPURLResponse else { throw RemoteError.badResponse }
-        if http.statusCode < 200 || http.statusCode >= 300 { throw RemoteError.http(http.statusCode) }
+        // Fossil's forume2 endpoint requires all of these fields. In
+        // particular, `reply` is a mode flag, not the reply body.
+        _ = try await post("forume2", form: [
+            "csrf": csrf,
+            "fpid": fpid,
+            "reply": "1",
+            "content": text,
+            "submit": "Submit"
+        ])
     }
 
     private func extractCSRF(from html: String) -> String? {
