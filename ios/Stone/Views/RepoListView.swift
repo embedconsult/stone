@@ -18,14 +18,18 @@ struct RepoListView: View {
             }
             ForEach(store.repos) { repo in
                 NavigationLink(value: repo) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(repo.name).font(.headline)
-                        if let remote = repo.remoteURL {
-                            Text(remote)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(repo.name).font(.headline)
+                            if let remote = repo.remoteURL {
+                                Text(remote)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
                         }
+                        Spacer()
+                        syncStatusIcon(for: repo)
                     }
                 }
                 // allowsFullSwipe: false so a long swipe can't fire the
@@ -50,9 +54,22 @@ struct RepoListView: View {
         .navigationDestination(for: Repo.self) { repo in
             RepoDetailView(repo: repo)
         }
+        .refreshable {
+            await store.syncAll()
+        }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button { showingSettings = true } label: { Image(systemName: "gearshape") }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    Task { await store.syncAll() }
+                } label: {
+                    if store.isSyncingAll { ProgressView() }
+                    else { Image(systemName: "arrow.triangle.2.circlepath") }
+                }
+                .disabled(store.isSyncingAll || !store.repos.contains { $0.remoteURL != nil })
+                .accessibilityLabel("Sync All")
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button { showingAdd = true } label: { Image(systemName: "plus") }
@@ -63,6 +80,13 @@ struct RepoListView: View {
         }
         .sheet(isPresented: $showingSettings) {
             SettingsView()
+        }
+        .alert("Sync All",
+               isPresented: Binding(get: { store.syncAllSummary != nil },
+                                    set: { if !$0 { store.dismissSyncAllSummary() } })) {
+            Button("OK") { store.dismissSyncAllSummary() }
+        } message: {
+            Text(store.syncAllSummary ?? "")
         }
         .alert("Rename Repository",
                isPresented: Binding(get: { repoToRename != nil },
@@ -86,6 +110,24 @@ struct RepoListView: View {
             Button("Cancel", role: .cancel) { repoToDelete = nil }
         } message: { _ in
             Text("This permanently deletes the local repository file. This cannot be undone.")
+        }
+    }
+
+    /// Compact per-row indicator for the most recent "Sync All" outcome.
+    @ViewBuilder
+    private func syncStatusIcon(for repo: Repo) -> some View {
+        switch store.syncStatuses[repo.id] {
+        case .syncing:
+            ProgressView()
+        case .success:
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+        case .failure(let message):
+            Image(systemName: "exclamationmark.circle.fill")
+                .foregroundStyle(.red)
+                .accessibilityLabel("Sync failed: \(message)")
+        case .none:
+            EmptyView()
         }
     }
 }

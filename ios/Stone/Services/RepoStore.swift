@@ -1,5 +1,12 @@
 import Foundation
 
+/// Outcome of syncing a single repository as part of a "Sync All" run.
+enum RepoSyncStatus: Equatable {
+    case syncing
+    case success
+    case failure(String)
+}
+
 /// Owns the set of repositories: where their files live, their metadata, and
 /// the high-level operations (create, clone, sync, delete).
 ///
@@ -9,6 +16,11 @@ import Foundation
 final class RepoStore: ObservableObject {
     @Published private(set) var repos: [Repo] = []
     @Published var lastSyncLog: String = ""
+
+    /// Per-repo outcome of the most recent "Sync All" run, keyed by repo id.
+    @Published private(set) var syncStatuses: [UUID: RepoSyncStatus] = [:]
+    @Published private(set) var isSyncingAll = false
+    @Published private(set) var syncAllSummary: String?
 
     private let engine = FossilEngine.shared
     private let fileManager = FileManager.default
@@ -93,6 +105,47 @@ final class RepoStore: ObservableObject {
         lastSyncLog = result.output
         guard result.succeeded else { throw StoreError.fossil(result.output) }
         return result.output
+    }
+
+    /// Sync every repository that has a remote configured, one at a time (the
+    /// same `sync(_:)` used by the per-repo screen). Repos without a remote
+    /// are skipped. Runs sequentially so we never hammer a remote with
+    /// concurrent requests.
+    func syncAll() async {
+        guard !isSyncingAll else { return }
+        isSyncingAll = true
+        syncAllSummary = nil
+        syncStatuses = [:]
+        defer { isSyncingAll = false }
+
+        var succeeded = 0
+        var failed = 0
+        var skipped = 0
+
+        for repo in repos {
+            guard repo.remoteURL != nil else {
+                skipped += 1
+                continue
+            }
+            syncStatuses[repo.id] = .syncing
+            do {
+                _ = try await sync(repo)
+                syncStatuses[repo.id] = .success
+                succeeded += 1
+            } catch {
+                syncStatuses[repo.id] = .failure(error.localizedDescription)
+                failed += 1
+            }
+        }
+
+        var parts = ["\(succeeded) synced"]
+        if failed > 0 { parts.append("\(failed) failed") }
+        if skipped > 0 { parts.append("\(skipped) skipped (no remote)") }
+        syncAllSummary = parts.joined(separator: ", ")
+    }
+
+    func dismissSyncAllSummary() {
+        syncAllSummary = nil
     }
 
     /// Rename a repository. Only the display label changes; the `.fossil` file
