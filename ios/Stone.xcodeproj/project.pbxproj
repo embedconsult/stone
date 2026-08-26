@@ -17,6 +17,9 @@
 		5E771500A11A5EAA00000001 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E771500A11A5EAA00000002 /* SettingsView.swift */; };
 		5E771500A11A5EAA00000005 /* RemoteSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E771500A11A5EAA00000007 /* RemoteSession.swift */; };
 		5E771500A11A5EAA00000004 /* cacert.pem in Resources */ = {isa = PBXBuildFile; fileRef = 5E771500A11A5EAA00000003 /* cacert.pem */; };
+		F33BB7558B0F18E48B07814C /* GpcrEditClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2C8DFAE73FE049A388C3317 /* GpcrEditClient.swift */; };
+		90E2445BED37E2BD6DD43370 /* PhraseRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1858E564976384C5C2DEE5A7 /* PhraseRecognizer.swift */; };
+		058A00114029F0A4BA45822F /* GpcrEditView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76D528A1F250627ADF2E8367 /* GpcrEditView.swift */; };
 		A5F4E90DBE08A2A6963EF69E /* RepoStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCECFED0E5D45BD3F63B711C /* RepoStore.swift */; };
 		AE2F17F33799CEA5877AA62E /* FossilCore.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0A17C29D5BBCAF5E27BD1389 /* FossilCore.xcframework */; };
 		C1834116F1706E7EDCFE4453 /* StoneApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B327B30FE75F33C0EDBF37F5 /* StoneApp.swift */; };
@@ -42,6 +45,9 @@
 		5E771500A11A5EAA00000002 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		5E771500A11A5EAA00000007 /* RemoteSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteSession.swift; sourceTree = "<group>"; };
 		5E771500A11A5EAA00000003 /* cacert.pem */ = {isa = PBXFileReference; lastKnownFileType = text; name = cacert.pem; path = ../vendor/cacert.pem; sourceTree = SOURCE_ROOT; };
+		A2C8DFAE73FE049A388C3317 /* GpcrEditClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GpcrEditClient.swift; sourceTree = "<group>"; };
+		1858E564976384C5C2DEE5A7 /* PhraseRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhraseRecognizer.swift; sourceTree = "<group>"; };
+		76D528A1F250627ADF2E8367 /* GpcrEditView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GpcrEditView.swift; sourceTree = "<group>"; };
 		E832ED8C0E3636A5D9DDEF11 /* StoneFossil.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = StoneFossil.h; sourceTree = "<group>"; };
 		F9EA2AB04F790C358050645B /* libiconv.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libiconv.tbd; path = usr/lib/libiconv.tbd; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
@@ -130,6 +136,7 @@
 				929ADAA2B0E5E4DDFA51199B /* RepoListView.swift */,
 				D03A16783380AA7FE06F26BC /* RepoWebView.swift */,
 				5E771500A11A5EAA00000002 /* SettingsView.swift */,
+				76D528A1F250627ADF2E8367 /* GpcrEditView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -149,6 +156,8 @@
 				4419D95C1A6CEC9A0602CE16 /* FossilEngine.swift */,
 				5E771500A11A5EAA00000007 /* RemoteSession.swift */,
 				CCECFED0E5D45BD3F63B711C /* RepoStore.swift */,
+				A2C8DFAE73FE049A388C3317 /* GpcrEditClient.swift */,
+				1858E564976384C5C2DEE5A7 /* PhraseRecognizer.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -220,6 +229,9 @@
 				8789F77DDA3470524DD8B778 /* RepoWebView.swift in Sources */,
 				5E771500A11A5EAA00000001 /* SettingsView.swift in Sources */,
 				C1834116F1706E7EDCFE4453 /* StoneApp.swift in Sources */,
+				F33BB7558B0F18E48B07814C /* GpcrEditClient.swift in Sources */,
+				90E2445BED37E2BD6DD43370 /* PhraseRecognizer.swift in Sources */,
+				058A00114029F0A4BA45822F /* GpcrEditView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

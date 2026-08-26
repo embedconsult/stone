@@ -30,6 +30,7 @@ struct RepoDetailView: View {
     @State private var errorText: String?
     @State private var syncing = false
     @State private var syncMessage: String?
+    @State private var showingGpcrEdit = false
 
     var body: some View {
         Group {
@@ -49,6 +50,14 @@ struct RepoDetailView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
+                    showingGpcrEdit = true
+                } label: {
+                    Image(systemName: "mic")
+                }
+                .disabled(repo.remoteURL == nil)
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
                     Task { await runSync() }
                 } label: {
                     if syncing { ProgressView() }
@@ -62,6 +71,16 @@ struct RepoDetailView: View {
             Button("OK") { syncMessage = nil }
         } message: {
             Text(syncMessage ?? "")
+        }
+        .sheet(isPresented: $showingGpcrEdit) {
+            NavigationStack {
+                GpcrEditView(repo: repo)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Close") { showingGpcrEdit = false }
+                        }
+                    }
+            }
         }
     }
 

@@ -86,6 +86,19 @@ actor RemoteSession {
         }
     }
 
+    /// POST a form (relative to the repo base, e.g. `"edit"`) as the logged-in
+    /// user, logging in first if needed and retrying once on a 401.
+    func post(_ path: String, form: [String: String]) async throws -> Data {
+        if !loggedIn { try await login() }
+        do {
+            return try await rawPost(path, form: form)
+        } catch RemoteError.notAuthenticated {
+            loggedIn = false
+            try await login()
+            return try await rawPost(path, form: form)
+        }
+    }
+
     // MARK: - Login
 
     /// POST `u`/`p` to `<base>/login`. Named-user login needs no CSRF token and
@@ -117,6 +130,20 @@ actor RemoteSession {
         var comps = URLComponents(url: url(for: path), resolvingAgainstBaseURL: false)!
         if !query.isEmpty { comps.queryItems = query }
         let (data, response) = try await urlSession.data(from: comps.url!)
+        guard let http = response as? HTTPURLResponse else { throw RemoteError.badResponse }
+        switch http.statusCode {
+        case 200...299: return data
+        case 401:       throw RemoteError.notAuthenticated
+        default:        throw RemoteError.http(http.statusCode)
+        }
+    }
+
+    private func rawPost(_ path: String, form: [String: String]) async throws -> Data {
+        var req = URLRequest(url: url(for: path))
+        req.httpMethod = "POST"
+        req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        req.httpBody = formEncoded(form)
+        let (data, response) = try await urlSession.data(for: req)
         guard let http = response as? HTTPURLResponse else { throw RemoteError.badResponse }
         switch http.statusCode {
         case 200...299: return data
