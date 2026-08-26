@@ -44,6 +44,16 @@ if [[ -z "${HW_UDID}" || -z "${CORE_ID}" ]]; then
 fi
 echo "==> Target device: ${DEV_NAME} (${HW_UDID})"
 
+# Stamp build identity
+BUILD_HASH=$(fossil info | grep 'checkout:' | awk '{print $2}' | cut -c1-7)
+BUILD_DATE=$(date -u "+%Y-%m-%d %H:%M:%S UTC")
+BUILD_DIRTY=$(fossil status | grep -v 'repository:' | grep -v 'local-root:' | grep -v 'config-db:' | grep -v 'checkout:' | grep -v 'parent:' | grep -v 'merged-from:' | grep -v 'tags:' | grep -v 'comment:' | grep -q . && echo 'true' || echo 'false')
+
+echo "==> Stamping build identity: ${BUILD_HASH}${BUILD_DIRTY:+"-dirty"} (${BUILD_DATE})"
+plutil -replace BuildCommit -string "${BUILD_HASH}" "${REPO_ROOT}/ios/Stone/Info.plist"
+plutil -replace BuildDate -string "${BUILD_DATE}" "${REPO_ROOT}/ios/Stone/Info.plist"
+plutil -replace BuildDirty -string "${BUILD_DIRTY}" "${REPO_ROOT}/ios/Stone/Info.plist"
+
 echo "==> Building & signing for device (automatic provisioning)"
 xcodebuild \
   -project "${PROJECT}" \

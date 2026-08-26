@@ -85,6 +85,53 @@ actor RemoteSession {
             return try await rawGet(path, query: query)
         }
     }
+    /// POST a form (relative to the repo base, e.g. `"edit"`) as the logged-in
+    /// user, logging in first if needed and retrying once on a 401.
+    func post(_ path: String, form: [String: String]) async throws -> Data {
+        if !loggedIn { try await login() }
+        do {
+            return try await rawPost(path, form: form)
+        } catch RemoteError.notAuthenticated {
+            loggedIn = false
+            try await login()
+            return try await rawPost(path, form: form)
+        }
+    }
+
+    /// Posts a reply to a forum thread. 
+    /// Follows the Fossil CSRF dance: GET /forumedit -> scrape csrf -> POST /forume2.
+    func postReply(fpid: String, text: String) async throws {
+        if !loggedIn { try await login() }
+
+        // 1. Get the reply editor page to scrape the CSRF token
+        let editorData = try await get("forumedit", query: [URLQueryItem(name: "fpid", value: fpid), URLQueryItem(name: "reply", value: "")])
+        guard let html = String(data: editorData, encoding: .utf8) else { throw RemoteError.badResponse }
+
+        // 2. Scrape the CSRF token
+        guard let csrf = extractCSRF(from: html) else { throw RemoteError.notAuthenticated }
+
+        // 3. POST the reply
+        var req = URLRequest(url: url(for: "forume2"))
+        req.httpMethod = "POST"
+        req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        req.setValue(url(for: "forumedit").absoluteString, forHTTPHeaderField: "Referer")
+        
+        let fields = ["csrf": csrf, "reply": text]
+        req.httpBody = formEncoded(fields)
+
+        let (_, response) = try await urlSession.data(for: req)
+        guard let http = response as? HTTPURLResponse else { throw RemoteError.badResponse }
+        if http.statusCode < 200 || http.statusCode >= 300 { throw RemoteError.http(http.statusCode) }
+    }
+
+    private func extractCSRF(from html: String) -> String? {
+        let pattern = "name=\"csrf\" value=\"([^"]*)\""
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { return nil }
+        let nsRange = NSRange(html.startIndex..<html.endIndex, in: html)
+        guard let match = regex.firstMatch(in: html, options: [], range: nsRange),
+              let range = Range(match.range(at: 1), in: html) else { return nil }
+        return String(html[range])
+    }
 
     // MARK: - Login
 
@@ -117,6 +164,20 @@ actor RemoteSession {
         var comps = URLComponents(url: url(for: path), resolvingAgainstBaseURL: false)!
         if !query.isEmpty { comps.queryItems = query }
         let (data, response) = try await urlSession.data(from: comps.url!)
+        guard let http = response as? HTTPURLResponse else { throw RemoteError.badResponse }
+        switch http.statusCode {
+        case 200...299: return data
+        case 401:       throw RemoteError.notAuthenticated
+        default:        throw RemoteError.http(http.statusCode)
+        }
+    }
+
+    private func rawPost(_ path: String, form: [String: String]) async throws -> Data {
+        var req = URLRequest(url: url(for: path))
+        req.httpMethod = "POST"
+        req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        req.httpBody = formEncoded(form)
+        let (data, response) = try await urlSession.data(for: req)
         guard let http = response as? HTTPURLResponse else { throw RemoteError.badResponse }
         switch http.statusCode {
         case 200...299: return data

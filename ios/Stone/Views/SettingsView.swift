@@ -18,6 +18,10 @@ struct SettingsView: View {
                 } footer: {
                     Text("Name Fossil records as the author of clones, commits, and syncs.")
                 }
+
+                Section {
+                    NavigationLink("About", destination: AboutView())
+                }
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)

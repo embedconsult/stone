@@ -6,18 +6,38 @@ import WebKit
 /// render Fossil's real pages so there is zero drift from upstream.
 struct RepoWebView: UIViewRepresentable {
     let baseURL: URL
+    var onURLChange: ((URL) -> Void)?
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .nonPersistent() // localhost session only
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.allowsBackForwardNavigationGestures = true
+        webView.navigationDelegate = context.coordinator
         webView.load(URLRequest(url: baseURL))
         return webView
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
         // The server's port is stable for the app session; nothing to refresh.
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    class Coordinator: NSObject, WKNavigationDelegate {
+        var parent: RepoWebView
+
+        init(_ parent: RepoWebView) {
+            self.parent = parent
+        }
+
+        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            if let url = webView.url {
+                parent.onURLChange?(url)
+            }
+        }
     }
 }
 
@@ -30,11 +50,17 @@ struct RepoDetailView: View {
     @State private var errorText: String?
     @State private var syncing = false
     @State private var syncMessage: String?
+    @State private var showingGpcrEdit = false
+
+    @State private var currentURL: URL?
+    @State private var showingReplyComposer = false
+    @State private var replyText = ""
+    @State private var replyError: String?
 
     var body: some View {
         Group {
             if let url = baseURL {
-                RepoWebView(baseURL: url)
+                RepoWebView(baseURL: url, onURLChange: { currentURL = $0 })
                     .ignoresSafeArea(edges: .bottom)
             } else if let errorText {
                 ContentUnavailableView("Couldn't start Fossil",
@@ -49,12 +75,29 @@ struct RepoDetailView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    Task { await runSync() }
+                    showingGpcrEdit = true
                 } label: {
-                    if syncing { ProgressView() }
-                    else { Image(systemName: "arrow.triangle.2.circlepath") }
+                    Image(systemName: "mic")
                 }
-                .disabled(syncing || repo.remoteURL == nil)
+                .disabled(repo.remoteURL == nil)
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                HStack {
+                    if let fpid = extractFPID(from: currentURL) {
+                        Button {
+                            showingReplyComposer = true
+                        } label: {
+                            Image(systemName: "square.and.pencil")
+                        }
+                    }
+                    Button {
+                        Task { await runSync() }
+                    } label: {
+                        if syncing { ProgressView() }
+                        else { Image(systemName: "arrow.triangle.2.circlepath") }
+                    }
+                    .disabled(syncing || repo.remoteURL == nil)
+                }
             }
         }
         .task { await startServer() }
@@ -62,6 +105,70 @@ struct RepoDetailView: View {
             Button("OK") { syncMessage = nil }
         } message: {
             Text(syncMessage ?? "")
+        }
+        .sheet(isPresented: $showingGpcrEdit) {
+            NavigationStack {
+                GpcrEditView(repo: repo)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Close") { showingGpcrEdit = false }
+                        }
+                    }
+            }
+        }
+        .sheet(isPresented: $showingReplyComposer) {
+            VStack(spacing: 20) {
+                Text("Reply to Thread").font(.headline)
+                TextEditor(text: $replyText)
+                    .frame(height: 200)
+                    .border(Color.gray, width: 1)
+                if let err = replyError {
+                    Text(err).foregroundColor(.red).font(.caption)
+                }
+                HStack {
+                    Button("Cancel") {
+                        showingReplyComposer = false
+                        replyText = ""
+                        replyError = nil
+                    }
+                    Spacer()
+                    Button("Send") {
+                        Task { await sendReply() }
+                    }
+                    .disabled(replyText.isEmpty)
+                }
+            }
+            .padding()
+            .presentationDetents([.medium])
+        }
+    }
+
+    private func extractFPID(from url: URL?) -> String? {
+        guard let url = url,
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let fpid = components.queryItems?.first(where: { $0.name == "fpid" })?.value else {
+            return nil
+        }
+        return fpid
+    }
+
+    private func sendReply() async {
+        guard let fpid = extractFPID(from: currentURL),
+              let remoteURL = repo.remoteURL else { return }
+
+        let password = CredentialStore.password(for: repo.id)
+        guard let session = RemoteSession(remoteURL: remoteURL, password: password) else {
+            replyError = "Invalid remote session configuration."
+            return
+        }
+
+        do {
+            try await session.postReply(fpid: fpid, text: replyText)
+            showingReplyComposer = false
+            replyText = ""
+            replyError = nil
+        } catch {
+            replyError = error.localizedDescription
         }
     }
 
