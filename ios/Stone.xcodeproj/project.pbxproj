@@ -20,8 +20,9 @@
 		F33BB7558B0F18E48B07814C /* GpcrEditClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2C8DFAE73FE049A388C3317 /* GpcrEditClient.swift */; };
 		90E2445BED37E2BD6DD43370 /* PhraseRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1858E564976384C5C2DEE5A7 /* PhraseRecognizer.swift */; };
 		058A00114029F0A4BA45822F /* GpcrEditView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76D528A1F250627ADF2E8367 /* GpcrEditView.swift */; };
-		B19F241881A9D6F172D0661C /* BuildIdentityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A4DFE84072A9434AFB1BB7D /* BuildIdentityView.swift */; };
 		A5F4E90DBE08A2A6963EF69E /* RepoStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCECFED0E5D45BD3F63B711C /* RepoStore.swift */; };
+		C2AA1627846B9D1E2F3A4B5C /* AboutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2AA1626846B9D1E2F3A4B5C /* AboutView.swift */; };
+		C2AA1629846B9D1E2F3A4B5C /* BuildIdentityOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2AA1628846B9D1E2F3A4B5C /* BuildIdentityOverlay.swift */; };
 		AE2F17F33799CEA5877AA62E /* FossilCore.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0A17C29D5BBCAF5E27BD1389 /* FossilCore.xcframework */; };
 		C1834116F1706E7EDCFE4453 /* StoneApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B327B30FE75F33C0EDBF37F5 /* StoneApp.swift */; };
 		DC4CFDC297E0BF35ECFC4B95 /* libiconv.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = F9EA2AB04F790C358050645B /* libiconv.tbd */; };
@@ -49,8 +50,9 @@
 		A2C8DFAE73FE049A388C3317 /* GpcrEditClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GpcrEditClient.swift; sourceTree = "<group>"; };
 		1858E564976384C5C2DEE5A7 /* PhraseRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhraseRecognizer.swift; sourceTree = "<group>"; };
 		76D528A1F250627ADF2E8367 /* GpcrEditView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GpcrEditView.swift; sourceTree = "<group>"; };
-		2A4DFE84072A9434AFB1BB7D /* BuildIdentityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildIdentityView.swift; sourceTree = "<group>"; };
 		E832ED8C0E3636A5D9DDEF11 /* StoneFossil.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = StoneFossil.h; sourceTree = "<group>"; };
+		C2AA1626846B9D1E2F3A4B5C /* AboutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AboutView.swift; sourceTree = "<group>"; };
+		C2AA1628846B9D1E2F3A4B5C /* BuildIdentityOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildIdentityOverlay.swift; sourceTree = "<group>"; };
 		F9EA2AB04F790C358050645B /* libiconv.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libiconv.tbd; path = usr/lib/libiconv.tbd; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
@@ -139,7 +141,8 @@
 				D03A16783380AA7FE06F26BC /* RepoWebView.swift */,
 				5E771500A11A5EAA00000002 /* SettingsView.swift */,
 				76D528A1F250627ADF2E8367 /* GpcrEditView.swift */,
-				2A4DFE84072A9434AFB1BB7D /* BuildIdentityView.swift */,
+				C2AA1626846B9D1E2F3A4B5C /* AboutView.swift */,
+				C2AA1628846B9D1E2F3A4B5C /* BuildIdentityOverlay.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -235,7 +238,8 @@
 				F33BB7558B0F18E48B07814C /* GpcrEditClient.swift in Sources */,
 				90E2445BED37E2BD6DD43370 /* PhraseRecognizer.swift in Sources */,
 				058A00114029F0A4BA45822F /* GpcrEditView.swift in Sources */,
-				B19F241881A9D6F172D0661C /* BuildIdentityView.swift in Sources */,
+				C2AA1627846B9D1E2F3A4B5C /* AboutView.swift in Sources */,
+				C2AA1629846B9D1E2F3A4B5C /* BuildIdentityOverlay.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -56,7 +56,6 @@ struct RepoDetailView: View {
     @State private var showingReplyComposer = false
     @State private var replyText = ""
     @State private var replyError: String?
-
     var body: some View {
         Group {
             if let url = baseURL {
@@ -83,7 +82,7 @@ struct RepoDetailView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 HStack {
-                    if let fpid = extractFPID(from: currentURL) {
+                    if forumPostID(from: currentURL) != nil {
                         Button {
                             showingReplyComposer = true
                         } label: {
@@ -143,17 +142,27 @@ struct RepoDetailView: View {
         }
     }
 
-    private func extractFPID(from url: URL?) -> String? {
-        guard let url = url,
-              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let fpid = components.queryItems?.first(where: { $0.name == "fpid" })?.value else {
-            return nil
+    /// Fossil emits both query-style links (`forum?fpid=...`) and the normal
+    /// path-style links (`forum/<post-id>`). The embedded loopback server keeps
+    /// the path shape, so support both rather than hiding the composer on the
+    /// usual forum page.
+    private func forumPostID(from url: URL?) -> String? {
+        guard let url else { return nil }
+        if let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+           let value = components.queryItems?.first(where: { $0.name == "fpid" || $0.name == "name" })?.value,
+           !value.isEmpty {
+            return value
         }
-        return fpid
+
+        let path = url.path.split(separator: "/").map(String.init)
+        guard let route = path.lastIndex(where: { $0 == "forum" || $0 == "forumedit" }),
+              path.indices.contains(route + 1) else { return nil }
+        let value = path[route + 1]
+        return value.isEmpty ? nil : value
     }
 
     private func sendReply() async {
-        guard let fpid = extractFPID(from: currentURL),
+        guard let fpid = forumPostID(from: currentURL),
               let remoteURL = repo.remoteURL else { return }
 
         let password = CredentialStore.password(for: repo.id)
