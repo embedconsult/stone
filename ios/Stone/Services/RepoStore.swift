@@ -118,7 +118,7 @@ final class RepoStore: ObservableObject {
     /// capability makes Fossil silently decline to send content while still
     /// exiting 0. Surfacing the real sent/received counts, rather than a
     /// blanket "Sync complete," makes that silent no-op visible.
-    static func parseArtifactCounts(_ output: String) -> (sent: Int, received: Int)? {
+    nonisolated static func parseArtifactCounts(_ output: String) -> (sent: Int, received: Int)? {
         guard let regex = try? NSRegularExpression(
             pattern: "Artifacts sent:\\s*(\\d+)\\s+received:\\s*(\\d+)"
         ) else { return nil }
@@ -236,5 +236,30 @@ final class RepoStore: ObservableObject {
         }
         comps.password = password
         return comps.string ?? remote
+    }
+
+    /// Combines a bare server URL and a username into one URL string with the
+    /// username as userinfo (e.g. host `https://host/repo` + username `stone`
+    /// -> `https://stone@host/repo`). An empty username leaves `host`
+    /// unchanged (anonymous). Used by the add/edit-remote UI so the username
+    /// is its own field rather than something the operator has to know to
+    /// type into the URL by hand.
+    nonisolated static func combinedRemoteURL(host: String, username: String) -> String {
+        let trimmedUser = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedUser.isEmpty, var comps = URLComponents(string: host) else { return host }
+        comps.user = trimmedUser
+        return comps.string ?? host
+    }
+
+    /// The inverse of `combinedRemoteURL`: splits a stored remote URL (which
+    /// may carry a username as userinfo) into its bare host/path form and the
+    /// username, for prefilling edit UI. Never returns a password -- that
+    /// only ever lives in the Keychain via `CredentialStore`.
+    nonisolated static func splitRemoteURL(_ remote: String) -> (host: String, username: String) {
+        guard var comps = URLComponents(string: remote) else { return (remote, "") }
+        let username = comps.user ?? ""
+        comps.user = nil
+        comps.password = nil
+        return (comps.string ?? remote, username)
     }
 }

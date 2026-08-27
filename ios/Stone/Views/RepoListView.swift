@@ -8,6 +8,7 @@ struct RepoListView: View {
     @State private var repoToRename: Repo?
     @State private var renameText = ""
     @State private var repoToDelete: Repo?
+    @State private var repoToEditRemote: Repo?
 
     var body: some View {
         List {
@@ -47,6 +48,12 @@ struct RepoListView: View {
                         Label("Rename", systemImage: "pencil")
                     }
                     .tint(.blue)
+                    Button {
+                        repoToEditRemote = repo
+                    } label: {
+                        Label("Edit Remote", systemImage: "link")
+                    }
+                    .tint(.indigo)
                 }
             }
         }
@@ -80,6 +87,9 @@ struct RepoListView: View {
         }
         .sheet(isPresented: $showingSettings) {
             SettingsView()
+        }
+        .sheet(item: $repoToEditRemote) { repo in
+            EditRemoteView(repo: repo)
         }
         .alert("Sync All",
                isPresented: Binding(get: { store.syncAllSummary != nil },

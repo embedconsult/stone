@@ -13,6 +13,7 @@
 		3CFA09B0F5D843B2B6F6F8CE /* RepoListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 929ADAA2B0E5E4DDFA51199B /* RepoListView.swift */; };
 		768E869C09E867CD115CDEA7 /* CredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CD3D09FCE1513AC396ACAAC /* CredentialStore.swift */; };
 		79DE7AE7C2E75D34EB445476 /* AddRepoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B381B11CAD790DF201810543 /* AddRepoView.swift */; };
+		F256872F96B8DC6658F6B7E7 /* EditRemoteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1B2028331DBACFDC79B3645 /* EditRemoteView.swift */; };
 		8789F77DDA3470524DD8B778 /* RepoWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D03A16783380AA7FE06F26BC /* RepoWebView.swift */; };
 		5E771500A11A5EAA00000001 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E771500A11A5EAA00000002 /* SettingsView.swift */; };
 		5E771500A11A5EAA00000005 /* RemoteSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E771500A11A5EAA00000007 /* RemoteSession.swift */; };
@@ -41,6 +42,7 @@
 		9E014CFB9EA1256EB886BFB0 /* libresolv.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.tbd; path = usr/lib/libresolv.tbd; sourceTree = SDKROOT; };
 		B327B30FE75F33C0EDBF37F5 /* StoneApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoneApp.swift; sourceTree = "<group>"; };
 		B381B11CAD790DF201810543 /* AddRepoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddRepoView.swift; sourceTree = "<group>"; };
+		E1B2028331DBACFDC79B3645 /* EditRemoteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditRemoteView.swift; sourceTree = "<group>"; };
 		C34F67C4EB118D7638B7FDFD /* Repo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Repo.swift; sourceTree = "<group>"; };
 		CCECFED0E5D45BD3F63B711C /* RepoStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RepoStore.swift; sourceTree = "<group>"; };
 		D03A16783380AA7FE06F26BC /* RepoWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RepoWebView.swift; sourceTree = "<group>"; };
@@ -139,6 +141,7 @@
 			isa = PBXGroup;
 			children = (
 				B381B11CAD790DF201810543 /* AddRepoView.swift */,
+				E1B2028331DBACFDC79B3645 /* EditRemoteView.swift */,
 				929ADAA2B0E5E4DDFA51199B /* RepoListView.swift */,
 				D03A16783380AA7FE06F26BC /* RepoWebView.swift */,
 				5E771500A11A5EAA00000002 /* SettingsView.swift */,
@@ -227,6 +230,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				79DE7AE7C2E75D34EB445476 /* AddRepoView.swift in Sources */,
+				F256872F96B8DC6658F6B7E7 /* EditRemoteView.swift in Sources */,
 				768E869C09E867CD115CDEA7 /* CredentialStore.swift in Sources */,
 				34713C51DF26811D2DDA56FE /* FossilEngine.swift in Sources */,
 				0EA6A88FE68640E6ED7F6807 /* Repo.swift in Sources */,
