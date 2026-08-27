@@ -30,6 +30,7 @@ actor RemoteSession {
         case noCredentials             // nothing to log in with
         case http(Int)                 // other non-2xx
         case badResponse
+        case postNotAccepted           // 2xx, but the form was silently redisplayed
 
         var errorDescription: String? {
             switch self {
@@ -41,6 +42,8 @@ actor RemoteSession {
                 return "The remote returned HTTP \(code)."
             case .badResponse:
                 return "The remote returned an unexpected response."
+            case .postNotAccepted:
+                return "The remote didn't accept the post — it redisplayed the form instead of confirming, which Fossil does silently (HTTP 200) when its same-origin/CSRF check rejects the request."
             }
         }
     }
@@ -115,13 +118,22 @@ actor RemoteSession {
 
         // Fossil's forume2 endpoint requires all of these fields. In
         // particular, `reply` is a mode flag, not the reply body.
-        _ = try await post("forume2", form: [
+        let resultData = try await post("forume2", form: [
             "csrf": csrf,
             "fpid": fpid,
             "reply": "1",
             "content": text,
             "submit": "Submit"
         ])
+
+        // On success Fossil redirects to /forumpost/<uuid> (which URLSession
+        // follows transparently); on silent CSRF/same-origin rejection it
+        // redisplays this same "Enter Reply" form instead, still as HTTP 200.
+        // Status code alone can't tell these apart -- check the body.
+        if let resultHTML = String(data: resultData, encoding: .utf8),
+           resultHTML.contains("Enter Reply:") {
+            throw RemoteError.postNotAccepted
+        }
     }
 
     private func extractCSRF(from html: String) -> String? {
@@ -176,6 +188,13 @@ actor RemoteSession {
         var req = URLRequest(url: url(for: path))
         req.httpMethod = "POST"
         req.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        // Fossil's cgi_same_origin() (src/cgi.c) rejects any POST with no
+        // Referer, or one that doesn't prefix-match the repo's configured
+        // base URL, before it even looks at the CSRF token -- silently, by
+        // just redisplaying the form with HTTP 200 rather than an error. A
+        // Referer here is required for forum replies (and any other
+        // cgi_csrf_safe()-gated POST) to actually take effect.
+        req.setValue(baseURL.absoluteString, forHTTPHeaderField: "Referer")
         req.httpBody = formEncoded(form)
         let (data, response) = try await urlSession.data(for: req)
         guard let http = response as? HTTPURLResponse else { throw RemoteError.badResponse }
