@@ -25,7 +25,7 @@ fi
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PROJECT="${REPO_ROOT}/ios/Stone.xcodeproj"
 SCHEME="Stone"
-BUNDLE_ID="com.stone.app"
+BUNDLE_ID="org.beagleboard.stone"
 DERIVED="${REPO_ROOT}/ios/build/dd"
 
 # Rebuild the untracked embedded Fossil framework whenever its bridge inputs

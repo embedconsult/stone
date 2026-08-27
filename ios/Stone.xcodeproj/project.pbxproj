@@ -329,7 +329,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.stone.app;
+				PRODUCT_BUNDLE_IDENTIFIER = org.beagleboard.stone;
 				SDKROOT = iphoneos;
 				SWIFT_OBJC_BRIDGING_HEADER = "Stone/Stone-Bridging-Header.h";
 				TARGETED_DEVICE_FAMILY = 1;
@@ -412,7 +412,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.stone.app;
+				PRODUCT_BUNDLE_IDENTIFIER = org.beagleboard.stone;
 				SDKROOT = iphoneos;
 				SWIFT_OBJC_BRIDGING_HEADER = "Stone/Stone-Bridging-Header.h";
 				TARGETED_DEVICE_FAMILY = 1;

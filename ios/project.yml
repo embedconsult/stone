@@ -14,7 +14,7 @@
 
 name: Stone
 options:
-  bundleIdPrefix: com.stone
+  bundleIdPrefix: org.beagleboard
   deploymentTarget:
     iOS: "17.0"
   createIntermediateGroups: true
@@ -47,7 +47,7 @@ targets:
       - sdk: libresolv.tbd
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.stone.app
+        PRODUCT_BUNDLE_IDENTIFIER: org.beagleboard.stone
         TARGETED_DEVICE_FAMILY: "1"          # iPhone
         SWIFT_OBJC_BRIDGING_HEADER: Stone/Stone-Bridging-Header.h
         HEADER_SEARCH_PATHS:

@@ -15,7 +15,7 @@
 # — no separate altool/Transporter step.
 #
 # One-time Apple-account setup this script does NOT do (see
-# docs/ota-updates.md section 1): registering the com.stone.app bundle id,
+# docs/ota-updates.md section 1): registering the org.beagleboard.stone bundle id,
 # creating the App Store Connect app record, and creating a TestFlight
 # Internal Testing group. Run this only after that setup exists.
 #
