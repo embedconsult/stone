@@ -34,20 +34,20 @@ actor FossilEngine {
         }
     }
 
-    /// Start the loopback web server for the given repository file, or — if it
-    /// is already running — retarget it at this repo (same port). Returns the
-    /// base URL the WebView should load.
+    /// Start the IPv4 loopback web server for the given repository file, or —
+    /// if it is already running — retarget it at this repo (same port).
+    /// Returns the base URL the WebView should load.
     func startServer(repoPath: String) throws -> URL {
         if let port = serverPort {
             let rc = repoPath.withCString { stone_fossil_server_set_repo($0) }
-            guard rc == 0, let url = URL(string: "http://localhost:\(port)/") else {
+            guard rc == 0, let url = URL(string: "http://127.0.0.1:\(port)/") else {
                 throw EngineError.serverFailed
             }
             return url
         }
         var port: Int32 = 0
         let rc = repoPath.withCString { stone_fossil_server_start($0, &port) }
-        guard rc == 0, let url = URL(string: "http://localhost:\(port)/") else {
+        guard rc == 0, let url = URL(string: "http://127.0.0.1:\(port)/") else {
             throw EngineError.serverFailed
         }
         serverPort = Int(port)

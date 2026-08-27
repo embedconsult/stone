@@ -36,7 +36,7 @@ actor RemoteSession {
             case .notAuthenticated:
                 return "Not permitted — the login was rejected or lacks access on this repository."
             case .noCredentials:
-                return "No username/password is configured for this remote."
+                return "No remote login is configured. Settings > Commit Author is local-only; use a remote URL containing its login name and save that remote's password when cloning."
             case .http(let code):
                 return "The remote returned HTTP \(code)."
             case .badResponse:
@@ -85,7 +85,6 @@ actor RemoteSession {
             return try await rawGet(path, query: query)
         }
     }
-
     /// POST a form (relative to the repo base, e.g. `"edit"`) as the logged-in
     /// user, logging in first if needed and retrying once on a 401.
     func post(_ path: String, form: [String: String]) async throws -> Data {
@@ -97,6 +96,41 @@ actor RemoteSession {
             try await login()
             return try await rawPost(path, form: form)
         }
+    }
+
+    /// Posts a reply to a forum thread. Follows Fossil's CSRF flow:
+    /// GET /forumedit -> scrape csrf -> POST /forume2.
+    func postReply(fpid: String, text: String) async throws {
+        if !loggedIn { try await login() }
+
+        // 1. Get the reply editor page to scrape the CSRF token
+        let editorData = try await get("forumedit", query: [
+            URLQueryItem(name: "fpid", value: fpid),
+            URLQueryItem(name: "reply", value: "1")
+        ])
+        guard let html = String(data: editorData, encoding: .utf8) else { throw RemoteError.badResponse }
+
+        // 2. Scrape the CSRF token
+        guard let csrf = extractCSRF(from: html) else { throw RemoteError.notAuthenticated }
+
+        // Fossil's forume2 endpoint requires all of these fields. In
+        // particular, `reply` is a mode flag, not the reply body.
+        _ = try await post("forume2", form: [
+            "csrf": csrf,
+            "fpid": fpid,
+            "reply": "1",
+            "content": text,
+            "submit": "Submit"
+        ])
+    }
+
+    private func extractCSRF(from html: String) -> String? {
+        let pattern = "name=\"csrf\" value=\"([^\"]*)\""
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { return nil }
+        let nsRange = NSRange(html.startIndex..<html.endIndex, in: html)
+        guard let match = regex.firstMatch(in: html, options: [], range: nsRange),
+              let range = Range(match.range(at: 1), in: html) else { return nil }
+        return String(html[range])
     }
 
     // MARK: - Login
