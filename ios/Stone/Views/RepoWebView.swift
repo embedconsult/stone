@@ -219,8 +219,18 @@ struct RepoDetailView: View {
         syncing = true
         defer { syncing = false }
         do {
-            _ = try await store.sync(repo)
-            syncMessage = "Sync complete."
+            let output = try await store.sync(repo)
+            // A zero exit code only means the round-trip completed -- it does
+            // NOT mean anything was actually pushed. A remote identity
+            // lacking write capability makes Fossil silently decline to send
+            // content while still exiting 0. Show the real counts rather than
+            // a blanket "Sync complete" so that no-op is visible instead of
+            // reading as success.
+            if let counts = RepoStore.parseArtifactCounts(output) {
+                syncMessage = "Sync complete — \(counts.sent) sent, \(counts.received) received."
+            } else {
+                syncMessage = "Sync complete."
+            }
         } catch {
             syncMessage = error.localizedDescription
         }

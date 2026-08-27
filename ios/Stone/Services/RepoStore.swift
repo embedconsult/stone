@@ -82,7 +82,7 @@ final class RepoStore: ObservableObject {
         let fileName = Self.fileName(for: name)
         let path = repositoriesDir.appendingPathComponent(fileName).path
         let id = UUID()
-        let authURL = Self.urlWithPassword(remoteURL, password: password)
+        let authURL = try Self.urlWithPassword(remoteURL, password: password)
         let result = await engine.run(["clone", authURL, path])
         guard result.succeeded else { throw StoreError.fossil(result.output) }
         if let password, !password.isEmpty {
@@ -99,12 +99,37 @@ final class RepoStore: ObservableObject {
             throw StoreError.noRemote
         }
         let password = CredentialStore.password(for: repo.id)
-        let authURL = Self.urlWithPassword(remote, password: password)
+        let authURL = try Self.urlWithPassword(remote, password: password)
         let path = fileURL(for: repo).path
         let result = await engine.run(["sync", authURL, "-R", path])
         lastSyncLog = result.output
         guard result.succeeded else { throw StoreError.fossil(result.output) }
         return result.output
+    }
+
+    /// Parses Fossil's non-interactive sync summary line
+    /// (`Round-trips: N   Artifacts sent: X  received: Y`, src/xfer.c
+    /// `zBriefFormat`, printed exactly once when stdout isn't a tty) out of a
+    /// `sync`/`clone` command's raw output. `nil` if the line isn't present
+    /// (e.g. the command failed before any round-trip).
+    ///
+    /// This exists because a successful exit code alone does not mean
+    /// anything was actually pushed: a remote identity lacking write
+    /// capability makes Fossil silently decline to send content while still
+    /// exiting 0. Surfacing the real sent/received counts, rather than a
+    /// blanket "Sync complete," makes that silent no-op visible.
+    static func parseArtifactCounts(_ output: String) -> (sent: Int, received: Int)? {
+        guard let regex = try? NSRegularExpression(
+            pattern: "Artifacts sent:\\s*(\\d+)\\s+received:\\s*(\\d+)"
+        ) else { return nil }
+        let range = NSRange(output.startIndex..<output.endIndex, in: output)
+        guard let match = regex.firstMatch(in: output, range: range),
+              let sentRange = Range(match.range(at: 1), in: output),
+              let receivedRange = Range(match.range(at: 2), in: output),
+              let sent = Int(output[sentRange]),
+              let received = Int(output[receivedRange])
+        else { return nil }
+        return (sent, received)
     }
 
     /// Sync every repository that has a remote configured, one at a time (the
@@ -179,11 +204,14 @@ final class RepoStore: ObservableObject {
     enum StoreError: LocalizedError {
         case fossil(String)
         case noRemote
+        case passwordNeedsUsername
 
         var errorDescription: String? {
             switch self {
             case .fossil(let msg): return msg.isEmpty ? "Fossil command failed." : msg
             case .noRemote: return "This repository has no remote configured."
+            case .passwordNeedsUsername:
+                return "A password needs a username in the remote URL first — e.g. https://user@host/repo, not just https://host/repo."
             }
         }
     }
@@ -196,12 +224,17 @@ final class RepoStore: ObservableObject {
     }
 
     /// Inject a password into a remote URL's userinfo so Fossil can authenticate
-    /// non-interactively. Username, if any, must already be part of `remote`.
-    private static func urlWithPassword(_ remote: String, password: String?) -> String {
-        guard let password, !password.isEmpty,
-              var comps = URLComponents(string: remote) else { return remote }
+    /// non-interactively. Username, if any, must already be part of `remote`
+    /// (e.g. `https://user@host/repo`) -- a password with no username would
+    /// silently become an empty-username credential, which Fossil rejects, so
+    /// that combination is refused up front instead.
+    private static func urlWithPassword(_ remote: String, password: String?) throws -> String {
+        guard let password, !password.isEmpty else { return remote }
+        guard var comps = URLComponents(string: remote) else { return remote }
+        guard let user = comps.user, !user.isEmpty else {
+            throw StoreError.passwordNeedsUsername
+        }
         comps.password = password
-        if comps.user == nil { comps.user = "" }
         return comps.string ?? remote
     }
 }
