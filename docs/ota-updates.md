@@ -39,7 +39,7 @@ account-level setup; none of it can be scripted or delegated to this repo.
    done. Confirm at https://developer.apple.com/account if unsure.
 2. **[APPLE ACCOUNT] Register the App ID (bundle id) for distribution**, if
    not already registered — Certificates, Identifiers & Profiles > Identifiers
-   > `+`. Bundle ID: `com.stone.app` (must be **explicit**, not wildcard, to
+   > `+`. Bundle ID: `org.beagleboard.stone` (must be **explicit**, not wildcard, to
    be App-Store-eligible). In practice `xcodebuild archive
    -allowProvisioningUpdates` with `CODE_SIGN_STYLE: Automatic` (already set
    in `ios/project.yml`) will auto-register this the first time it archives,
@@ -51,7 +51,7 @@ account-level setup; none of it can be scripted or delegated to this repo.
    - Name: "Stone" (must be globally unique across the App Store; add a
      suffix if taken — this cannot be checked without an account session)
    - Primary language, SKU (any unique string, e.g. `stone-ios`), and the
-     bundle ID `com.stone.app` registered in step 2.
+     bundle ID `org.beagleboard.stone` registered in step 2.
    - This step **cannot be automated or skipped** — App Store Connect
      rejects an upload for a bundle ID that has no app record yet, so this
      has to exist before the first `testflight-upload.sh` run.

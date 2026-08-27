@@ -15,6 +15,7 @@ struct AddRepoView: View {
     @State private var mode: Mode = .clone
     @State private var name = ""
     @State private var remoteURL = ""
+    @State private var username = ""
     @State private var password = ""
     @State private var working = false
     @State private var errorText: String?
@@ -38,7 +39,17 @@ struct AddRepoView: View {
                             .textInputAutocapitalization(.never)
                             .keyboardType(.URL)
                             .autocorrectionDisabled()
+                        TextField("Username (optional)", text: $username)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
                         SecureField("Password (optional)", text: $password)
+                    }
+                    if !password.isEmpty && username.trimmingCharacters(in: .whitespaces).isEmpty {
+                        Section {
+                            Text("A password needs a username to authenticate as.")
+                                .font(.caption)
+                                .foregroundStyle(.red)
+                        }
                     }
                 }
 
@@ -68,7 +79,12 @@ struct AddRepoView: View {
     private var isValid: Bool {
         guard !name.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
         if mode == .clone {
-            return !remoteURL.trimmingCharacters(in: .whitespaces).isEmpty
+            guard !remoteURL.trimmingCharacters(in: .whitespaces).isEmpty else { return false }
+            // A password with no username can't authenticate -- block it here
+            // rather than letting the clone fail with a confusing error.
+            if !password.isEmpty && username.trimmingCharacters(in: .whitespaces).isEmpty {
+                return false
+            }
         }
         return true
     }
@@ -80,8 +96,9 @@ struct AddRepoView: View {
         do {
             switch mode {
             case .clone:
+                let authURL = RepoStore.combinedRemoteURL(host: remoteURL, username: username)
                 try await store.cloneRepo(named: name,
-                                          remoteURL: remoteURL,
+                                          remoteURL: authURL,
                                           password: password.isEmpty ? nil : password)
             case .new:
                 try await store.createRepo(named: name)

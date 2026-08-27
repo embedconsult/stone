@@ -13,13 +13,16 @@
 		3CFA09B0F5D843B2B6F6F8CE /* RepoListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 929ADAA2B0E5E4DDFA51199B /* RepoListView.swift */; };
 		768E869C09E867CD115CDEA7 /* CredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CD3D09FCE1513AC396ACAAC /* CredentialStore.swift */; };
 		79DE7AE7C2E75D34EB445476 /* AddRepoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B381B11CAD790DF201810543 /* AddRepoView.swift */; };
+		F256872F96B8DC6658F6B7E7 /* EditRemoteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1B2028331DBACFDC79B3645 /* EditRemoteView.swift */; };
 		8789F77DDA3470524DD8B778 /* RepoWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D03A16783380AA7FE06F26BC /* RepoWebView.swift */; };
 		5E771500A11A5EAA00000001 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E771500A11A5EAA00000002 /* SettingsView.swift */; };
 		5E771500A11A5EAA00000005 /* RemoteSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E771500A11A5EAA00000007 /* RemoteSession.swift */; };
 		5E771500A11A5EAA00000004 /* cacert.pem in Resources */ = {isa = PBXBuildFile; fileRef = 5E771500A11A5EAA00000003 /* cacert.pem */; };
+		A71C0A8E1F1D4A8B9C0D1E2F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A71C0A8D1F1D4A8B9C0D1E2F /* Assets.xcassets */; };
 		F33BB7558B0F18E48B07814C /* GpcrEditClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2C8DFAE73FE049A388C3317 /* GpcrEditClient.swift */; };
 		90E2445BED37E2BD6DD43370 /* PhraseRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1858E564976384C5C2DEE5A7 /* PhraseRecognizer.swift */; };
 		058A00114029F0A4BA45822F /* GpcrEditView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76D528A1F250627ADF2E8367 /* GpcrEditView.swift */; };
+		B19F241881A9D6F172D0661C /* BuildIdentityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A4DFE84072A9434AFB1BB7D /* BuildIdentityView.swift */; };
 		A5F4E90DBE08A2A6963EF69E /* RepoStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCECFED0E5D45BD3F63B711C /* RepoStore.swift */; };
 		AE2F17F33799CEA5877AA62E /* FossilCore.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0A17C29D5BBCAF5E27BD1389 /* FossilCore.xcframework */; };
 		C1834116F1706E7EDCFE4453 /* StoneApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B327B30FE75F33C0EDBF37F5 /* StoneApp.swift */; };
@@ -39,15 +42,18 @@
 		9E014CFB9EA1256EB886BFB0 /* libresolv.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.tbd; path = usr/lib/libresolv.tbd; sourceTree = SDKROOT; };
 		B327B30FE75F33C0EDBF37F5 /* StoneApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoneApp.swift; sourceTree = "<group>"; };
 		B381B11CAD790DF201810543 /* AddRepoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddRepoView.swift; sourceTree = "<group>"; };
+		E1B2028331DBACFDC79B3645 /* EditRemoteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditRemoteView.swift; sourceTree = "<group>"; };
 		C34F67C4EB118D7638B7FDFD /* Repo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Repo.swift; sourceTree = "<group>"; };
 		CCECFED0E5D45BD3F63B711C /* RepoStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RepoStore.swift; sourceTree = "<group>"; };
 		D03A16783380AA7FE06F26BC /* RepoWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RepoWebView.swift; sourceTree = "<group>"; };
 		5E771500A11A5EAA00000002 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		5E771500A11A5EAA00000007 /* RemoteSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteSession.swift; sourceTree = "<group>"; };
 		5E771500A11A5EAA00000003 /* cacert.pem */ = {isa = PBXFileReference; lastKnownFileType = text; name = cacert.pem; path = ../vendor/cacert.pem; sourceTree = SOURCE_ROOT; };
+		A71C0A8D1F1D4A8B9C0D1E2F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A2C8DFAE73FE049A388C3317 /* GpcrEditClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GpcrEditClient.swift; sourceTree = "<group>"; };
 		1858E564976384C5C2DEE5A7 /* PhraseRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhraseRecognizer.swift; sourceTree = "<group>"; };
 		76D528A1F250627ADF2E8367 /* GpcrEditView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GpcrEditView.swift; sourceTree = "<group>"; };
+		2A4DFE84072A9434AFB1BB7D /* BuildIdentityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildIdentityView.swift; sourceTree = "<group>"; };
 		E832ED8C0E3636A5D9DDEF11 /* StoneFossil.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = StoneFossil.h; sourceTree = "<group>"; };
 		F9EA2AB04F790C358050645B /* libiconv.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libiconv.tbd; path = usr/lib/libiconv.tbd; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
@@ -72,6 +78,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				5E771500A11A5EAA00000004 /* cacert.pem in Resources */,
+				A71C0A8E1F1D4A8B9C0D1E2F /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -111,6 +118,7 @@
 			isa = PBXGroup;
 			children = (
 				13F0E07DC202C76EE911220E /* Info.plist */,
+				A71C0A8D1F1D4A8B9C0D1E2F /* Assets.xcassets */,
 				5E771500A11A5EAA00000003 /* cacert.pem */,
 				1BE573DFBCB425BFAD6EF42D /* Stone-Bridging-Header.h */,
 				B327B30FE75F33C0EDBF37F5 /* StoneApp.swift */,
@@ -133,10 +141,12 @@
 			isa = PBXGroup;
 			children = (
 				B381B11CAD790DF201810543 /* AddRepoView.swift */,
+				E1B2028331DBACFDC79B3645 /* EditRemoteView.swift */,
 				929ADAA2B0E5E4DDFA51199B /* RepoListView.swift */,
 				D03A16783380AA7FE06F26BC /* RepoWebView.swift */,
 				5E771500A11A5EAA00000002 /* SettingsView.swift */,
 				76D528A1F250627ADF2E8367 /* GpcrEditView.swift */,
+				2A4DFE84072A9434AFB1BB7D /* BuildIdentityView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -220,6 +230,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				79DE7AE7C2E75D34EB445476 /* AddRepoView.swift in Sources */,
+				F256872F96B8DC6658F6B7E7 /* EditRemoteView.swift in Sources */,
 				768E869C09E867CD115CDEA7 /* CredentialStore.swift in Sources */,
 				34713C51DF26811D2DDA56FE /* FossilEngine.swift in Sources */,
 				0EA6A88FE68640E6ED7F6807 /* Repo.swift in Sources */,
@@ -232,6 +243,7 @@
 				F33BB7558B0F18E48B07814C /* GpcrEditClient.swift in Sources */,
 				90E2445BED37E2BD6DD43370 /* PhraseRecognizer.swift in Sources */,
 				058A00114029F0A4BA45822F /* GpcrEditView.swift in Sources */,
+				B19F241881A9D6F172D0661C /* BuildIdentityView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -321,7 +333,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.stone.app;
+				PRODUCT_BUNDLE_IDENTIFIER = org.beagleboard.stone;
 				SDKROOT = iphoneos;
 				SWIFT_OBJC_BRIDGING_HEADER = "Stone/Stone-Bridging-Header.h";
 				TARGETED_DEVICE_FAMILY = 1;
@@ -404,7 +416,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.stone.app;
+				PRODUCT_BUNDLE_IDENTIFIER = org.beagleboard.stone;
 				SDKROOT = iphoneos;
 				SWIFT_OBJC_BRIDGING_HEADER = "Stone/Stone-Bridging-Header.h";
 				TARGETED_DEVICE_FAMILY = 1;

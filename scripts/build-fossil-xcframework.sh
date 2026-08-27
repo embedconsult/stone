@@ -25,9 +25,18 @@ BRIDGE="${REPO_ROOT}/ios/FossilBridge"
 OUT="${REPO_ROOT}/ios/Frameworks"
 WORK="${REPO_ROOT}/build/fossil-ios"
 FW="${OUT}/FossilCore.xcframework"
+INPUT_STAMP="${FW}/.stone-input-sha256"
 
-if [[ -z "${FORCE:-}" && -f "${FW}/ios-arm64/libfossil.a" && -f "${FW}/ios-arm64-simulator/libfossil.a" ]]; then
-  echo "FossilCore.xcframework already built at ${FW}; skipping (set FORCE=1 to rebuild)"
+# The framework is intentionally untracked, so a Fossil update cannot remove
+# an old copy from a developer's Mac. Cache it only while the bridge and this
+# build recipe are unchanged; otherwise a Swift-only project build would link
+# yesterday's embedded HTTP server.
+INPUT_HASH="$(shasum -a 256 "$0" "${BRIDGE}/StoneFossil.c" "${BRIDGE}/StoneFossil.h" \
+  | awk '{print $1}' | shasum -a 256 | awk '{print $1}')"
+
+if [[ -z "${FORCE:-}" && -f "${FW}/ios-arm64/libfossil.a" && -f "${FW}/ios-arm64-simulator/libfossil.a" \
+      && -f "${INPUT_STAMP}" && "$(<"${INPUT_STAMP}")" == "${INPUT_HASH}" ]]; then
+  echo "FossilCore.xcframework already matches its bridge inputs at ${FW}; skipping (set FORCE=1 to rebuild)"
   exit 0
 fi
 
@@ -174,5 +183,7 @@ cat > "${FW}/Info.plist" <<'PLIST'
 </dict>
 </plist>
 PLIST
+
+printf '%s\n' "${INPUT_HASH}" > "${INPUT_STAMP}"
 
 echo "Built ${FW}"

@@ -3,7 +3,11 @@ import Foundation
 /// Outcome of syncing a single repository as part of a "Sync All" run.
 enum RepoSyncStatus: Equatable {
     case syncing
-    case success
+    /// A nonzero exit code only means the round-trip completed -- it does
+    /// NOT mean anything was pushed. Carrying the real counts (see
+    /// RepoStore.parseArtifactCounts) is what lets the UI show that, rather
+    /// than a bare checkmark implying "your write went out."
+    case success(sent: Int, received: Int)
     case failure(String)
 }
 
@@ -82,7 +86,7 @@ final class RepoStore: ObservableObject {
         let fileName = Self.fileName(for: name)
         let path = repositoriesDir.appendingPathComponent(fileName).path
         let id = UUID()
-        let authURL = Self.urlWithPassword(remoteURL, password: password)
+        let authURL = try Self.urlWithPassword(remoteURL, password: password)
         let result = await engine.run(["clone", authURL, path])
         guard result.succeeded else { throw StoreError.fossil(result.output) }
         if let password, !password.isEmpty {
@@ -99,12 +103,37 @@ final class RepoStore: ObservableObject {
             throw StoreError.noRemote
         }
         let password = CredentialStore.password(for: repo.id)
-        let authURL = Self.urlWithPassword(remote, password: password)
+        let authURL = try Self.urlWithPassword(remote, password: password)
         let path = fileURL(for: repo).path
         let result = await engine.run(["sync", authURL, "-R", path])
         lastSyncLog = result.output
         guard result.succeeded else { throw StoreError.fossil(result.output) }
         return result.output
+    }
+
+    /// Parses Fossil's non-interactive sync summary line
+    /// (`Round-trips: N   Artifacts sent: X  received: Y`, src/xfer.c
+    /// `zBriefFormat`, printed exactly once when stdout isn't a tty) out of a
+    /// `sync`/`clone` command's raw output. `nil` if the line isn't present
+    /// (e.g. the command failed before any round-trip).
+    ///
+    /// This exists because a successful exit code alone does not mean
+    /// anything was actually pushed: a remote identity lacking write
+    /// capability makes Fossil silently decline to send content while still
+    /// exiting 0. Surfacing the real sent/received counts, rather than a
+    /// blanket "Sync complete," makes that silent no-op visible.
+    nonisolated static func parseArtifactCounts(_ output: String) -> (sent: Int, received: Int)? {
+        guard let regex = try? NSRegularExpression(
+            pattern: "Artifacts sent:\\s*(\\d+)\\s+received:\\s*(\\d+)"
+        ) else { return nil }
+        let range = NSRange(output.startIndex..<output.endIndex, in: output)
+        guard let match = regex.firstMatch(in: output, range: range),
+              let sentRange = Range(match.range(at: 1), in: output),
+              let receivedRange = Range(match.range(at: 2), in: output),
+              let sent = Int(output[sentRange]),
+              let received = Int(output[receivedRange])
+        else { return nil }
+        return (sent, received)
     }
 
     /// Sync every repository that has a remote configured, one at a time (the
@@ -121,6 +150,8 @@ final class RepoStore: ObservableObject {
         var succeeded = 0
         var failed = 0
         var skipped = 0
+        var totalSent = 0
+        var totalReceived = 0
 
         for repo in repos {
             guard repo.remoteURL != nil else {
@@ -129,8 +160,11 @@ final class RepoStore: ObservableObject {
             }
             syncStatuses[repo.id] = .syncing
             do {
-                _ = try await sync(repo)
-                syncStatuses[repo.id] = .success
+                let output = try await sync(repo)
+                let counts = Self.parseArtifactCounts(output) ?? (sent: 0, received: 0)
+                syncStatuses[repo.id] = .success(sent: counts.sent, received: counts.received)
+                totalSent += counts.sent
+                totalReceived += counts.received
                 succeeded += 1
             } catch {
                 syncStatuses[repo.id] = .failure(error.localizedDescription)
@@ -138,7 +172,11 @@ final class RepoStore: ObservableObject {
             }
         }
 
-        var parts = ["\(succeeded) synced"]
+        // Report real totals, not just a repo count -- a "synced" repo that
+        // pushed nothing (e.g. the remote identity lacks write capability,
+        // see ticket c4eb202ff0) needs to be visibly distinguishable from one
+        // that actually sent something.
+        var parts = ["\(succeeded) synced (\(totalSent) sent, \(totalReceived) received)"]
         if failed > 0 { parts.append("\(failed) failed") }
         if skipped > 0 { parts.append("\(skipped) skipped (no remote)") }
         syncAllSummary = parts.joined(separator: ", ")
@@ -179,11 +217,14 @@ final class RepoStore: ObservableObject {
     enum StoreError: LocalizedError {
         case fossil(String)
         case noRemote
+        case passwordNeedsUsername
 
         var errorDescription: String? {
             switch self {
             case .fossil(let msg): return msg.isEmpty ? "Fossil command failed." : msg
             case .noRemote: return "This repository has no remote configured."
+            case .passwordNeedsUsername:
+                return "A password needs a username in the remote URL first — e.g. https://user@host/repo, not just https://host/repo."
             }
         }
     }
@@ -196,12 +237,42 @@ final class RepoStore: ObservableObject {
     }
 
     /// Inject a password into a remote URL's userinfo so Fossil can authenticate
-    /// non-interactively. Username, if any, must already be part of `remote`.
-    private static func urlWithPassword(_ remote: String, password: String?) -> String {
-        guard let password, !password.isEmpty,
-              var comps = URLComponents(string: remote) else { return remote }
+    /// non-interactively. Username, if any, must already be part of `remote`
+    /// (e.g. `https://user@host/repo`) -- a password with no username would
+    /// silently become an empty-username credential, which Fossil rejects, so
+    /// that combination is refused up front instead.
+    private static func urlWithPassword(_ remote: String, password: String?) throws -> String {
+        guard let password, !password.isEmpty else { return remote }
+        guard var comps = URLComponents(string: remote) else { return remote }
+        guard let user = comps.user, !user.isEmpty else {
+            throw StoreError.passwordNeedsUsername
+        }
         comps.password = password
-        if comps.user == nil { comps.user = "" }
         return comps.string ?? remote
+    }
+
+    /// Combines a bare server URL and a username into one URL string with the
+    /// username as userinfo (e.g. host `https://host/repo` + username `stone`
+    /// -> `https://stone@host/repo`). An empty username leaves `host`
+    /// unchanged (anonymous). Used by the add/edit-remote UI so the username
+    /// is its own field rather than something the operator has to know to
+    /// type into the URL by hand.
+    nonisolated static func combinedRemoteURL(host: String, username: String) -> String {
+        let trimmedUser = username.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedUser.isEmpty, var comps = URLComponents(string: host) else { return host }
+        comps.user = trimmedUser
+        return comps.string ?? host
+    }
+
+    /// The inverse of `combinedRemoteURL`: splits a stored remote URL (which
+    /// may carry a username as userinfo) into its bare host/path form and the
+    /// username, for prefilling edit UI. Never returns a password -- that
+    /// only ever lives in the Keychain via `CredentialStore`.
+    nonisolated static func splitRemoteURL(_ remote: String) -> (host: String, username: String) {
+        guard var comps = URLComponents(string: remote) else { return (remote, "") }
+        let username = comps.user ?? ""
+        comps.user = nil
+        comps.password = nil
+        return (comps.string ?? remote, username)
     }
 }

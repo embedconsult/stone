@@ -320,7 +320,10 @@ static void handle_connection(int cfd) {
     close(rfd); /* fossil opens it by name for writing */
 
     char baseurl[64];
-    snprintf(baseurl, sizeof(baseurl), "http://localhost:%d", g_server.port);
+    /* The listening socket is deliberately IPv4-only (INADDR_LOOPBACK).
+     * Use its literal address in Fossil's generated redirects too: WKWebView
+     * may resolve localhost to ::1 first, where this server is not listening. */
+    snprintf(baseurl, sizeof(baseurl), "http://127.0.0.1:%d", g_server.port);
 
     /* Snapshot the current repo path so a concurrent retarget can't free it
      * out from under this request. */

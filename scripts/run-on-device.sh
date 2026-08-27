@@ -25,14 +25,19 @@ fi
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PROJECT="${REPO_ROOT}/ios/Stone.xcodeproj"
 SCHEME="Stone"
-BUNDLE_ID="com.stone.app"
+BUNDLE_ID="org.beagleboard.stone"
 DERIVED="${REPO_ROOT}/ios/build/dd"
 
-# Resolve the connected device. Two identifiers are needed:
+# Rebuild the untracked embedded Fossil framework whenever its bridge inputs
+# changed. The helper is a no-op when the cached framework still matches.
+echo "==> Checking embedded Fossil framework"
+bash "${REPO_ROOT}/scripts/build-fossil-xcframework.sh"
+
+# Resolve the paired physical device. Two identifiers are needed:
 #   - hardware UDID  -> xcodebuild -destination id=
 #   - CoreDevice id  -> devicectl install/launch
 # Override both by exporting HW_UDID / CORE_ID (required if more than one
-# device is connected -- this script refuses to guess which one you meant,
+# usable device is paired -- this script refuses to guess which one you meant,
 # since silently picking the wrong device is exactly how "it stays stale"
 # reports happen).
 DEVJSON="$(mktemp)"
@@ -41,10 +46,23 @@ mapfile -t CONNECTED < <(/usr/bin/python3 - "${DEVJSON}" <<'PY'
 import json, sys
 devs = json.load(open(sys.argv[1]))["result"]["devices"]
 for d in devs:
-    if d.get("connectionProperties", {}).get("tunnelState") == "connected":
-        core = d.get("identifier", "")
-        udid = d.get("hardwareProperties", {}).get("udid", "")
-        name = d.get("deviceProperties", {}).get("name", "")
+    # A CoreDevice tunnel is established on demand. In particular, a healthy
+    # trusted iPhone may report tunnelState="disconnected" until an operation
+    # starts, so it is not a connection test. Pairing is the durable signal;
+    # exclude devices CoreDevice explicitly marks unavailable and simulators.
+    connection = d.get("connectionProperties", {})
+    hardware = d.get("hardwareProperties", {})
+    device = d.get("deviceProperties", {})
+    if connection.get("pairingState") != "paired":
+        continue
+    if connection.get("tunnelState") == "unavailable":
+        continue
+    if hardware.get("reality") not in (None, "physical"):
+        continue
+    core = d.get("identifier", "")
+    udid = hardware.get("udid", "")
+    name = device.get("name", "")
+    if core and udid:
         print(f"{core}\t{udid}\t{name}")
 PY
 )
@@ -53,7 +71,8 @@ rm -f "${DEVJSON}"
 if [[ -n "${HW_UDID:-}" && -n "${CORE_ID:-}" ]]; then
   DEV_NAME="${DEV_NAME:-<override via HW_UDID/CORE_ID>}"
 elif [[ "${#CONNECTED[@]}" -eq 0 ]]; then
-  echo "No connected device found. Plug in an unlocked, trusted iPhone." >&2
+  echo "No paired, available physical iPhone found. Plug in an unlocked, trusted iPhone." >&2
+  echo "For diagnostics: xcrun devicectl list devices" >&2
   exit 1
 elif [[ "${#CONNECTED[@]}" -gt 1 ]]; then
   echo "Multiple connected devices found -- refusing to guess which one to deploy to:" >&2
@@ -155,8 +174,8 @@ echo "What was actually verified above: the built .app embeds BuildCommit=${BUIL
 echo "in its Info.plist (checked before install, so it can't be a stale product), and"
 echo "devicectl reported both 'install app' and 'process launch' as successful."
 echo ""
-echo "Device-visible confirmation step: the app has no on-screen build-identity"
-echo "display yet, so this script cannot show you a UI to eyeball. To confirm by hand:"
+echo "Device-visible confirmation step: the app displays its build identity;"
+echo "Settings > About retains the commit/date details. To confirm by hand:"
 echo "  xcrun devicectl device info apps --device ${CORE_ID} --bundle-id ${BUNDLE_ID}"
 echo "and check the reported version, or pull the installed bundle's Info.plist and"
 echo "look for BuildCommit=${BUILD_HASH}. If Stone was already running before this"
