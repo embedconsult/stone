@@ -3,7 +3,11 @@ import Foundation
 /// Outcome of syncing a single repository as part of a "Sync All" run.
 enum RepoSyncStatus: Equatable {
     case syncing
-    case success
+    /// A nonzero exit code only means the round-trip completed -- it does
+    /// NOT mean anything was pushed. Carrying the real counts (see
+    /// RepoStore.parseArtifactCounts) is what lets the UI show that, rather
+    /// than a bare checkmark implying "your write went out."
+    case success(sent: Int, received: Int)
     case failure(String)
 }
 
@@ -146,6 +150,8 @@ final class RepoStore: ObservableObject {
         var succeeded = 0
         var failed = 0
         var skipped = 0
+        var totalSent = 0
+        var totalReceived = 0
 
         for repo in repos {
             guard repo.remoteURL != nil else {
@@ -154,8 +160,11 @@ final class RepoStore: ObservableObject {
             }
             syncStatuses[repo.id] = .syncing
             do {
-                _ = try await sync(repo)
-                syncStatuses[repo.id] = .success
+                let output = try await sync(repo)
+                let counts = Self.parseArtifactCounts(output) ?? (sent: 0, received: 0)
+                syncStatuses[repo.id] = .success(sent: counts.sent, received: counts.received)
+                totalSent += counts.sent
+                totalReceived += counts.received
                 succeeded += 1
             } catch {
                 syncStatuses[repo.id] = .failure(error.localizedDescription)
@@ -163,7 +172,11 @@ final class RepoStore: ObservableObject {
             }
         }
 
-        var parts = ["\(succeeded) synced"]
+        // Report real totals, not just a repo count -- a "synced" repo that
+        // pushed nothing (e.g. the remote identity lacks write capability,
+        // see ticket c4eb202ff0) needs to be visibly distinguishable from one
+        // that actually sent something.
+        var parts = ["\(succeeded) synced (\(totalSent) sent, \(totalReceived) received)"]
         if failed > 0 { parts.append("\(failed) failed") }
         if skipped > 0 { parts.append("\(skipped) skipped (no remote)") }
         syncAllSummary = parts.joined(separator: ", ")
