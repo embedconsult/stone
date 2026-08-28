@@ -45,6 +45,11 @@ struct GpcrEditView: View {
                 if recognizer.isRecording, !recognizer.partialText.isEmpty {
                     Text(recognizer.partialText).foregroundStyle(.secondary)
                 }
+                if recognizer.isRecording {
+                    Text("Tap Stop to finish dictation before sending.")
+                        .foregroundStyle(.secondary)
+                        .font(.caption)
+                }
                 if let recognizerError = recognizer.errorText {
                     Text(recognizerError).foregroundStyle(.red).font(.caption)
                 }
@@ -94,7 +99,9 @@ struct GpcrEditView: View {
     }
 
     private var canSend: Bool {
-        repo.remoteURL != nil && !phrase.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !recognizer.isRecording
+            && repo.remoteURL != nil
+            && !phrase.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     /// The repo's remote, stripped of userinfo, so the result preview's

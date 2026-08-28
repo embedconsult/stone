@@ -13,19 +13,34 @@
 		3CFA09B0F5D843B2B6F6F8CE /* RepoListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 929ADAA2B0E5E4DDFA51199B /* RepoListView.swift */; };
 		768E869C09E867CD115CDEA7 /* CredentialStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CD3D09FCE1513AC396ACAAC /* CredentialStore.swift */; };
 		79DE7AE7C2E75D34EB445476 /* AddRepoView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B381B11CAD790DF201810543 /* AddRepoView.swift */; };
+		F256872F96B8DC6658F6B7E7 /* EditRemoteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E1B2028331DBACFDC79B3645 /* EditRemoteView.swift */; };
 		8789F77DDA3470524DD8B778 /* RepoWebView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D03A16783380AA7FE06F26BC /* RepoWebView.swift */; };
 		5E771500A11A5EAA00000001 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E771500A11A5EAA00000002 /* SettingsView.swift */; };
 		5E771500A11A5EAA00000005 /* RemoteSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E771500A11A5EAA00000007 /* RemoteSession.swift */; };
 		5E771500A11A5EAA00000004 /* cacert.pem in Resources */ = {isa = PBXBuildFile; fileRef = 5E771500A11A5EAA00000003 /* cacert.pem */; };
+		A71C0A8E1F1D4A8B9C0D1E2F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A71C0A8D1F1D4A8B9C0D1E2F /* Assets.xcassets */; };
 		F33BB7558B0F18E48B07814C /* GpcrEditClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2C8DFAE73FE049A388C3317 /* GpcrEditClient.swift */; };
 		90E2445BED37E2BD6DD43370 /* PhraseRecognizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1858E564976384C5C2DEE5A7 /* PhraseRecognizer.swift */; };
 		058A00114029F0A4BA45822F /* GpcrEditView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76D528A1F250627ADF2E8367 /* GpcrEditView.swift */; };
+		B19F241881A9D6F172D0661C /* BuildIdentityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A4DFE84072A9434AFB1BB7D /* BuildIdentityView.swift */; };
 		A5F4E90DBE08A2A6963EF69E /* RepoStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = CCECFED0E5D45BD3F63B711C /* RepoStore.swift */; };
 		AE2F17F33799CEA5877AA62E /* FossilCore.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0A17C29D5BBCAF5E27BD1389 /* FossilCore.xcframework */; };
 		C1834116F1706E7EDCFE4453 /* StoneApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B327B30FE75F33C0EDBF37F5 /* StoneApp.swift */; };
 		DC4CFDC297E0BF35ECFC4B95 /* libiconv.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = F9EA2AB04F790C358050645B /* libiconv.tbd */; };
 		F950237064962AB4095E2A53 /* libz.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 4D25049A3A3EBDD505883DBD /* libz.tbd */; };
+		A1F0552BF88DCFFB3254E68B /* RepoStoreSyncCredentialTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E1ABCB26DDB3A1C7339580A /* RepoStoreSyncCredentialTests.swift */; };
+		B77196F39E0D2DE9B4C46736 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 617096E1A68C1784B86BDF02 /* XCTest.framework */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		D87E5DE955B11BD280A11B8F /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8631BC5990162C10C0F2F9F7 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A84044D94B3AAA75AFBC785A;
+			remoteInfo = Stone;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		0A17C29D5BBCAF5E27BD1389 /* FossilCore.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; name = FossilCore.xcframework; path = Frameworks/FossilCore.xcframework; sourceTree = "<group>"; };
@@ -39,17 +54,23 @@
 		9E014CFB9EA1256EB886BFB0 /* libresolv.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libresolv.tbd; path = usr/lib/libresolv.tbd; sourceTree = SDKROOT; };
 		B327B30FE75F33C0EDBF37F5 /* StoneApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoneApp.swift; sourceTree = "<group>"; };
 		B381B11CAD790DF201810543 /* AddRepoView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddRepoView.swift; sourceTree = "<group>"; };
+		E1B2028331DBACFDC79B3645 /* EditRemoteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditRemoteView.swift; sourceTree = "<group>"; };
 		C34F67C4EB118D7638B7FDFD /* Repo.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Repo.swift; sourceTree = "<group>"; };
 		CCECFED0E5D45BD3F63B711C /* RepoStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RepoStore.swift; sourceTree = "<group>"; };
 		D03A16783380AA7FE06F26BC /* RepoWebView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RepoWebView.swift; sourceTree = "<group>"; };
 		5E771500A11A5EAA00000002 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		5E771500A11A5EAA00000007 /* RemoteSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteSession.swift; sourceTree = "<group>"; };
 		5E771500A11A5EAA00000003 /* cacert.pem */ = {isa = PBXFileReference; lastKnownFileType = text; name = cacert.pem; path = ../vendor/cacert.pem; sourceTree = SOURCE_ROOT; };
+		A71C0A8D1F1D4A8B9C0D1E2F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		A2C8DFAE73FE049A388C3317 /* GpcrEditClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GpcrEditClient.swift; sourceTree = "<group>"; };
 		1858E564976384C5C2DEE5A7 /* PhraseRecognizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhraseRecognizer.swift; sourceTree = "<group>"; };
 		76D528A1F250627ADF2E8367 /* GpcrEditView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GpcrEditView.swift; sourceTree = "<group>"; };
+		2A4DFE84072A9434AFB1BB7D /* BuildIdentityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildIdentityView.swift; sourceTree = "<group>"; };
 		E832ED8C0E3636A5D9DDEF11 /* StoneFossil.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = StoneFossil.h; sourceTree = "<group>"; };
 		F9EA2AB04F790C358050645B /* libiconv.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libiconv.tbd; path = usr/lib/libiconv.tbd; sourceTree = SDKROOT; };
+		4E1ABCB26DDB3A1C7339580A /* RepoStoreSyncCredentialTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RepoStoreSyncCredentialTests.swift; sourceTree = "<group>"; };
+		D62D5B0A5BBCBDA017DF842B /* StoneTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = StoneTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		617096E1A68C1784B86BDF02 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = Library/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -64,6 +85,14 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		08396AAB9B277887D45B876C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B77196F39E0D2DE9B4C46736 /* XCTest.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXResourcesBuildPhase section */
@@ -72,6 +101,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				5E771500A11A5EAA00000004 /* cacert.pem in Resources */,
+				A71C0A8E1F1D4A8B9C0D1E2F /* Assets.xcassets in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -83,6 +113,7 @@
 			children = (
 				C227466D6EBF2FF36215DE28 /* FossilBridge */,
 				98A37D604EEDC9F2698B39E8 /* Stone */,
+				D9ECE41236A1008847014D48 /* StoneTests */,
 				3EA74049B2CF7293D26D862B /* Frameworks */,
 				542797B83A462E80C83FBEF0 /* Products */,
 			);
@@ -95,6 +126,7 @@
 				F9EA2AB04F790C358050645B /* libiconv.tbd */,
 				9E014CFB9EA1256EB886BFB0 /* libresolv.tbd */,
 				4D25049A3A3EBDD505883DBD /* libz.tbd */,
+				617096E1A68C1784B86BDF02 /* XCTest.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -103,6 +135,7 @@
 			isa = PBXGroup;
 			children = (
 				123DE962F50955B8D07A576F /* Stone.app */,
+				D62D5B0A5BBCBDA017DF842B /* StoneTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -111,6 +144,7 @@
 			isa = PBXGroup;
 			children = (
 				13F0E07DC202C76EE911220E /* Info.plist */,
+				A71C0A8D1F1D4A8B9C0D1E2F /* Assets.xcassets */,
 				5E771500A11A5EAA00000003 /* cacert.pem */,
 				1BE573DFBCB425BFAD6EF42D /* Stone-Bridging-Header.h */,
 				B327B30FE75F33C0EDBF37F5 /* StoneApp.swift */,
@@ -119,6 +153,14 @@
 				B0D486D0D7F5D74C56069CDC /* Views */,
 			);
 			path = Stone;
+			sourceTree = "<group>";
+		};
+		D9ECE41236A1008847014D48 /* StoneTests */ = {
+			isa = PBXGroup;
+			children = (
+				4E1ABCB26DDB3A1C7339580A /* RepoStoreSyncCredentialTests.swift */,
+			);
+			path = StoneTests;
 			sourceTree = "<group>";
 		};
 		A15BC918039DF628CC6C2961 /* Models */ = {
@@ -133,10 +175,12 @@
 			isa = PBXGroup;
 			children = (
 				B381B11CAD790DF201810543 /* AddRepoView.swift */,
+				E1B2028331DBACFDC79B3645 /* EditRemoteView.swift */,
 				929ADAA2B0E5E4DDFA51199B /* RepoListView.swift */,
 				D03A16783380AA7FE06F26BC /* RepoWebView.swift */,
 				5E771500A11A5EAA00000002 /* SettingsView.swift */,
 				76D528A1F250627ADF2E8367 /* GpcrEditView.swift */,
+				2A4DFE84072A9434AFB1BB7D /* BuildIdentityView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -184,6 +228,25 @@
 			productReference = 123DE962F50955B8D07A576F /* Stone.app */;
 			productType = "com.apple.product-type.application";
 		};
+		6ED92F3344F0319355BE70B5 /* StoneTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BC5249DED06C6CFF08BA8AD1 /* Build configuration list for PBXNativeTarget "StoneTests" */;
+			buildPhases = (
+				D10E26C6DB14F5AEC29CCE77 /* Sources */,
+				08396AAB9B277887D45B876C /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				6C2583BDF442ECF88F115895 /* PBXTargetDependency */,
+			);
+			name = StoneTests;
+			packageProductDependencies = (
+			);
+			productName = StoneTests;
+			productReference = D62D5B0A5BBCBDA017DF842B /* StoneTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -193,6 +256,9 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					6ED92F3344F0319355BE70B5 = {
+						TestTargetID = A84044D94B3AAA75AFBC785A;
+					};
 				};
 			};
 			buildConfigurationList = 42020E3AC92EB5ACB3D6F263 /* Build configuration list for PBXProject "Stone" */;
@@ -210,6 +276,7 @@
 			projectRoot = "";
 			targets = (
 				A84044D94B3AAA75AFBC785A /* Stone */,
+				6ED92F3344F0319355BE70B5 /* StoneTests */,
 			);
 		};
 /* End PBXProject section */
@@ -220,6 +287,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				79DE7AE7C2E75D34EB445476 /* AddRepoView.swift in Sources */,
+				F256872F96B8DC6658F6B7E7 /* EditRemoteView.swift in Sources */,
 				768E869C09E867CD115CDEA7 /* CredentialStore.swift in Sources */,
 				34713C51DF26811D2DDA56FE /* FossilEngine.swift in Sources */,
 				0EA6A88FE68640E6ED7F6807 /* Repo.swift in Sources */,
@@ -232,10 +300,27 @@
 				F33BB7558B0F18E48B07814C /* GpcrEditClient.swift in Sources */,
 				90E2445BED37E2BD6DD43370 /* PhraseRecognizer.swift in Sources */,
 				058A00114029F0A4BA45822F /* GpcrEditView.swift in Sources */,
+				B19F241881A9D6F172D0661C /* BuildIdentityView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		D10E26C6DB14F5AEC29CCE77 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1F0552BF88DCFFB3254E68B /* RepoStoreSyncCredentialTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		6C2583BDF442ECF88F115895 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A84044D94B3AAA75AFBC785A /* Stone */;
+			targetProxy = D87E5DE955B11BD280A11B8F /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		0B565D7B650B81F5F9F2C653 /* Debug */ = {
@@ -321,7 +406,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.stone.app;
+				PRODUCT_BUNDLE_IDENTIFIER = org.beagleboard.stone;
 				SDKROOT = iphoneos;
 				SWIFT_OBJC_BRIDGING_HEADER = "Stone/Stone-Bridging-Header.h";
 				TARGETED_DEVICE_FAMILY = 1;
@@ -404,10 +489,44 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.stone.app;
+				PRODUCT_BUNDLE_IDENTIFIER = org.beagleboard.stone;
 				SDKROOT = iphoneos;
 				SWIFT_OBJC_BRIDGING_HEADER = "Stone/Stone-Bridging-Header.h";
 				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		3664B0261FDB232CBA37C642 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = BWWLLRK896;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "org.beagleboard.stone.StoneTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Stone.app/Stone";
+			};
+			name = Debug;
+		};
+		0B279B5B0A8D4A56E73E8F11 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = BWWLLRK896;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "org.beagleboard.stone.StoneTests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.9;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Stone.app/Stone";
 			};
 			name = Release;
 		};
@@ -428,6 +547,15 @@
 			buildConfigurations = (
 				316EB30D69653FB41DC1FB88 /* Debug */,
 				B2040455476B664A13157B2A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		BC5249DED06C6CFF08BA8AD1 /* Build configuration list for PBXNativeTarget "StoneTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3664B0261FDB232CBA37C642 /* Debug */,
+				0B279B5B0A8D4A56E73E8F11 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

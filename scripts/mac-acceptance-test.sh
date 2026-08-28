@@ -16,9 +16,17 @@
 # What it does NOT cover (out of scope for a build acceptance check):
 #   - Installing/launching on a real device — see scripts/run-on-device.sh.
 #   - Signing, archiving, or App Store submission.
-#   - UI/runtime behavior — this only proves the binary links; it does not
-#     run it. (scripts/mac-demo.sh exercises the Fossil engine at runtime,
-#     natively on macOS, if you want that kind of check too.)
+#
+# It DOES now also run the StoneTests unit-test target (added for the
+# Stone Plan's Milestone 1 regression-test safety net, ticket cfcc7e04d5) on
+# the iOS Simulator, right after the simulator build proves it links. That
+# target hosts inside Stone.app (TEST_HOST) and covers Swift-level behavior
+# — e.g. RepoStoreSyncCredentialTests, which guards the specific silent-sync
+# bug where a password with no username in a remote's address used to
+# silently degrade to an anonymous sync while still reporting success. A
+# test failure here fails the whole script, same as a build failure.
+# (scripts/mac-demo.sh exercises the Fossil engine at runtime, natively on
+# macOS, if you want that kind of check too.)
 #
 # Usage:
 #   scripts/mac-acceptance-test.sh           # fast: skips steps already up to date
@@ -156,6 +164,43 @@ build_simulator() {
     "${XCODE_ACTIONS[@]}"
 }
 
+# Picks any available, booted-or-bootable iOS Simulator device by UDID.
+# `xcodebuild test` (unlike `build`) needs a concrete destination, not the
+# generic `platform=iOS Simulator` placeholder used above — so this asks
+# simctl for whatever iOS simulator device Xcode already has installed,
+# rather than hard-coding a device name that may not exist on every Mac.
+pick_simulator_udid() {
+  xcrun simctl list devices available -j | python3 -c '
+import json, sys
+data = json.load(sys.stdin)
+for runtime, devices in data.get("devices", {}).items():
+    if "iOS" not in runtime:
+        continue
+    for d in devices:
+        if d.get("isAvailable", True):
+            print(d["udid"])
+            sys.exit(0)
+sys.exit(1)
+'
+}
+
+run_unit_tests() {
+  local derived="${REPO_ROOT}/ios/build/acceptance-sim-tests"
+  rm -rf "${derived}"
+  local udid
+  udid="$(pick_simulator_udid)" || {
+    echo "no available iOS Simulator device found -- install one via Xcode > Settings > Platforms"
+    return 1
+  }
+  xcodebuild \
+    -project "${PROJECT}" -scheme "${SCHEME}" -configuration Debug \
+    -destination "id=${udid}" \
+    -derivedDataPath "${derived}" \
+    ARCHS=arm64 ONLY_ACTIVE_ARCH=NO ENABLE_DEBUG_DYLIB=NO \
+    CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+    test
+}
+
 build_device() {
   local derived="${REPO_ROOT}/ios/build/acceptance-device"
   rm -rf "${derived}"
@@ -244,6 +289,8 @@ require "xcframework slices"          verify_xcframework
 step "xcodebuild: iOS Simulator (unsigned)" build_simulator
 require "simulator app binary"        verify_app_binary "${REPO_ROOT}/ios/build/acceptance-sim/Build/Products/Debug-iphonesimulator/Stone.app" arm64
 
+step "xcodebuild: unit tests (iOS Simulator)" run_unit_tests
+
 step "xcodebuild: iOS device (unsigned)"    build_device
 require "device app binary"           verify_app_binary "${REPO_ROOT}/ios/build/acceptance-device/Build/Products/Debug-iphoneos/Stone.app" arm64
 
@@ -251,6 +298,7 @@ echo ""
 echo "=================================="
 echo " ACCEPTANCE: PASS"
 echo " Simulator app: ios/build/acceptance-sim/Build/Products/Debug-iphonesimulator/Stone.app"
+echo " Unit tests:    passed (StoneTests, iOS Simulator)"
 echo " Device app:    ios/build/acceptance-device/Build/Products/Debug-iphoneos/Stone.app (unsigned)"
 echo ""
 echo " Not covered here -- sign + install on a device via:"

@@ -8,6 +8,7 @@ struct RepoListView: View {
     @State private var repoToRename: Repo?
     @State private var renameText = ""
     @State private var repoToDelete: Repo?
+    @State private var repoToEditRemote: Repo?
 
     var body: some View {
         List {
@@ -34,19 +35,29 @@ struct RepoListView: View {
                 }
                 // allowsFullSwipe: false so a long swipe can't fire the
                 // destructive action without a deliberate tap + confirmation.
+                // Delete is deliberately alone here -- Rename/Edit Remote used
+                // to share this row and read as "adjacent to destructive"
+                // even though they aren't; they live in the context menu
+                // instead now.
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                     Button(role: .destructive) {
                         repoToDelete = repo
                     } label: {
                         Label("Delete", systemImage: "trash")
                     }
+                }
+                .contextMenu {
                     Button {
                         renameText = repo.name
                         repoToRename = repo
                     } label: {
                         Label("Rename", systemImage: "pencil")
                     }
-                    .tint(.blue)
+                    Button {
+                        repoToEditRemote = repo
+                    } label: {
+                        Label("Edit Remote", systemImage: "link")
+                    }
                 }
             }
         }
@@ -80,6 +91,9 @@ struct RepoListView: View {
         }
         .sheet(isPresented: $showingSettings) {
             SettingsView()
+        }
+        .sheet(item: $repoToEditRemote) { repo in
+            EditRemoteView(repo: repo)
         }
         .alert("Sync All",
                isPresented: Binding(get: { store.syncAllSummary != nil },
@@ -119,9 +133,10 @@ struct RepoListView: View {
         switch store.syncStatuses[repo.id] {
         case .syncing:
             ProgressView()
-        case .success:
+        case .success(let sent, let received):
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(.green)
+                .accessibilityLabel("Synced — \(sent) sent, \(received) received")
         case .failure(let message):
             Image(systemName: "exclamationmark.circle.fill")
                 .foregroundStyle(.red)
