@@ -29,6 +29,7 @@
 		DC4CFDC297E0BF35ECFC4B95 /* libiconv.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = F9EA2AB04F790C358050645B /* libiconv.tbd */; };
 		F950237064962AB4095E2A53 /* libz.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 4D25049A3A3EBDD505883DBD /* libz.tbd */; };
 		A1F0552BF88DCFFB3254E68B /* RepoStoreSyncCredentialTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4E1ABCB26DDB3A1C7339580A /* RepoStoreSyncCredentialTests.swift */; };
+		E0B666C794E05E8DFFE26B5C /* FossilEngineServerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8C022B8B9872071DA204C69 /* FossilEngineServerTests.swift */; };
 		B77196F39E0D2DE9B4C46736 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 617096E1A68C1784B86BDF02 /* XCTest.framework */; };
 /* End PBXBuildFile section */
 
@@ -69,6 +70,7 @@
 		E832ED8C0E3636A5D9DDEF11 /* StoneFossil.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = StoneFossil.h; sourceTree = "<group>"; };
 		F9EA2AB04F790C358050645B /* libiconv.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libiconv.tbd; path = usr/lib/libiconv.tbd; sourceTree = SDKROOT; };
 		4E1ABCB26DDB3A1C7339580A /* RepoStoreSyncCredentialTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RepoStoreSyncCredentialTests.swift; sourceTree = "<group>"; };
+		E8C022B8B9872071DA204C69 /* FossilEngineServerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FossilEngineServerTests.swift; sourceTree = "<group>"; };
 		D62D5B0A5BBCBDA017DF842B /* StoneTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = StoneTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		617096E1A68C1784B86BDF02 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = Library/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
 /* End PBXFileReference section */
@@ -159,6 +161,7 @@
 			isa = PBXGroup;
 			children = (
 				4E1ABCB26DDB3A1C7339580A /* RepoStoreSyncCredentialTests.swift */,
+				E8C022B8B9872071DA204C69 /* FossilEngineServerTests.swift */,
 			);
 			path = StoneTests;
 			sourceTree = "<group>";
@@ -309,6 +312,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A1F0552BF88DCFFB3254E68B /* RepoStoreSyncCredentialTests.swift in Sources */,
+				E0B666C794E05E8DFFE26B5C /* FossilEngineServerTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
