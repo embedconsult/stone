@@ -8,76 +8,48 @@ import XCTest
 /// trunk via `RepoStore.StoreError.passwordNeedsUsername` (credential
 /// validation) and `RepoStore.parseArtifactCounts` (surfacing the real
 /// sent/received counts instead of a blanket success).
-@MainActor
+///
+/// These exercise `RepoStore.urlWithPassword` directly with explicit
+/// password strings -- not via `CredentialStore`/the Keychain and not via a
+/// real `sync()` network call. An earlier version of this file went through
+/// `CredentialStore.setPassword` + `store.sync(repo)`, which depends on a
+/// real Keychain write succeeding; that's not reliable for an unsigned test
+/// build (mac-acceptance-test.sh runs with CODE_SIGNING_ALLOWED=NO), so a
+/// silently-failed `SecItemAdd` left the password `nil`, `urlWithPassword`
+/// never threw, and the test fell through to a real, doomed network request
+/// to example.com instead -- reported as `.fossil("")`, not the credential
+/// error this test is actually about. `urlWithPassword` is pure (no I/O), so
+/// it doesn't need any of that.
 final class RepoStoreSyncCredentialTests: XCTestCase {
-    private var store: RepoStore!
-    private var repo: Repo!
-
-    override func setUp() {
-        super.setUp()
-        store = RepoStore()
-        repo = Repo(name: "sync-credential-test",
-                    fileName: "sync-credential-test-\(UUID().uuidString).fossil")
-    }
-
-    override func tearDown() {
-        CredentialStore.delete(for: repo.id)
-        super.tearDown()
-    }
-
     /// The exact bug: a password with no username in the remote's address
     /// must be rejected up front, not silently turned into a garbage
     /// empty-string-user credential that Fossil then syncs anonymously.
-    func testPasswordWithoutUsernameInURLIsRejected() async {
-        repo.remoteURL = "https://example.com/repo"
-        CredentialStore.setPassword("secret", for: repo.id)
-
-        do {
-            _ = try await store.sync(repo)
-            XCTFail("expected sync to reject a password with no username in the remote address")
-        } catch RepoStore.StoreError.passwordNeedsUsername {
-            // expected
-        } catch {
-            XCTFail("expected .passwordNeedsUsername, got \(error)")
+    func testPasswordWithoutUsernameInURLIsRejected() {
+        XCTAssertThrowsError(
+            try RepoStore.urlWithPassword("https://example.com/repo", password: "secret")
+        ) { error in
+            XCTAssertEqual(error as? RepoStore.StoreError, .passwordNeedsUsername)
         }
     }
 
     /// The fixed path: once a username IS present in the remote address, the
-    /// credential is accepted by validation and sync proceeds to actually
-    /// attempt the network round trip. Nothing is listening on this loopback
-    /// port, so the round trip itself fails -- that failure is expected and
-    /// is a DIFFERENT error; this test only proves credential validation no
-    /// longer misclassifies a present username as missing.
-    func testPasswordWithUsernameInURLIsAccepted() async {
-        repo.remoteURL = "http://alice@127.0.0.1:1/repo"
-        CredentialStore.setPassword("secret", for: repo.id)
-
-        do {
-            _ = try await store.sync(repo)
-            XCTFail("expected sync to fail against an address nothing is listening on")
-        } catch RepoStore.StoreError.passwordNeedsUsername {
-            XCTFail("a username IS present in the address -- this must not be reported as missing")
-        } catch {
-            // any other failure (connection refused, invalid repo path, etc.)
-            // is expected here and is not what this test checks.
-        }
+    /// password is accepted and embedded as the URL's userinfo.
+    func testPasswordWithUsernameInURLIsAccepted() throws {
+        let result = try RepoStore.urlWithPassword("https://alice@example.com/repo", password: "secret")
+        XCTAssertEqual(result, "https://alice:secret@example.com/repo")
     }
 
     /// A remote with no password at all is intentionally anonymous -- no
-    /// username is required to protect nothing, and cloning/syncing must not
-    /// be blocked by this validation in that case.
-    func testNoPasswordDoesNotRequireUsername() async {
-        repo.remoteURL = "http://127.0.0.1:1/repo"
-        // No CredentialStore password set.
+    /// username is required to protect nothing, and the address must pass
+    /// through unchanged.
+    func testNoPasswordLeavesURLUnchangedAndDoesNotRequireUsername() throws {
+        let result = try RepoStore.urlWithPassword("https://example.com/repo", password: nil)
+        XCTAssertEqual(result, "https://example.com/repo")
+    }
 
-        do {
-            _ = try await store.sync(repo)
-            XCTFail("expected sync to fail against an address nothing is listening on")
-        } catch RepoStore.StoreError.passwordNeedsUsername {
-            XCTFail("no password was configured -- this must never be reported as missing a username")
-        } catch {
-            // expected: a plain connection failure, not a credential complaint.
-        }
+    func testEmptyPasswordStringIsTreatedTheSameAsNoPassword() throws {
+        let result = try RepoStore.urlWithPassword("https://example.com/repo", password: "")
+        XCTAssertEqual(result, "https://example.com/repo")
     }
 
     // MARK: - parseArtifactCounts
