@@ -1,11 +1,28 @@
 import SwiftUI
 import WebKit
 
+/// Bridges imperative `WKWebView` control (go back, know whether there's
+/// anywhere to go back to) out to SwiftUI. `RepoWebView` is a
+/// `UIViewRepresentable`, so its parent has no other way to reach the actual
+/// `WKWebView` instance it creates -- this is that seam, held by
+/// `RepoDetailView` so the toolbar's Back button can decide between "step
+/// back a page" and "leave the repo."
+@MainActor
+final class WebViewController: ObservableObject {
+    @Published fileprivate(set) var canGoBack = false
+    fileprivate weak var webView: WKWebView?
+
+    func goBack() {
+        webView?.goBack()
+    }
+}
+
 /// Hosts a `WKWebView` pointed at the in-process Fossil server, presenting
 /// Fossil's own HTML UI. This is the whole point of the app's UI strategy:
 /// render Fossil's real pages so there is zero drift from upstream.
 struct RepoWebView: UIViewRepresentable {
     let baseURL: URL
+    let controller: WebViewController
     var onURLChange: ((URL) -> Void)?
     var onLoadFailure: ((String) -> Void)?
 
@@ -16,6 +33,7 @@ struct RepoWebView: UIViewRepresentable {
         webView.allowsBackForwardNavigationGestures = true
         webView.navigationDelegate = context.coordinator
         webView.load(URLRequest(url: baseURL))
+        controller.webView = webView
         return webView
     }
 
@@ -38,6 +56,7 @@ struct RepoWebView: UIViewRepresentable {
             if let url = webView.url {
                 parent.onURLChange?(url)
             }
+            parent.controller.canGoBack = webView.canGoBack
         }
 
         func webView(_ webView: WKWebView,
@@ -64,6 +83,7 @@ struct RepoWebView: UIViewRepresentable {
 struct RepoDetailView: View {
     let repo: Repo
     @EnvironmentObject private var store: RepoStore
+    @Environment(\.dismiss) private var dismiss
 
     @State private var baseURL: URL?
     @State private var errorText: String?
@@ -76,10 +96,14 @@ struct RepoDetailView: View {
     @State private var replyText = ""
     @State private var replyError: String?
 
+    /// Owns the live WKWebView reference; see WebViewController's doc.
+    @StateObject private var webController = WebViewController()
+
     var body: some View {
         Group {
             if let url = baseURL {
                 RepoWebView(baseURL: url,
+                            controller: webController,
                             onURLChange: { currentURL = $0 },
                             onLoadFailure: { message in
                                 baseURL = nil
@@ -96,7 +120,24 @@ struct RepoDetailView: View {
         }
         .navigationTitle(repo.name)
         .navigationBarTitleDisplayMode(.inline)
+        // The system Back button always pops this whole view -- there's no
+        // way to intercept a tap on it to decide "step back a page" first.
+        // Replace it with our own, which does what an ordinary browser's
+        // back button does: step back through pages viewed within this
+        // repo (WKWebView's own history) before finally leaving the repo.
+        .navigationBarBackButtonHidden(true)
         .toolbar {
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    if webController.canGoBack {
+                        webController.goBack()
+                    } else {
+                        dismiss()
+                    }
+                } label: {
+                    Image(systemName: "chevron.left")
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     showingGpcrEdit = true
