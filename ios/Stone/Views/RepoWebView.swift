@@ -129,13 +129,23 @@ struct RepoDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         // The system Back button always pops this whole view -- there's no
         // way to intercept a tap on it to decide "step back a page" first.
-        // Replace it with our own, which does what an ordinary browser's
-        // back button does: step back through pages viewed within this
-        // repo (WKWebView's own history) before finally leaving the repo.
-        // See ticket 052e109e94 -- this is one candidate among several the
-        // maintainer is choosing between, kept here for evaluation.
+        // Ticket 052e109e94: the maintainer picked Option A (history-back on
+        // "<") plus a separate Home button carrying the old "always exit"
+        // behavior, rather than overloading one control with both meanings.
         .navigationBarBackButtonHidden(true)
         .toolbar {
+            // Left of Back, per the maintainer's decision: always leave the
+            // repo and return to the list, regardless of in-page history --
+            // the behavior "<" used to have before Option A changed its
+            // meaning to history-back.
+            ToolbarItem(placement: .topBarLeading) {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "house")
+                }
+                .accessibilityLabel("Repositories")
+            }
             ToolbarItem(placement: .topBarLeading) {
                 Button {
                     if webController.canGoBack {
@@ -146,6 +156,7 @@ struct RepoDetailView: View {
                 } label: {
                     Image(systemName: "chevron.left")
                 }
+                .accessibilityLabel("Back")
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {

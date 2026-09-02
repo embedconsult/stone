@@ -252,7 +252,16 @@ final class RepoStore: ObservableObject {
     /// with CODE_SIGNING_ALLOWED=NO); a silently-failed SecItemAdd left
     /// password() returning nil, so this function never threw and the test
     /// fell through to a real, doomed network request instead.
-    static func urlWithPassword(_ remote: String, password: String?) throws -> String {
+    ///
+    /// `nonisolated`, matching combinedRemoteURL/splitRemoteURL/
+    /// parseArtifactCounts below: this is pure string/URL manipulation with
+    /// no UI dependency, but RepoStore itself is @MainActor, and a `static
+    /// func` on a @MainActor type is actor-isolated by default unless told
+    /// otherwise -- without this, the compiler correctly rejects calling it
+    /// from a synchronous, non-isolated context (exactly what
+    /// RepoStoreSyncCredentialTests' non-async XCTAssertThrowsError call
+    /// sites are).
+    nonisolated static func urlWithPassword(_ remote: String, password: String?) throws -> String {
         guard let password, !password.isEmpty else { return remote }
         guard var comps = URLComponents(string: remote) else { return remote }
         guard let user = comps.user, !user.isEmpty else {
