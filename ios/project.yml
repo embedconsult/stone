@@ -62,3 +62,28 @@ targets:
         # development profile for this team. Sideload/personal builds only.
         DEVELOPMENT_TEAM: BWWLLRK896
         CODE_SIGN_STYLE: Automatic
+
+  # Regression-test safety net (Stone Plan Milestone 1, ticket cfcc7e04d5).
+  # Host-app-hosted unit tests: runs inside Stone.app's process via TEST_HOST,
+  # so it reuses the app's own linked FossilCore rather than re-linking it.
+  # NOTE: project.pbxproj currently also carries this target by hand (see the
+  # comment at the top of this file re: xcodegen not being run in this
+  # environment) -- once `xcodegen generate` is actually run, this block
+  # becomes the source of truth and the hand-added pbxproj target should
+  # match or be regenerated from it.
+  StoneTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: StoneTests
+    dependencies:
+      - target: Stone
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.beagleboard.stone.StoneTests
+        TARGETED_DEVICE_FAMILY: "1"
+        DEVELOPMENT_TEAM: BWWLLRK896
+        CODE_SIGN_STYLE: Automatic
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Stone.app/Stone"
+        BUNDLE_LOADER: "$(TEST_HOST)"

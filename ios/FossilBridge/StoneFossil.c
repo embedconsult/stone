@@ -399,12 +399,42 @@ static void *accept_loop(void *arg) {
         }
         pthread_detach(t);
     }
+
+    /* Falling out of the loop means the listening socket is no longer being
+     * serviced (either a deliberate shutdown via stone_fossil_server_stop(),
+     * which already closed listen_fd itself, or accept() failing for a
+     * reason other than EINTR -- e.g. fd exhaustion under load from a large
+     * repo's many concurrent WKWebView connections). Either way, reflect
+     * that here so a future stone_fossil_server_start() call sees a truthful
+     * g_server.running and can recover by starting a fresh listener, instead
+     * of believing a silently-dead server is still healthy and handing back
+     * a URL nothing is listening on -- which is what "Couldn't load the
+     * local Fossil page: Could not connect to the server" looks like from
+     * the WebView's side once this happens once, and never goes away for
+     * the rest of the app session (see the fix note below).
+     */
+    g_server.running = 0;
+    if (g_server.listen_fd >= 0) {
+        close(g_server.listen_fd);
+        g_server.listen_fd = -1;
+    }
     return NULL;
 }
 
 int stone_fossil_server_start(const char *repo_path, int *out_port) {
-    if (g_server.running) return 0; /* already up */
     if (repo_path == NULL || out_port == NULL) return -1;
+    if (g_server.running) {
+        /* Already up -- report the real port. Previously this returned
+         * success without ever touching *out_port, which left the caller's
+         * `var port: Int32 = 0` at its default and produced a URL like
+         * http://127.0.0.1:0/ -- an address nothing can ever connect to.
+         * That silently-wrong URL is exactly the "Couldn't connect to the
+         * server" failure reported for BQ2: whatever repo is opened right
+         * after the accept loop dies (see the cleanup added above) hits
+         * this branch, since g_server.running was stale-true. */
+        *out_port = g_server.port;
+        return 0;
+    }
 
     int fd = socket(AF_INET, SOCK_STREAM, 0);
     if (fd < 0) return -1;

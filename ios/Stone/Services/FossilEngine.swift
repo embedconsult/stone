@@ -40,10 +40,18 @@ actor FossilEngine {
     func startServer(repoPath: String) throws -> URL {
         if let port = serverPort {
             let rc = repoPath.withCString { stone_fossil_server_set_repo($0) }
-            guard rc == 0, let url = URL(string: "http://127.0.0.1:\(port)/") else {
-                throw EngineError.serverFailed
+            if rc == 0, let url = URL(string: "http://127.0.0.1:\(port)/") {
+                return url
             }
-            return url
+            // The C-side accept loop can die on its own -- e.g. fd exhaustion
+            // under the burst of concurrent connections a large repo's page
+            // can open -- without this side finding out until the next
+            // attempt to use it. Left alone, every later repo would also hit
+            // this same failing retarget path forever, since serverPort never
+            // gets corrected: the app would stay wedged for the rest of the
+            // session. Forget the stale port and fall through to start a
+            // fresh listener instead.
+            serverPort = nil
         }
         var port: Int32 = 0
         let rc = repoPath.withCString { stone_fossil_server_start($0, &port) }
@@ -76,7 +84,16 @@ actor FossilEngine {
         path.withCString { stone_fossil_set_home($0) }
     }
 
-    enum EngineError: Error { case serverFailed }
+    enum EngineError: LocalizedError {
+        case serverFailed
+
+        var errorDescription: String? {
+            switch self {
+            case .serverFailed:
+                return "Could not start the local Fossil server (failed to bind a loopback socket). Restarting the app usually clears this."
+            }
+        }
+    }
 
     // MARK: - C argv marshaling
 

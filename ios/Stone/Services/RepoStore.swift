@@ -214,7 +214,7 @@ final class RepoStore: ObservableObject {
 
     // MARK: - Helpers
 
-    enum StoreError: LocalizedError {
+    enum StoreError: LocalizedError, Equatable {
         case fossil(String)
         case noRemote
         case passwordNeedsUsername
@@ -241,7 +241,18 @@ final class RepoStore: ObservableObject {
     /// (e.g. `https://user@host/repo`) -- a password with no username would
     /// silently become an empty-username credential, which Fossil rejects, so
     /// that combination is refused up front instead.
-    private static func urlWithPassword(_ remote: String, password: String?) throws -> String {
+    ///
+    /// Internal rather than private so tests can exercise this pure
+    /// validation logic directly, without going through the real Keychain
+    /// (CredentialStore) or a network call -- see
+    /// RepoStoreSyncCredentialTests, which used to inject the password via
+    /// CredentialStore.setPassword() and hit `sync()`'s real network path.
+    /// That depended on the Keychain write actually succeeding, which is not
+    /// reliable for an unsigned test target (mac-acceptance-test.sh runs
+    /// with CODE_SIGNING_ALLOWED=NO); a silently-failed SecItemAdd left
+    /// password() returning nil, so this function never threw and the test
+    /// fell through to a real, doomed network request instead.
+    static func urlWithPassword(_ remote: String, password: String?) throws -> String {
         guard let password, !password.isEmpty else { return remote }
         guard var comps = URLComponents(string: remote) else { return remote }
         guard let user = comps.user, !user.isEmpty else {
