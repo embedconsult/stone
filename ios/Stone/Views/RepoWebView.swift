@@ -70,6 +70,7 @@ struct RepoDetailView: View {
     @State private var syncing = false
     @State private var syncMessage: String?
     @State private var showingGpcrEdit = false
+    @State private var showingAgentConsole = false
 
     @State private var currentURL: URL?
     @State private var showingReplyComposer = false
@@ -97,6 +98,15 @@ struct RepoDetailView: View {
         .navigationTitle(repo.name)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showingAgentConsole = true
+                } label: {
+                    Image(systemName: "terminal")
+                }
+                .disabled(repo.remoteURL == nil)
+                .accessibilityLabel("Agent Console")
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     showingGpcrEdit = true
@@ -136,6 +146,16 @@ struct RepoDetailView: View {
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
                             Button("Close") { showingGpcrEdit = false }
+                        }
+                    }
+            }
+        }
+        .sheet(isPresented: $showingAgentConsole) {
+            NavigationStack {
+                AgentConsoleView(repo: repo)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Close") { showingAgentConsole = false }
                         }
                     }
             }
