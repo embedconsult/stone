@@ -121,6 +121,7 @@ struct RepoDetailView: View {
     @State private var errorText: String?
     @State private var syncing = false
     @State private var syncMessage: String?
+    @State private var showingSyncLog = false
     @State private var showingGpcrEdit = false
     @State private var showingAgentConsole = false
 
@@ -233,9 +234,37 @@ struct RepoDetailView: View {
         }
         .task { await startServer() }
         .alert("Sync", isPresented: .constant(syncMessage != nil)) {
+            // The parsed "N sent, M received" summary (parseArtifactCounts)
+            // is a lossy read of Fossil's real sync output -- it can't show
+            // e.g. the Round-trips count, which is exactly the kind of
+            // detail needed to tell "nothing new to send" apart from "sync
+            // gave up partway through negotiating a large push." Until now
+            // that full output (RepoStore.lastSyncLog) was captured but
+            // never shown anywhere -- see ticket 94ea2161f5.
+            Button("View Log") { showingSyncLog = true }
             Button("OK") { syncMessage = nil }
         } message: {
             Text(syncMessage ?? "")
+        }
+        .sheet(isPresented: $showingSyncLog) {
+            NavigationStack {
+                ScrollView {
+                    Text(store.lastSyncLog.isEmpty ? "(no sync output captured)" : store.lastSyncLog)
+                        .font(.system(.footnote, design: .monospaced))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding()
+                }
+                .navigationTitle("Sync Log")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Close") {
+                            showingSyncLog = false
+                            syncMessage = nil
+                        }
+                    }
+                }
+            }
         }
         .sheet(isPresented: $showingGpcrEdit) {
             NavigationStack {
