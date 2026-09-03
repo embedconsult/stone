@@ -411,19 +411,32 @@ struct RepoDetailView: View {
         defer { syncing = false }
         do {
             let output = try await store.sync(repo)
-            // A zero exit code only means the round-trip completed -- it does
-            // NOT mean anything was actually pushed. A remote identity
-            // lacking write capability makes Fossil silently decline to send
-            // content while still exiting 0. Show the real counts rather than
-            // a blanket "Sync complete" so that no-op is visible instead of
-            // reading as success.
-            if let counts = RepoStore.parseArtifactCounts(output) {
+            // Ground truth (ticket 94ea2161f5): a stale/rotated remote
+            // password let a sync report a plausible "sent" count while the
+            // server actually refused the content -- Fossil's own client
+            // can silently disable pushing mid-session without printing
+            // anything. Check for that BEFORE trusting parseArtifactCounts'
+            // numbers, so a rejected push reads as a loud warning, not as
+            // "Sync complete."
+            if let reason = RepoStore.detectAuthFailure(output) {
+                syncMessage = "⚠️ Server refused the push: \(reason)."
+            } else if let counts = RepoStore.parseArtifactCounts(output) {
+                // A zero exit code only means the round-trip completed --
+                // it does NOT mean anything was actually pushed. Show the
+                // real counts rather than a blanket "Sync complete" so a
+                // genuine no-op (e.g. nothing new to send) is still visible
+                // as such.
                 syncMessage = "Sync complete — \(counts.sent) sent, \(counts.received) received."
             } else {
                 syncMessage = "Sync complete."
             }
         } catch {
-            syncMessage = error.localizedDescription
+            if case .fossil(let msg)? = error as? RepoStore.StoreError,
+               let reason = RepoStore.detectAuthFailure(msg) {
+                syncMessage = "⚠️ Server refused the push: \(reason)."
+            } else {
+                syncMessage = error.localizedDescription
+            }
         }
     }
 }

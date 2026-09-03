@@ -52,6 +52,30 @@ final class RepoStoreSyncCredentialTests: XCTestCase {
         XCTAssertEqual(result, "https://example.com/repo")
     }
 
+    // MARK: - detectAuthFailure
+
+    /// Ground truth (ticket 94ea2161f5): a stale/rotated remote password
+    /// let `fossil sync` report a plausible "sent" count while the server
+    /// silently refused the real push. This is the regression test for the
+    /// fix -- these three phrasings are the actual signatures found in
+    /// Fossil's own source (src/xfer.c) for the ways a rejected push shows
+    /// up in sync's raw output.
+    func testDetectAuthFailureRecognizesLoginFailed() {
+        XCTAssertNotNil(RepoStore.detectAuthFailure("Error: login failed\n"))
+    }
+
+    func testDetectAuthFailureRecognizesNotAuthorized() {
+        XCTAssertNotNil(RepoStore.detectAuthFailure("server says: not authorized to push\n"))
+    }
+
+    func testDetectAuthFailureRecognizesPullOnly() {
+        XCTAssertNotNil(RepoStore.detectAuthFailure("pull only because ...\n"))
+    }
+
+    func testDetectAuthFailureReturnsNilForOrdinaryOutput() {
+        XCTAssertNil(RepoStore.detectAuthFailure("Round-trips: 1   Artifacts sent: 3  received: 0\n"))
+    }
+
     // MARK: - parseArtifactCounts
 
     /// The other half of the fix: even once auth is correct, "the command

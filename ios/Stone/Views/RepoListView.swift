@@ -137,6 +137,15 @@ struct RepoListView: View {
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(.green)
                 .accessibilityLabel("Synced — \(sent) sent, \(received) received")
+        case .authFailed(let reason):
+            // Deliberately distinct from both success and a bare command
+            // failure (ticket 94ea2161f5): a rejected push looks exactly
+            // like success at the exit-code level, so it needs its own
+            // unmistakable icon, not a shade of the checkmark or the
+            // generic error mark.
+            Image(systemName: "key.slash.fill")
+                .foregroundStyle(.orange)
+                .accessibilityLabel("Server refused the push: \(reason)")
         case .failure(let message):
             Image(systemName: "exclamationmark.circle.fill")
                 .foregroundStyle(.red)
