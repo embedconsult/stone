@@ -21,6 +21,17 @@ final class WebViewController: ObservableObject {
     func goBack() {
         webView?.goBack()
     }
+
+    /// Forces a reload to `url` directly, bypassing SwiftUI's state-diffing.
+    /// Used for the self-heal recovery in RepoDetailView.handleLoadFailure():
+    /// if the restarted server happens to land on the SAME port as before
+    /// (rc==0 retarget, not a fresh bind -- meaning the failure was
+    /// transient rather than a dead listener), `baseURL`'s value doesn't
+    /// change, so nothing would otherwise trigger RepoWebView.updateUIView's
+    /// origin check and no retry would actually happen.
+    func load(_ url: URL) {
+        webView?.load(URLRequest(url: url))
+    }
 }
 
 /// Hosts a `WKWebView` pointed at the in-process Fossil server, presenting
@@ -44,7 +55,22 @@ struct RepoWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
-        // The server's port is stable for the app session; nothing to refresh.
+        // A self-healed server restart (FossilEngine.startServer(), see
+        // ticket a7c72aba15) gets a fresh OS-assigned port -- the comment
+        // this replaced ("the port is stable, nothing to refresh") was true
+        // before self-heal existed but stopped being true once a restart
+        // could produce a different port than the one this WKWebView is
+        // still pointed at. Compare origins, not full URLs: ordinary in-page
+        // navigation (the user browsing to a file, a forum post, etc.)
+        // changes the path constantly and must NOT be clobbered by a reload
+        // back to baseURL's root -- only a genuine port change (the signal
+        // that a restart happened) should force a reload.
+        guard let current = webView.url, origin(of: current) != origin(of: baseURL) else { return }
+        webView.load(URLRequest(url: baseURL))
+    }
+
+    private func origin(of url: URL) -> String {
+        "\(url.scheme ?? "")://\(url.host ?? ""):\(url.port ?? -1)"
     }
 
     func makeCoordinator() -> Coordinator {
@@ -103,6 +129,12 @@ struct RepoDetailView: View {
     @State private var replyText = ""
     @State private var replyError: String?
 
+    /// Guards the one-shot automatic self-heal in handleLoadFailure() below
+    /// so a genuinely broken remote/repo doesn't retry forever -- reset to
+    /// false on the next successful navigation, so a LATER, separate outage
+    /// still gets its own automatic attempt.
+    @State private var recoveryAttempted = false
+
     /// Owns the live WKWebView reference; see WebViewController's doc.
     @StateObject private var webController = WebViewController()
 
@@ -111,16 +143,21 @@ struct RepoDetailView: View {
             if let url = baseURL {
                 RepoWebView(baseURL: url,
                             controller: webController,
-                            onURLChange: { currentURL = $0 },
+                            onURLChange: { currentURL = $0; recoveryAttempted = false },
                             onLoadFailure: { message in
-                                baseURL = nil
-                                errorText = "Couldn't load the local Fossil page: \(message)"
+                                Task { await handleLoadFailure(message) }
                             })
                     .ignoresSafeArea(edges: .bottom)
             } else if let errorText {
-                ContentUnavailableView("Couldn't start Fossil",
-                                       systemImage: "exclamationmark.triangle",
-                                       description: Text(errorText))
+                ContentUnavailableView {
+                    Label("Couldn't start Fossil", systemImage: "exclamationmark.triangle")
+                } description: {
+                    Text(errorText)
+                } actions: {
+                    Button("Retry") {
+                        Task { await startServer() }
+                    }
+                }
             } else {
                 ProgressView("Starting Fossil…")
             }
@@ -287,11 +324,50 @@ struct RepoDetailView: View {
     }
 
     private func startServer() async {
+        errorText = nil
+        recoveryAttempted = false
         let path = store.fileURL(for: repo).path
         do {
             baseURL = try await FossilEngine.shared.startServer(repoPath: path)
         } catch {
             errorText = error.localizedDescription
+        }
+    }
+
+    /// A page load failing with "Could not connect to the server" (see
+    /// ticket a7c72aba15) means the local accept loop died -- possible at
+    /// ANY point in a session, not just on first opening the repo, and
+    /// FossilEngine's self-heal only runs inside startServer(), which
+    /// nothing else re-invokes once the WKWebView is up (ordinary in-page
+    /// navigation happens entirely inside the WebView, never through Swift
+    /// again). Without this, a mid-session death -- e.g. the accept loop
+    /// dying just before a forum-edit POST -- left the repo stuck showing
+    /// the error until the user backed all the way out and back in, which
+    /// is the only thing that re-triggers a fresh .task -> startServer().
+    /// Try that recovery transparently once here instead of waiting for the
+    /// user to discover the workaround; a manual Retry button in the error
+    /// view (see body) covers the case where self-heal itself can't recover
+    /// (e.g. genuine resource exhaustion outlasting a fresh listen()).
+    private func handleLoadFailure(_ message: String) async {
+        guard !recoveryAttempted else {
+            baseURL = nil
+            errorText = "Couldn't load the local Fossil page: \(message)"
+            return
+        }
+        recoveryAttempted = true
+        let path = store.fileURL(for: repo).path
+        do {
+            let url = try await FossilEngine.shared.startServer(repoPath: path)
+            baseURL = url
+            errorText = nil
+            // Force the reload directly: if startServer() retargeted onto
+            // the SAME port (a transient failure, not a dead listener), the
+            // baseURL value above didn't change, so SwiftUI wouldn't call
+            // updateUIView and the WebView would be left showing nothing.
+            webController.load(url)
+        } catch {
+            baseURL = nil
+            errorText = "Couldn't load the local Fossil page: \(message)"
         }
     }
 
