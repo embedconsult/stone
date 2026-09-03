@@ -327,6 +327,12 @@ struct RepoDetailView: View {
         errorText = nil
         recoveryAttempted = false
         let path = store.fileURL(for: repo).path
+        // Defensive, not just clone-time (RepoStore.cloneRepo already does
+        // this for new clones): repos cloned before this fix existed --
+        // like the one behind ticket 94ea2161f5 -- need it applied here too,
+        // on every open, so they self-heal without a fresh re-clone. See
+        // RepoStore.disableLocalauthSetting's doc for why this matters.
+        await store.disableLocalauthSetting(at: path)
         do {
             baseURL = try await FossilEngine.shared.startServer(repoPath: path)
         } catch {

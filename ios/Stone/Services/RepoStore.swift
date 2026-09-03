@@ -89,11 +89,36 @@ final class RepoStore: ObservableObject {
         let authURL = try Self.urlWithPassword(remoteURL, password: password)
         let result = await engine.run(["clone", authURL, path])
         guard result.succeeded else { throw StoreError.fossil(result.output) }
+        await disableLocalauthSetting(at: path)
         if let password, !password.isEmpty {
             CredentialStore.setPassword(password, for: id)
         }
         repos.append(Repo(id: id, name: name, fileName: fileName, remoteURL: remoteURL))
         save()
+    }
+
+    /// Force this clone's own "localauth" repository setting to off.
+    ///
+    /// Verified against Fossil's real source (vendor/fossil-src-2.26 --
+    /// ticket 94ea2161f5): the embedded local server's `--localauth` flag
+    /// only grants full Setup capability to loopback connections (src/
+    /// login.c login_check_credentials()) when THIS repository's own
+    /// "localauth" setting reads 0/off (src/db.c's documented condition 1
+    /// of 4). Without that grant, `g.perm.WrTForum`/`g.perm.ModForum` are
+    /// unset, forum_need_moderation() (src/forum.c) returns true for any
+    /// local forum write, and wiki_put() marks the result PRIVATE and
+    /// inserts it into the local modreq queue -- private content is
+    /// excluded from ordinary `fossil sync`, which is exactly the "sent 1
+    /// (a bookkeeping CLUSTER only)" symptom the maintainer hit editing a
+    /// BQ2 forum post. Fossil's own default for this setting is already
+    /// off, but nothing else in Stone ever set it explicitly, so a clone
+    /// that somehow inherited or was given a non-default value would
+    /// silently defeat the whole --localauth mechanism for forum writes.
+    /// This makes the value unconditional rather than assumed. Best-effort:
+    /// a failure here doesn't block the clone, since browsing/most local
+    /// writes don't depend on it.
+    func disableLocalauthSetting(at path: String) async {
+        _ = await engine.run(["settings", "localauth", "off", "-R", path])
     }
 
     /// Pull + push against the repository's configured remote.
