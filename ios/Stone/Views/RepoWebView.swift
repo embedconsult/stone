@@ -125,6 +125,14 @@ struct RepoDetailView: View {
     @State private var showingGpcrEdit = false
     @State private var showingAgentConsole = false
 
+    /// Ticket 0bbfd908e6, Option A (the maintainer's pick): a permanent
+    /// address bar "might get in the way, but could be useful for debug" --
+    /// so this is reachable only via a long-press on the nav title, not a
+    /// visible control. Lets a repo path like /modreq be reached directly
+    /// when Fossil's own rendered pages don't happen to link to it.
+    @State private var showingPathPrompt = false
+    @State private var debugPathInput = ""
+
     @State private var currentURL: URL?
     @State private var showingReplyComposer = false
     @State private var replyText = ""
@@ -163,7 +171,6 @@ struct RepoDetailView: View {
                 ProgressView("Starting Fossil…")
             }
         }
-        .navigationTitle(repo.name)
         .navigationBarTitleDisplayMode(.inline)
         // The system Back button always pops this whole view -- there's no
         // way to intercept a tap on it to decide "step back a page" first.
@@ -172,6 +179,18 @@ struct RepoDetailView: View {
         // behavior, rather than overloading one control with both meanings.
         .navigationBarBackButtonHidden(true)
         .toolbar {
+            // Replaces the plain .navigationTitle(repo.name) so a long-press
+            // can be attached to it (ticket 0bbfd908e6, Option A) -- SwiftUI
+            // gives no way to intercept a gesture on the system-rendered
+            // title itself, so this IS the title, styled to match.
+            ToolbarItem(placement: .principal) {
+                Text(repo.name)
+                    .font(.headline)
+                    .onLongPressGesture {
+                        debugPathInput = ""
+                        showingPathPrompt = true
+                    }
+            }
             // Left of Back, per the maintainer's decision: always leave the
             // repo and return to the list, regardless of in-page history --
             // the behavior "<" used to have before Option A changed its
@@ -233,6 +252,16 @@ struct RepoDetailView: View {
             }
         }
         .task { await startServer() }
+        .alert("Go to Path", isPresented: $showingPathPrompt) {
+            TextField("/modreq", text: $debugPathInput)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.URL)
+            Button("Go") { goToDebugPath() }
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Enter a path on this repo's local server.")
+        }
         .alert("Sync", isPresented: .constant(syncMessage != nil)) {
             // The parsed "N sent, M received" summary (parseArtifactCounts)
             // is a lossy read of Fossil's real sync output -- it can't show
@@ -350,6 +379,18 @@ struct RepoDetailView: View {
         } catch {
             replyError = error.localizedDescription
         }
+    }
+
+    /// Ticket 0bbfd908e6: navigate the local WebView to an arbitrary path
+    /// on this repo's own server (e.g. "/modreq") -- reached only via the
+    /// hidden long-press on the nav title, never a visible control.
+    private func goToDebugPath() {
+        guard let base = baseURL else { return }
+        let trimmed = debugPathInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let relative = trimmed.hasPrefix("/") ? String(trimmed.dropFirst()) : trimmed
+        guard let url = URL(string: relative, relativeTo: base)?.absoluteURL else { return }
+        webController.load(url)
     }
 
     private func startServer() async {
