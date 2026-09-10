@@ -34,8 +34,8 @@ struct AddRepoView: View {
                 }
 
                 if mode == .clone {
-                    Section("Remote") {
-                        TextField("https://example.com/repo", text: $remoteURL)
+                    Section {
+                        TextField("https://yourname@example.com/repo", text: $remoteURL)
                             .textInputAutocapitalization(.never)
                             .keyboardType(.URL)
                             .autocorrectionDisabled()

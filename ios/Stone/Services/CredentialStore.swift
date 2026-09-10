@@ -8,10 +8,17 @@ import Security
 enum CredentialStore {
     private static let service = "com.stone.fossil.sync"
 
-    static func setPassword(_ password: String, for repoID: UUID) {
+    /// - Returns: whether the write actually succeeded. Previously this
+    ///   discarded `SecItemAdd`'s status entirely -- a failed write (e.g. no
+    ///   valid code signature/keychain-access-group, which is exactly the
+    ///   case for an unsigned CI/test build) looked identical to success,
+    ///   silently leaving `password(for:)` returning nil forever after.
+    ///   Callers that don't need to react to failure can ignore the result.
+    @discardableResult
+    static func setPassword(_ password: String, for repoID: UUID) -> Bool {
         let account = repoID.uuidString
         delete(for: repoID)
-        guard let data = password.data(using: .utf8) else { return }
+        guard let data = password.data(using: .utf8) else { return false }
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -19,7 +26,7 @@ enum CredentialStore {
             kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock,
         ]
-        SecItemAdd(query as CFDictionary, nil)
+        return SecItemAdd(query as CFDictionary, nil) == errSecSuccess
     }
 
     static func password(for repoID: UUID) -> String? {

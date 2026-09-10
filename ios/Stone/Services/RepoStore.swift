@@ -8,6 +8,13 @@ enum RepoSyncStatus: Equatable {
     /// RepoStore.parseArtifactCounts) is what lets the UI show that, rather
     /// than a bare checkmark implying "your write went out."
     case success(sent: Int, received: Int)
+    /// Ground truth (ticket 94ea2161f5): a stale/rotated remote password
+    /// can make `fossil sync` exit 0 with a plausible-looking "sent"
+    /// count while the server silently refused the actual content push --
+    /// see RepoStore.detectAuthFailure. This is deliberately its own case,
+    /// not folded into .failure, so the UI can make it visually distinct
+    /// from both "it worked" and "the command errored."
+    case authFailed(String)
     case failure(String)
 }
 
@@ -89,11 +96,38 @@ final class RepoStore: ObservableObject {
         let authURL = try Self.urlWithPassword(remoteURL, password: password)
         let result = await engine.run(["clone", authURL, path])
         guard result.succeeded else { throw StoreError.fossil(result.output) }
+        await disableLocalauthSetting(at: path)
         if let password, !password.isEmpty {
             CredentialStore.setPassword(password, for: id)
         }
         repos.append(Repo(id: id, name: name, fileName: fileName, remoteURL: remoteURL))
         save()
+    }
+
+    /// Force this clone's own "localauth" repository setting to off.
+    ///
+    /// Verified against Fossil's real source (vendor/fossil-src-2.26): the
+    /// embedded local server's `--localauth` flag only grants full Setup
+    /// capability to loopback connections (src/login.c
+    /// login_check_credentials()) when THIS repository's own "localauth"
+    /// setting reads 0/off (src/db.c's documented condition 1 of 4).
+    /// Fossil's own default is already off, but nothing else in Stone ever
+    /// set it explicitly, so a clone that somehow inherited or was given a
+    /// non-default value would silently defeat the whole --localauth
+    /// mechanism for local writes (forum posts, wiki edits, etc.) -- this
+    /// makes the value unconditional rather than assumed.
+    ///
+    /// NOTE (ticket 94ea2161f5): this was originally written chasing a
+    /// moderation-queue theory for that ticket's "edit never synced"
+    /// report. The actual root cause there turned out to be a stale/
+    /// rotated remote password (see RepoStore.detectAuthFailure) --
+    /// unrelated to --localauth or local capability entirely. This fix is
+    /// kept anyway: it is still a real, independently-correct hardening
+    /// measure for the local-server capability grant, just not what closed
+    /// that specific ticket. Best-effort: a failure here doesn't block the
+    /// clone, since browsing/most local writes don't depend on it.
+    func disableLocalauthSetting(at path: String) async {
+        _ = await engine.run(["settings", "localauth", "off", "-R", path])
     }
 
     /// Pull + push against the repository's configured remote.
@@ -109,6 +143,35 @@ final class RepoStore: ObservableObject {
         lastSyncLog = result.output
         guard result.succeeded else { throw StoreError.fossil(result.output) }
         return result.output
+    }
+
+    /// Detect the specific ground-truth failure mode behind ticket
+    /// 94ea2161f5: a stale/rotated remote password. Confirmed against
+    /// Fossil's real source (src/xfer.c): the server rejects a bad login
+    /// with a plain "error login failed" card, which the client prints as
+    /// "Error: login failed" -- but for a non-autosync `fossil sync` (what
+    /// RepoStore.sync() runs) that IS a hard error, so it should already
+    /// surface via the thrown .fossil(...) case. The more insidious path is
+    /// src/xfer.c's server-sent "pull only ..." message: the client obeys
+    /// it (silently disables pushing for the rest of the session) WITHOUT
+    /// ever printing it, so a sync can still report a plausible-looking
+    /// "Artifacts sent" count from an earlier round (e.g. a bookkeeping
+    /// cluster) while the real content never goes out -- exactly "sent 1"
+    /// with nothing actually delivered. Scanned against BOTH a successful
+    /// sync's raw output and a thrown failure's message, so this catches
+    /// the case whichever exit path Fossil actually takes.
+    nonisolated static func detectAuthFailure(_ output: String) -> String? {
+        let lower = output.lowercased()
+        if lower.contains("login failed") {
+            return "the server rejected the login -- the saved password for this remote is probably wrong or has been changed"
+        }
+        if lower.contains("not authorized") {
+            return "the server said this login is not authorized to push"
+        }
+        if lower.range(of: "pull only", options: .caseInsensitive) != nil {
+            return "the server put this sync in pull-only mode"
+        }
+        return nil
     }
 
     /// Parses Fossil's non-interactive sync summary line
@@ -148,6 +211,7 @@ final class RepoStore: ObservableObject {
         defer { isSyncingAll = false }
 
         var succeeded = 0
+        var authFailed = 0
         var failed = 0
         var skipped = 0
         var totalSent = 0
@@ -161,14 +225,29 @@ final class RepoStore: ObservableObject {
             syncStatuses[repo.id] = .syncing
             do {
                 let output = try await sync(repo)
-                let counts = Self.parseArtifactCounts(output) ?? (sent: 0, received: 0)
-                syncStatuses[repo.id] = .success(sent: counts.sent, received: counts.received)
-                totalSent += counts.sent
-                totalReceived += counts.received
-                succeeded += 1
+                // Ground truth (ticket 94ea2161f5): check for a rejected
+                // push before trusting the sent/received counts -- see
+                // RepoStore.detectAuthFailure and RepoWebView.runSync's
+                // matching check on the single-repo path.
+                if let reason = Self.detectAuthFailure(output) {
+                    syncStatuses[repo.id] = .authFailed(reason)
+                    authFailed += 1
+                } else {
+                    let counts = Self.parseArtifactCounts(output) ?? (sent: 0, received: 0)
+                    syncStatuses[repo.id] = .success(sent: counts.sent, received: counts.received)
+                    totalSent += counts.sent
+                    totalReceived += counts.received
+                    succeeded += 1
+                }
             } catch {
-                syncStatuses[repo.id] = .failure(error.localizedDescription)
-                failed += 1
+                if case .fossil(let msg)? = error as? StoreError,
+                   let reason = Self.detectAuthFailure(msg) {
+                    syncStatuses[repo.id] = .authFailed(reason)
+                    authFailed += 1
+                } else {
+                    syncStatuses[repo.id] = .failure(error.localizedDescription)
+                    failed += 1
+                }
             }
         }
 
@@ -177,6 +256,7 @@ final class RepoStore: ObservableObject {
         // see ticket c4eb202ff0) needs to be visibly distinguishable from one
         // that actually sent something.
         var parts = ["\(succeeded) synced (\(totalSent) sent, \(totalReceived) received)"]
+        if authFailed > 0 { parts.append("\(authFailed) rejected by server") }
         if failed > 0 { parts.append("\(failed) failed") }
         if skipped > 0 { parts.append("\(skipped) skipped (no remote)") }
         syncAllSummary = parts.joined(separator: ", ")
@@ -214,7 +294,7 @@ final class RepoStore: ObservableObject {
 
     // MARK: - Helpers
 
-    enum StoreError: LocalizedError {
+    enum StoreError: LocalizedError, Equatable {
         case fossil(String)
         case noRemote
         case passwordNeedsUsername
@@ -241,7 +321,27 @@ final class RepoStore: ObservableObject {
     /// (e.g. `https://user@host/repo`) -- a password with no username would
     /// silently become an empty-username credential, which Fossil rejects, so
     /// that combination is refused up front instead.
-    private static func urlWithPassword(_ remote: String, password: String?) throws -> String {
+    ///
+    /// Internal rather than private so tests can exercise this pure
+    /// validation logic directly, without going through the real Keychain
+    /// (CredentialStore) or a network call -- see
+    /// RepoStoreSyncCredentialTests, which used to inject the password via
+    /// CredentialStore.setPassword() and hit `sync()`'s real network path.
+    /// That depended on the Keychain write actually succeeding, which is not
+    /// reliable for an unsigned test target (mac-acceptance-test.sh runs
+    /// with CODE_SIGNING_ALLOWED=NO); a silently-failed SecItemAdd left
+    /// password() returning nil, so this function never threw and the test
+    /// fell through to a real, doomed network request instead.
+    ///
+    /// `nonisolated`, matching combinedRemoteURL/splitRemoteURL/
+    /// parseArtifactCounts below: this is pure string/URL manipulation with
+    /// no UI dependency, but RepoStore itself is @MainActor, and a `static
+    /// func` on a @MainActor type is actor-isolated by default unless told
+    /// otherwise -- without this, the compiler correctly rejects calling it
+    /// from a synchronous, non-isolated context (exactly what
+    /// RepoStoreSyncCredentialTests' non-async XCTAssertThrowsError call
+    /// sites are).
+    nonisolated static func urlWithPassword(_ remote: String, password: String?) throws -> String {
         guard let password, !password.isEmpty else { return remote }
         guard var comps = URLComponents(string: remote) else { return remote }
         guard let user = comps.user, !user.isEmpty else {

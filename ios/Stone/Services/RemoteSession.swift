@@ -136,6 +136,24 @@ actor RemoteSession {
         }
     }
 
+    /// Logs in if needed and returns the resulting Fossil session cookie, so
+    /// a caller can bridge it into a *different* cookie jar -- specifically
+    /// WKWebView's, which does not share cookies with the `URLSession` this
+    /// actor logs in with. This is the headless-login-feeding-a-visible-
+    /// WebView bridge named as an open contract in
+    /// docs/design/ollama-codex-client.md (C-A): the human never sees a
+    /// second login page, they just land on the remote's already-
+    /// authenticated page.
+    func sessionCookie() async throws -> HTTPCookie {
+        if !loggedIn { try await login() }
+        guard let cookie = urlSession.configuration.httpCookieStorage?
+            .cookies(for: baseURL)?
+            .first(where: { $0.name.hasPrefix("fossil-") }) else {
+            throw RemoteError.notAuthenticated
+        }
+        return cookie
+    }
+
     private func extractCSRF(from html: String) -> String? {
         let pattern = "name=\"csrf\" value=\"([^\"]*)\""
         guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { return nil }
