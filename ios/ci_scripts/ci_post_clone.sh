@@ -5,5 +5,6 @@ scripts/fetch-fossil.sh
 scripts/gen-fossil-sources.sh
 scripts/fetch-libressl.sh
 scripts/build-libressl-ios.sh
+scripts/fetch-cacert.sh
 scripts/build-fossil-xcframework.sh
 test -d ios/Frameworks/FossilCore.xcframework
