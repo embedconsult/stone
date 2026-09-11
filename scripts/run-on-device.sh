@@ -87,10 +87,17 @@ else
 fi
 echo "==> Target device: ${DEV_NAME} (${HW_UDID})"
 
-# Stamp build identity: repo checkin hash, dirty flag, and build timestamp,
-# written into Info.plist so the built app carries proof of exactly which
-# checkout produced it.
-BUILD_HASH="$(fossil info | awk '/^checkout:/ {print substr($2, 1, 7)}')"
+# Build identity (repo checkin hash, dirty flag, build timestamp) is stamped
+# into the BUILT app's Info.plist by the "Stamp Build Identity" Run Script
+# build phase on the Stone target (scripts/stamp-build-identity.sh) -- not
+# here. It used to be written directly into the tracked ios/Stone/Info.plist
+# via plutil -replace, which left that file permanently dirtied in the
+# Fossil checkout after every device build (flagged by the maintainer,
+# commit 7171e0bf49: "Junk. This should be in some kind of ignore list or be
+# made not to change"). Computed here purely so this script can verify what
+# the build phase stamped, below, without any dependence on when in the
+# xcodebuild run that phase happens to execute.
+BUILD_HASH="$(fossil info | awk '/^checkout:/ {print substr($2, 1, 12)}')"
 BUILD_DATE="$(date -u "+%Y-%m-%d %H:%M:%S UTC")"
 if [[ -n "$(fossil changes)" ]]; then
   BUILD_DIRTY=true
@@ -99,11 +106,6 @@ else
 fi
 BUILD_LABEL="${BUILD_HASH}"
 [[ "${BUILD_DIRTY}" == "true" ]] && BUILD_LABEL="${BUILD_LABEL}-dirty"
-
-echo "==> Stamping build identity: ${BUILD_LABEL} (${BUILD_DATE})"
-plutil -replace BuildCommit -string "${BUILD_HASH}" "${REPO_ROOT}/ios/Stone/Info.plist"
-plutil -replace BuildDate -string "${BUILD_DATE}" "${REPO_ROOT}/ios/Stone/Info.plist"
-plutil -replace BuildDirty -string "${BUILD_DIRTY}" "${REPO_ROOT}/ios/Stone/Info.plist"
 
 echo "==> Building & signing for device (automatic provisioning)"
 xcodebuild \
@@ -118,12 +120,13 @@ xcodebuild \
 APP="${DERIVED}/Build/Products/Debug-iphoneos/Stone.app"
 [[ -d "${APP}" ]] || { echo "Build product missing: ${APP} -- xcodebuild reported success but produced no app bundle." >&2; exit 1; }
 
-# Verify the just-built bundle actually embeds the stamp we just wrote,
-# instead of trusting that a "successful" xcodebuild produced fresh output.
-# A build reusing a stale product (bad derived-data cache, skipped Info.plist
-# processing, etc.) would otherwise install silently and look identical to a
-# real deploy -- which is exactly the "app stays stale" failure mode this
-# script needs to catch, rather than just declaring "Done" regardless.
+# Verify the just-built bundle actually embeds the stamp the build phase
+# should have written, instead of trusting that a "successful" xcodebuild
+# produced fresh output. A build reusing a stale product (bad derived-data
+# cache, a skipped run script phase, etc.) would otherwise install silently
+# and look identical to a real deploy -- which is exactly the "app stays
+# stale" failure mode this script needs to catch, rather than just
+# declaring "Done" regardless.
 EMBEDDED_COMMIT="$(plutil -extract BuildCommit raw "${APP}/Info.plist" 2>/dev/null || true)"
 if [[ "${EMBEDDED_COMMIT}" != "${BUILD_HASH}" ]]; then
   echo "Build verification FAILED: built app reports BuildCommit='${EMBEDDED_COMMIT:-<missing>}'," >&2
