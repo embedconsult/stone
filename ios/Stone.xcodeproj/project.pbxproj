@@ -113,6 +113,27 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		667D37CABA7C5AA5761B9809 /* Stamp Build Identity */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			name = "Stamp Build Identity";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${SRCROOT}/../scripts/stamp-build-identity.sh\"\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXGroup section */
 		087B7F199963E3FF9928A533 = {
 			isa = PBXGroup;
@@ -225,6 +246,7 @@
 				259D1AF1552537C5641BC614 /* Sources */,
 				4D135B8B728C07BEB741FAFE /* Frameworks */,
 				5E771500A11A5EAA00000006 /* Resources */,
+				667D37CABA7C5AA5761B9809 /* Stamp Build Identity */,
 			);
 			buildRules = (
 			);
