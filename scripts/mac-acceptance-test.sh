@@ -268,6 +268,26 @@ verify_app_binary() {
   return 1
 }
 
+# The Stone target's "Stamp Build Identity" Run Script build phase
+# (scripts/stamp-build-identity.sh) writes BuildCommit/BuildDate/BuildDirty
+# into the BUILT app's Info.plist, never the tracked ios/Stone/Info.plist --
+# that's the whole point of it existing (see that script's header for the
+# maintainer's "Junk. This should be in some kind of ignore list or be made
+# not to change" complaint about the older, source-editing approach). Every
+# xcodebuild step above just ran that phase at least twice; this is where
+# that promise actually gets checked, against the real Fossil checkout.
+check_fossil_clean() {
+  command -v fossil >/dev/null 2>&1 || { echo "fossil not found -- skipping (not a Fossil checkout?)"; return 0; }
+  fossil info >/dev/null 2>&1 || { echo "not a Fossil checkout -- skipping"; return 0; }
+  local dirty; dirty="$(fossil changes)"
+  if [[ -n "${dirty}" ]]; then
+    echo "fossil checkout was left dirty by the build -- Stamp Build Identity must never touch tracked files:"
+    echo "${dirty}"
+    return 1
+  fi
+  echo "fossil checkout is clean after stamped builds (ios/Stone/Info.plist untouched)"
+}
+
 echo "=== Stone iOS build — Mac acceptance test ==="
 if ${CLEAN}; then
   echo "(--clean: every step forced to redo its work from scratch)"
@@ -293,6 +313,8 @@ step "xcodebuild: unit tests (iOS Simulator)" run_unit_tests
 
 step "xcodebuild: iOS device (unsigned)"    build_device
 require "device app binary"           verify_app_binary "${REPO_ROOT}/ios/build/acceptance-device/Build/Products/Debug-iphoneos/Stone.app" arm64
+
+require "fossil checkout stays clean after stamped builds" check_fossil_clean
 
 echo ""
 echo "=================================="
