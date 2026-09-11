@@ -1,8 +1,12 @@
 import SwiftUI
 
-/// Build metadata stamped by `scripts/run-on-device.sh` into the app's
-/// Info.plist. Missing values are expected for ordinary Xcode builds.
-private struct BuildIdentity {
+/// Build metadata stamped into the app's Info.plist by whichever path
+/// produced this build: `scripts/run-on-device.sh` (a Fossil checkin hash,
+/// for tethered device builds) or `ios/ci_scripts/ci_post_clone.sh` (a git
+/// commit SHA, for Xcode Cloud builds from the mirrored git export). Missing
+/// values are expected for ordinary Xcode builds. Not `private` so
+/// `BuildIdentity.label` is reachable from StoneTests via `@testable import`.
+struct BuildIdentity {
     let commit: String?
     let date: String?
     let isDirty: Bool
@@ -13,7 +17,12 @@ private struct BuildIdentity {
         isDirty = (bundle.object(forInfoDictionaryKey: "BuildDirty") as? String) == "true"
     }
 
-    var label: String {
+    var label: String { Self.label(commit: commit, isDirty: isDirty) }
+
+    /// Pure so it's testable without a Bundle/Info.plist fixture -- same
+    /// reasoning as RepoStore's sync/credential logic being split into pure
+    /// functions for StoneTests.
+    static func label(commit: String?, isDirty: Bool) -> String {
         guard let commit, !commit.isEmpty else { return "Unstamped build" }
         return isDirty ? "\(commit)-dirty" : commit
     }
