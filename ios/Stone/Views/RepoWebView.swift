@@ -124,6 +124,7 @@ struct RepoDetailView: View {
     @State private var showingSyncLog = false
     @State private var showingGpcrEdit = false
     @State private var showingAgentConsole = false
+    @State private var showingAgentSessions = false
 
     /// Ticket 0bbfd908e6, Option A (the maintainer's pick): a permanent
     /// address bar "might get in the way, but could be useful for debug" --
@@ -224,6 +225,18 @@ struct RepoDetailView: View {
                 .disabled(repo.remoteURL == nil)
                 .accessibilityLabel("Agent Console")
             }
+            // Native counterpart to the "Agent Console" WebView entry point
+            // above: browses sessions/threads and composes instructions
+            // in-app rather than in the server's rendered HTML (cd9d4bfcb2).
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showingAgentSessions = true
+                } label: {
+                    Image(systemName: "bubble.left.and.bubble.right")
+                }
+                .disabled(repo.remoteURL == nil)
+                .accessibilityLabel("Agent Sessions")
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     showingGpcrEdit = true
@@ -311,6 +324,16 @@ struct RepoDetailView: View {
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
                             Button("Close") { showingAgentConsole = false }
+                        }
+                    }
+            }
+        }
+        .sheet(isPresented: $showingAgentSessions) {
+            NavigationStack {
+                AgentSessionListView(repo: repo)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Close") { showingAgentSessions = false }
                         }
                     }
             }
