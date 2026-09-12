@@ -41,5 +41,11 @@
 	<string>Stone uses the microphone to dictate phrases for gp-crystal speech editing.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
 	<string>Stone uses on-device speech recognition to turn dictated phrases into gp-crystal edit commands.</string>
+	<!-- Stone only uses standard HTTPS/TLS (LibreSSL, for Fossil sync),
+	     which is exempt from export compliance review. Declaring this
+	     stops App Store Connect from asking the encryption question on
+	     every build. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>
