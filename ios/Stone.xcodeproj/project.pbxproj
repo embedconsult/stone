@@ -33,6 +33,12 @@
 		E0B666C794E05E8DFFE26B5C /* FossilEngineServerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E8C022B8B9872071DA204C69 /* FossilEngineServerTests.swift */; };
 		C93147D7DDE725E6D119F89E /* BuildIdentityTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51C5229E290E03D30B958641 /* BuildIdentityTests.swift */; };
 		B77196F39E0D2DE9B4C46736 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 617096E1A68C1784B86BDF02 /* XCTest.framework */; };
+		2F59A486FC98A9A5C91F5755 /* AgentSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F2E48165DFF16980EEFC271 /* AgentSession.swift */; };
+		966265507BE6D1810EE17B63 /* AgentSessionClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2C1D074773AD93EB677F4C2 /* AgentSessionClient.swift */; };
+		CD814A19F83720619A36C70A /* AgentEventStream.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B277362D78A780578707BDC /* AgentEventStream.swift */; };
+		E8EB8CF08211B151271D2EA6 /* AgentSessionListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 506EF80873441CA39D079101 /* AgentSessionListView.swift */; };
+		C918DD7193A0B4E30856C781 /* AgentThreadView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 82B9AA42ED4DE4353C1C0584 /* AgentThreadView.swift */; };
+		010E40CA3B094723FFA0671F /* AgentSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5141ABB5B1DC5130FACA9C5E /* AgentSessionTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -77,6 +83,12 @@
 		51C5229E290E03D30B958641 /* BuildIdentityTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BuildIdentityTests.swift; sourceTree = "<group>"; };
 		D62D5B0A5BBCBDA017DF842B /* StoneTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = StoneTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		617096E1A68C1784B86BDF02 /* XCTest.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = XCTest.framework; path = Library/Frameworks/XCTest.framework; sourceTree = DEVELOPER_DIR; };
+		6F2E48165DFF16980EEFC271 /* AgentSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSession.swift; sourceTree = "<group>"; };
+		D2C1D074773AD93EB677F4C2 /* AgentSessionClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSessionClient.swift; sourceTree = "<group>"; };
+		6B277362D78A780578707BDC /* AgentEventStream.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentEventStream.swift; sourceTree = "<group>"; };
+		506EF80873441CA39D079101 /* AgentSessionListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSessionListView.swift; sourceTree = "<group>"; };
+		82B9AA42ED4DE4353C1C0584 /* AgentThreadView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentThreadView.swift; sourceTree = "<group>"; };
+		5141ABB5B1DC5130FACA9C5E /* AgentSessionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSessionTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -188,6 +200,7 @@
 				4E1ABCB26DDB3A1C7339580A /* RepoStoreSyncCredentialTests.swift */,
 				E8C022B8B9872071DA204C69 /* FossilEngineServerTests.swift */,
 				51C5229E290E03D30B958641 /* BuildIdentityTests.swift */,
+				5141ABB5B1DC5130FACA9C5E /* AgentSessionTests.swift */,
 			);
 			path = StoneTests;
 			sourceTree = "<group>";
@@ -196,6 +209,7 @@
 			isa = PBXGroup;
 			children = (
 				C34F67C4EB118D7638B7FDFD /* Repo.swift */,
+				6F2E48165DFF16980EEFC271 /* AgentSession.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -211,6 +225,8 @@
 				76D528A1F250627ADF2E8367 /* GpcrEditView.swift */,
 				2A4DFE84072A9434AFB1BB7D /* BuildIdentityView.swift */,
 				76A76FED79EDA585F3F8AE7E /* AgentConsoleView.swift */,
+				506EF80873441CA39D079101 /* AgentSessionListView.swift */,
+				82B9AA42ED4DE4353C1C0584 /* AgentThreadView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -232,6 +248,8 @@
 				CCECFED0E5D45BD3F63B711C /* RepoStore.swift */,
 				A2C8DFAE73FE049A388C3317 /* GpcrEditClient.swift */,
 				1858E564976384C5C2DEE5A7 /* PhraseRecognizer.swift */,
+				D2C1D074773AD93EB677F4C2 /* AgentSessionClient.swift */,
+				6B277362D78A780578707BDC /* AgentEventStream.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -333,6 +351,11 @@
 				90E2445BED37E2BD6DD43370 /* PhraseRecognizer.swift in Sources */,
 				058A00114029F0A4BA45822F /* GpcrEditView.swift in Sources */,
 				B19F241881A9D6F172D0661C /* BuildIdentityView.swift in Sources */,
+				2F59A486FC98A9A5C91F5755 /* AgentSession.swift in Sources */,
+				966265507BE6D1810EE17B63 /* AgentSessionClient.swift in Sources */,
+				CD814A19F83720619A36C70A /* AgentEventStream.swift in Sources */,
+				E8EB8CF08211B151271D2EA6 /* AgentSessionListView.swift in Sources */,
+				C918DD7193A0B4E30856C781 /* AgentThreadView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -343,6 +366,7 @@
 				A1F0552BF88DCFFB3254E68B /* RepoStoreSyncCredentialTests.swift in Sources */,
 				E0B666C794E05E8DFFE26B5C /* FossilEngineServerTests.swift in Sources */,
 				C93147D7DDE725E6D119F89E /* BuildIdentityTests.swift in Sources */,
+				010E40CA3B094723FFA0671F /* AgentSessionTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
