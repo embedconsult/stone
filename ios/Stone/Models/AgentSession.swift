@@ -22,26 +22,41 @@ struct AgentThreadPostsResponse: Codable {
 /// post's hash -- the same identifier `session_posts` and `session_live_url`
 /// key on.
 ///
-/// **Speculative shape.** Unlike `AgentThreadPost` above, this is not one of
-/// the two contracts the maintainer had settled as of 2026-06-18; it is
-/// Stone's best guess at the still-open session-status API (design doc
-/// contract C-E, Ollama-Codex ticket `1e647f91f1`). `AgentSessionClient`
-/// decodes it defensively and surfaces a distinct "not available yet" error
-/// (see `AgentSessionClient.ClientError.sessionsNotAvailable`) rather than a
-/// generic decode failure, so the list screen degrades cleanly against a
-/// server that doesn't expose this yet and needs no client change once the
-/// real shape is confirmed to match.
+/// Matches the settled `GET ext/agent/sessions.json` contract (Ollama-Codex
+/// ticket `27e48399eb`, design doc contract C-E): the server emits
+/// `root_hash`, `runner_login`, `state`, `last_post_author`, `last_post_at`
+/// (plus other fields Stone doesn't need yet, like `pending_posts` and
+/// `workspace`). There is no server-side `title` -- `title` below derives a
+/// headline client-side instead of blocking on a server change.
 struct AgentSessionSummary: Codable, Identifiable, Hashable {
     var id: String { root }
     /// The bound forum thread's root post hash.
     let root: String
-    let title: String
-    let status: String
+    let runnerLogin: String?
+    let state: String
+    let lastPostAuthor: String?
     let lastActivity: String?
 
     enum CodingKeys: String, CodingKey {
-        case root, title, status
-        case lastActivity = "last_activity"
+        case root = "root_hash"
+        case runnerLogin = "runner_login"
+        case state
+        case lastPostAuthor = "last_post_author"
+        case lastActivity = "last_post_at"
+    }
+
+    /// Headline for the list/thread screens. No server-side title exists, so
+    /// this heads with whoever owns the session and the root hash's first 12
+    /// characters, falling back to whoever posted last if no runner has
+    /// claimed the session yet.
+    var title: String {
+        if let runnerLogin, !runnerLogin.isEmpty {
+            return "\(runnerLogin) · \(root.prefix(12))"
+        }
+        if let lastPostAuthor, !lastPostAuthor.isEmpty {
+            return "\(lastPostAuthor) · \(root.prefix(12))"
+        }
+        return String(root.prefix(12))
     }
 }
 
