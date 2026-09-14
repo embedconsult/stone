@@ -87,3 +87,25 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Stone.app/Stone"
         BUNDLE_LOADER: "$(TEST_HOST)"
+
+  # UI-test slice of the same regression-test safety net (ticket cfcc7e04d5
+  # part 2): drives the real app through XCUIApplication rather than calling
+  # Swift services directly, so it catches things StoneTests structurally
+  # can't -- e.g. the embedded Fossil server actually starting and WKWebView
+  # actually rendering a page. See the NOTE on StoneTests above: this target
+  # is also hand-added to project.pbxproj in parallel, for the same reason.
+  StoneUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources:
+      - path: StoneUITests
+    dependencies:
+      - target: Stone
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: org.beagleboard.stone.StoneUITests
+        TARGETED_DEVICE_FAMILY: "1"
+        DEVELOPMENT_TEAM: BWWLLRK896
+        CODE_SIGN_STYLE: Automatic
+        GENERATE_INFOPLIST_FILE: YES
+        TEST_TARGET_NAME: Stone

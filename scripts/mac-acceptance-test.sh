@@ -17,16 +17,26 @@
 #   - Installing/launching on a real device — see scripts/run-on-device.sh.
 #   - Signing, archiving, or App Store submission.
 #
-# It DOES now also run the StoneTests unit-test target (added for the
-# Stone Plan's Milestone 1 regression-test safety net, ticket cfcc7e04d5) on
-# the iOS Simulator, right after the simulator build proves it links. That
-# target hosts inside Stone.app (TEST_HOST) and covers Swift-level behavior
-# — e.g. RepoStoreSyncCredentialTests, which guards the specific silent-sync
-# bug where a password with no username in a remote's address used to
-# silently degrade to an anonymous sync while still reporting success. A
-# test failure here fails the whole script, same as a build failure.
-# (scripts/mac-demo.sh exercises the Fossil engine at runtime, natively on
-# macOS, if you want that kind of check too.)
+# It DOES now also run both halves of the regression-test safety net (Stone
+# Plan Milestone 1, ticket cfcc7e04d5) on the iOS Simulator, right after the
+# simulator build proves it links:
+#   - StoneTests (XCTest, host-app-hosted via TEST_HOST): Swift-level
+#     behavior -- e.g. RepoStoreSyncCredentialTests, which guards the
+#     specific silent-sync bug where a password with no username in a
+#     remote's address used to silently degrade to an anonymous sync while
+#     still reporting success.
+#   - StoneUITests (XCUITest, drives the real app via XCUIApplication):
+#     the end-to-end flow of adding a repo through the actual UI and
+#     confirming the embedded Fossil server renders a real page in the
+#     WKWebView -- things StoneTests structurally can't catch, since it
+#     never launches the app or touches SwiftUI at all.
+# Both run from a single `xcodebuild test` invocation (run_tests()
+# below) -- StoneUITests only needed adding as a target with a TestTargetID
+# pointing at Stone for Xcode's implicit default scheme to pick it up
+# automatically alongside StoneTests, no separate step or scheme file
+# required. A failure in either fails the whole script, same as a build
+# failure. (scripts/mac-demo.sh exercises the Fossil engine at runtime,
+# natively on macOS, if you want that kind of check too.)
 #
 # Usage:
 #   scripts/mac-acceptance-test.sh           # fast: skips steps already up to date
@@ -184,7 +194,7 @@ sys.exit(1)
 '
 }
 
-run_unit_tests() {
+run_tests() {
   local derived="${REPO_ROOT}/ios/build/acceptance-sim-tests"
   rm -rf "${derived}"
   local udid
@@ -309,7 +319,7 @@ require "xcframework slices"          verify_xcframework
 step "xcodebuild: iOS Simulator (unsigned)" build_simulator
 require "simulator app binary"        verify_app_binary "${REPO_ROOT}/ios/build/acceptance-sim/Build/Products/Debug-iphonesimulator/Stone.app" arm64
 
-step "xcodebuild: unit tests (iOS Simulator)" run_unit_tests
+step "xcodebuild: unit + UI tests (iOS Simulator)" run_tests
 
 step "xcodebuild: iOS device (unsigned)"    build_device
 require "device app binary"           verify_app_binary "${REPO_ROOT}/ios/build/acceptance-device/Build/Products/Debug-iphoneos/Stone.app" arm64
@@ -320,7 +330,7 @@ echo ""
 echo "=================================="
 echo " ACCEPTANCE: PASS"
 echo " Simulator app: ios/build/acceptance-sim/Build/Products/Debug-iphonesimulator/Stone.app"
-echo " Unit tests:    passed (StoneTests, iOS Simulator)"
+echo " Tests:         passed (StoneTests + StoneUITests, iOS Simulator)"
 echo " Device app:    ios/build/acceptance-device/Build/Products/Debug-iphoneos/Stone.app (unsigned)"
 echo ""
 echo " Not covered here -- sign + install on a device via:"
