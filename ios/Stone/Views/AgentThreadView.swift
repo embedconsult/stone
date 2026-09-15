@@ -138,8 +138,16 @@ struct AgentThreadView: View {
                         // harmless; calling the converter from inside this
                         // row closure is not (see plainText(fromHTML:)'s
                         // doc).
+                        // .textSelection(.enabled): SwiftUI Text is NOT
+                        // selectable by default -- the maintainer hit this
+                        // directly ("Can't select text in session for
+                        // copying to paste elsewhere"). This is exactly the
+                        // content worth grabbing (hashes, error output,
+                        // commands quoted back from an agent's reply), so
+                        // enable long-press selection/copy on it.
                         Text(plainTextByHash[post.hash] ?? post.html)
                             .font(.body)
+                            .textSelection(.enabled)
                     }
                     .padding(.vertical, 4)
                     .id(post.id)
