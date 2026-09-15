@@ -100,4 +100,23 @@ final class AgentSessionTests: XCTestCase {
         let event = AgentEventStream.parse(event: "something_new", data: "payload")
         XCTAssertEqual(event, .other(event: "something_new", data: "payload"))
     }
+
+    // MARK: - AgentThreadView.plainText(fromHTML:)
+
+    /// Regression coverage for the string-conversion half of ticket
+    /// 9626caf291's fix. The actual crash (a TestFlight SIGABRT, App Store
+    /// Connect crash AGyIBIjJ62ZvfowyfSXovyU) was calling this synchronously
+    /// from inside AgentThreadView's List row closure, not a bug in the
+    /// conversion logic itself -- that half isn't unit-testable (it needs a
+    /// real SwiftUI/AttributeGraph view hierarchy to reproduce), so the fix
+    /// there is structural: the call moved to loadPosts(), see that
+    /// function's and plainText(fromHTML:)'s doc comments. This just guards
+    /// the conversion itself doesn't regress separately.
+    func testPlainTextStripsHTMLTags() {
+        XCTAssertEqual(AgentThreadView.plainText(fromHTML: "<p>Fix the thing</p>"), "Fix the thing")
+    }
+
+    func testPlainTextHandlesEmptyString() {
+        XCTAssertEqual(AgentThreadView.plainText(fromHTML: ""), "")
+    }
 }
