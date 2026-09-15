@@ -112,25 +112,44 @@ struct AgentThreadView: View {
                                    systemImage: "exclamationmark.triangle",
                                    description: Text(loadError))
         } else {
-            List(posts) { post in
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text(post.user).font(.subheadline.bold())
-                        Spacer()
-                        Text(post.role).font(.caption2).foregroundStyle(.secondary)
+            // A thread reads chronologically oldest-first (matches the
+            // server's session_posts order), but a List otherwise opens
+            // scrolled to the top -- the maintainer's own live-testing
+            // feedback on this exact screen: "the default is to show the
+            // top of the thread, so scrolling to the bottom is a real pain."
+            // Chat-style UIs open on the newest message; jump there on
+            // every load/refresh (initial .task, the reply-composer's
+            // reload, and each poll-fallback tick all funnel through
+            // loadPosts(), so `posts` changing is the one signal that
+            // covers all of them) rather than leaving the reader to find it
+            // themselves each time.
+            ScrollViewReader { proxy in
+                List(posts) { post in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack {
+                            Text(post.user).font(.subheadline.bold())
+                            Spacer()
+                            Text(post.role).font(.caption2).foregroundStyle(.secondary)
+                        }
+                        // Reads the precomputed conversion (see loadPosts())
+                        // -- deliberately never calls plainText(fromHTML:)
+                        // here. Falling back to the raw HTML string if a
+                        // post somehow has no precomputed entry is ugly but
+                        // harmless; calling the converter from inside this
+                        // row closure is not (see plainText(fromHTML:)'s
+                        // doc).
+                        Text(plainTextByHash[post.hash] ?? post.html)
+                            .font(.body)
                     }
-                    // Reads the precomputed conversion (see loadPosts()) --
-                    // deliberately never calls plainText(fromHTML:) here.
-                    // Falling back to the raw HTML string if a post somehow
-                    // has no precomputed entry is ugly but harmless; calling
-                    // the converter from inside this row closure is not (see
-                    // plainText(fromHTML:)'s doc).
-                    Text(plainTextByHash[post.hash] ?? post.html)
-                        .font(.body)
+                    .padding(.vertical, 4)
+                    .id(post.id)
                 }
-                .padding(.vertical, 4)
+                .listStyle(.plain)
+                .onChange(of: posts) { _, newPosts in
+                    guard let lastID = newPosts.last?.id else { return }
+                    proxy.scrollTo(lastID, anchor: .bottom)
+                }
             }
-            .listStyle(.plain)
         }
     }
 
