@@ -38,7 +38,7 @@ struct AgentSessionListView: View {
                             }
                         }
                         Spacer()
-                        statusIcon(for: session.status)
+                        statusIcon(for: session.state)
                     }
                 }
             }

@@ -30,15 +30,15 @@ final class AgentSessionTests: XCTestCase {
         XCTAssertEqual(decoded.posts[1].role, "agent")
     }
 
-    // MARK: - Speculative sessions-list decoding
+    // MARK: - sessions.json decoding
 
     func testDecodesSessionsResponse() throws {
         let json = """
         {
             "ok": true,
             "sessions": [
-                {"root": "abc123", "title": "Fix the widget", "status": "active", "last_activity": "2026-09-12T09:05:00Z"},
-                {"root": "def456", "title": "Refactor auth", "status": "idle", "last_activity": null}
+                {"root_hash": "abc123", "runner_id": "r1", "runner_login": "runner-bot", "runner_type": "codex", "resume_id": "res1", "state": "active", "pending_posts": 0, "last_post": "def000", "last_post_author": "jkridner", "last_post_at": "2026-09-12T09:05:00Z", "workspace": "/tmp/w1"},
+                {"root_hash": "def456", "runner_id": null, "runner_login": null, "runner_type": null, "resume_id": null, "state": "idle", "pending_posts": 1, "last_post": null, "last_post_author": null, "last_post_at": null, "workspace": null}
             ]
         }
         """.data(using: .utf8)!
@@ -47,8 +47,11 @@ final class AgentSessionTests: XCTestCase {
 
         XCTAssertEqual(decoded.sessions.count, 2)
         XCTAssertEqual(decoded.sessions[0].root, "abc123")
+        XCTAssertEqual(decoded.sessions[0].state, "active")
         XCTAssertEqual(decoded.sessions[0].lastActivity, "2026-09-12T09:05:00Z")
+        XCTAssertEqual(decoded.sessions[0].title, "runner-bot · abc123")
         XCTAssertNil(decoded.sessions[1].lastActivity)
+        XCTAssertEqual(decoded.sessions[1].title, "def456")
     }
 
     // MARK: - SSE frame parsing

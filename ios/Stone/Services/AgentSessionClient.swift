@@ -2,10 +2,10 @@ import Foundation
 
 /// Reads the `/ext/agent` JSON surface (docs/design/agent-client-scoping.md
 /// Gap 2.1) through an already-authenticated `RemoteSession`. Kept separate
-/// from `RemoteSession` itself so the endpoint shapes -- two settled
-/// (`session_posts`, `session_live_url`), one still speculative (the
-/// sessions list, see `AgentSessionSummary`) -- live in one place that can
-/// change without touching the generic HTTP/login/CSRF plumbing.
+/// from `RemoteSession` itself so the endpoint shapes -- `session_posts`,
+/// `session_live_url`, and the dedicated `sessions.json` PATH_INFO endpoint
+/// (see `AgentSessionSummary`) -- live in one place that can change without
+/// touching the generic HTTP/login/CSRF plumbing.
 struct AgentSessionClient {
     enum ClientError: LocalizedError {
         case sessionsNotAvailable
@@ -23,12 +23,14 @@ struct AgentSessionClient {
 
     let session: RemoteSession
 
-    /// Lists sessions bound to forum threads on this repo. The endpoint
-    /// shape here is speculative (see `AgentSessionSummary`'s doc) --
-    /// decoding failure reports `.sessionsNotAvailable` rather than a raw
-    /// decode error, since the server may simply not support this yet.
+    /// Lists sessions bound to forum threads on this repo, via the settled
+    /// `sessions.json` PATH_INFO endpoint (see `AgentSessionSummary`'s doc).
+    /// `ext/agent?sessions=1` is a different, HTML-rendered developer page --
+    /// not this JSON contract -- so it must not be used here. Decoding
+    /// failure reports `.sessionsNotAvailable` rather than a raw decode
+    /// error, since an older server may simply not support this yet.
     func fetchSessions() async throws -> [AgentSessionSummary] {
-        let data = try await session.get("ext/agent", query: [URLQueryItem(name: "sessions", value: "1")])
+        let data = try await session.get("ext/agent/sessions.json")
         guard let decoded = try? JSONDecoder().decode(AgentSessionsResponse.self, from: data),
               decoded.ok else {
             throw ClientError.sessionsNotAvailable

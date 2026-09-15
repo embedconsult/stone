@@ -191,9 +191,19 @@ actor RemoteSession {
     // MARK: - Helpers
 
     private func rawGet(_ path: String, query: [URLQueryItem]) async throws -> Data {
-        var comps = URLComponents(url: url(for: path), resolvingAgainstBaseURL: false)!
+        // Both of these CAN legitimately return nil -- URLComponents.url
+        // fails to re-serialize if a query item's value contains characters
+        // it can't safely encode, which used to be a force-unwrap crash
+        // (ticket 9626caf291, "Crash opening session": every GET the
+        // Sessions/thread UI makes -- session list, thread posts, the SSE
+        // URL mint -- funnels through exactly this function). Treat it the
+        // same as any other malformed-request case rather than trapping.
+        guard var comps = URLComponents(url: url(for: path), resolvingAgainstBaseURL: false) else {
+            throw RemoteError.badResponse
+        }
         if !query.isEmpty { comps.queryItems = query }
-        let (data, response) = try await urlSession.data(from: comps.url!)
+        guard let requestURL = comps.url else { throw RemoteError.badResponse }
+        let (data, response) = try await urlSession.data(from: requestURL)
         guard let http = response as? HTTPURLResponse else { throw RemoteError.badResponse }
         switch http.statusCode {
         case 200...299: return data
