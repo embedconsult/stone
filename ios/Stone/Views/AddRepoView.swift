@@ -27,10 +27,12 @@ struct AddRepoView: View {
                     ForEach(Mode.allCases) { Text($0.rawValue).tag($0) }
                 }
                 .pickerStyle(.segmented)
+                .accessibilityIdentifier("addRepoModePicker")
 
                 Section("Repository") {
                     TextField("Name", text: $name)
                         .textInputAutocapitalization(.never)
+                        .accessibilityIdentifier("repoNameField")
                 }
 
                 if mode == .clone {
@@ -68,6 +70,7 @@ struct AddRepoView: View {
                         Task { await submit() }
                     }
                     .disabled(working || !isValid)
+                    .accessibilityIdentifier("addRepoSubmitButton")
                 }
             }
             .overlay {

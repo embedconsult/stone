@@ -16,6 +16,9 @@ struct AgentThreadView: View {
     let session: AgentSessionSummary
 
     @State private var posts: [AgentThreadPost] = []
+    /// Plain-text render of each post's HTML, precomputed in loadPosts() --
+    /// see that function's doc for why this must never happen inside `body`.
+    @State private var plainTextByHash: [String: String] = [:]
     @State private var loadError: String?
 
     @State private var liveStatus: LiveStatus = .connecting
@@ -116,7 +119,13 @@ struct AgentThreadView: View {
                         Spacer()
                         Text(post.role).font(.caption2).foregroundStyle(.secondary)
                     }
-                    Text(Self.plainText(fromHTML: post.html))
+                    // Reads the precomputed conversion (see loadPosts()) --
+                    // deliberately never calls plainText(fromHTML:) here.
+                    // Falling back to the raw HTML string if a post somehow
+                    // has no precomputed entry is ugly but harmless; calling
+                    // the converter from inside this row closure is not (see
+                    // plainText(fromHTML:)'s doc).
+                    Text(plainTextByHash[post.hash] ?? post.html)
                         .font(.body)
                 }
                 .padding(.vertical, 4)
@@ -131,7 +140,31 @@ struct AgentThreadView: View {
     /// Reuses the same system HTML-to-text conversion GpcrEditClient uses
     /// for the same reason: don't hand-roll an HTML parser for arbitrary
     /// server markup.
-    private static func plainText(fromHTML html: String) -> String {
+    ///
+    /// MUST be called from loadPosts() (or similar ordinary async work),
+    /// never from inside `body`/a List row closure. Confirmed by a real
+    /// TestFlight crash (ticket 9626caf291, build 1.0(15)): `NSAttributed-
+    /// String`'s HTML importer runs through `-[NSHTMLReader
+    /// _loadUsingWebKit]`, which pumps its own nested CFRunLoop on the main
+    /// thread. Calling that synchronously from inside this view's `content`
+    /// List row closure meant it ran WHILE SwiftUI's AttributeGraph was
+    /// mid-update for that same node; the nested run loop let something else
+    /// re-enter and mutate the graph, which AttributeGraph detects as a
+    /// hard invariant violation and aborts on (AG::invalidation_precondition
+    /// -> AG::precondition_failure -> abort()) -- SIGABRT, not a Swift trap,
+    /// so no amount of `guard`/`try?` in this function itself could have
+    /// caught it. Moving the call to loadPosts() keeps the same main-thread
+    /// requirement (this API isn't safe to call off-main either) but runs it
+    /// as ordinary top-level async work, not reentrantly nested inside a
+    /// graph transaction -- the result lands in `plainTextByHash` state
+    /// *before* the List/ForEach that reads it ever evaluates.
+    ///
+    /// Not `private`, so StoneTests can reach it via `@testable import` for
+    /// the parts that ARE safely unit-testable (the string conversion
+    /// itself); the crash this function's doc describes is a SwiftUI/
+    /// AttributeGraph re-entrancy issue that only reproduces with a real
+    /// view hierarchy, not something a unit test can exercise.
+    static func plainText(fromHTML html: String) -> String {
         guard let data = html.data(using: .utf8) else { return html }
         let options: [NSAttributedString.DocumentReadingOptionKey: Any] = [
             .documentType: NSAttributedString.DocumentType.html,
@@ -204,7 +237,14 @@ struct AgentThreadView: View {
             return
         }
         do {
-            posts = try await AgentSessionClient(session: remote).fetchPosts(root: session.root)
+            let fetched = try await AgentSessionClient(session: remote).fetchPosts(root: session.root)
+            posts = fetched
+            // Precompute plain-text renders here, not in the List row
+            // closure -- see plainText(fromHTML:)'s doc for why that
+            // distinction is load-bearing, not just tidiness.
+            var texts: [String: String] = [:]
+            for post in fetched { texts[post.hash] = Self.plainText(fromHTML: post.html) }
+            plainTextByHash = texts
             loadError = nil
         } catch {
             loadError = error.localizedDescription

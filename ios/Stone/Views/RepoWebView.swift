@@ -49,6 +49,11 @@ struct RepoWebView: UIViewRepresentable {
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.allowsBackForwardNavigationGestures = true
         webView.navigationDelegate = context.coordinator
+        // Lets StoneUITests wait for this specific WKWebView (not just any
+        // web view that happens to be on screen, e.g. from a sheet) via
+        // app.webViews["repoWebView"] as the "a page actually rendered"
+        // signal for the browse flow (ticket cfcc7e04d5).
+        webView.accessibilityIdentifier = "repoWebView"
         webView.load(URLRequest(url: baseURL))
         controller.webView = webView
         return webView

@@ -32,6 +32,7 @@ struct RepoListView: View {
                         Spacer()
                         syncStatusIcon(for: repo)
                     }
+                    .accessibilityIdentifier("repoRow-\(repo.name)")
                 }
                 // allowsFullSwipe: false so a long swipe can't fire the
                 // destructive action without a deliberate tap + confirmation.
@@ -84,6 +85,7 @@ struct RepoListView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button { showingAdd = true } label: { Image(systemName: "plus") }
+                    .accessibilityIdentifier("addRepoButton")
             }
         }
         .sheet(isPresented: $showingAdd) {
