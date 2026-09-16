@@ -123,36 +123,56 @@ struct AgentThreadView: View {
             // loadPosts(), so `posts` changing is the one signal that
             // covers all of them) rather than leaving the reader to find it
             // themselves each time.
+            //
+            // ScrollView + LazyVStack, not List: the maintainer's follow-up
+            // live-test report on the first .textSelection(.enabled) commit
+            // ("Copy is available, but i cannot seem to select text") showed
+            // the long-press menu working but the drag-to-extend selection
+            // handles not responding. List is backed by a UITableView, whose
+            // own pan gesture recognizer competes with the pan-based
+            // recognizer UITextInteraction installs to drive those handles.
+            // A plain ScrollView has no such competing recognizer.
             ScrollViewReader { proxy in
-                List(posts) { post in
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Text(post.user).font(.subheadline.bold())
-                            Spacer()
-                            Text(post.role).font(.caption2).foregroundStyle(.secondary)
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: 0) {
+                        ForEach(posts) { post in
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack {
+                                    Text(post.user).font(.subheadline.bold())
+                                    Spacer()
+                                    Text(post.role).font(.caption2).foregroundStyle(.secondary)
+                                }
+                                // Reads the precomputed conversion (see loadPosts())
+                                // -- deliberately never calls plainText(fromHTML:)
+                                // here. Falling back to the raw HTML string if a
+                                // post somehow has no precomputed entry is ugly but
+                                // harmless; calling the converter from inside this
+                                // row closure is not (see plainText(fromHTML:)'s
+                                // doc).
+                                // SelectableText, not Text + .textSelection(.enabled):
+                                // two prior on-device reports on this exact ticket
+                                // (builds 67a080d665c0 and 2e2022d7b568) both showed
+                                // the long-press Copy/Share menu working but no
+                                // actual selection UI (word highlight, drag handles)
+                                // -- first inside a List, then inside a ScrollView +
+                                // LazyVStack after the List was swapped out to chase
+                                // this exact bug. Swapping the container twice
+                                // didn't fix it, which points at SwiftUI's
+                                // .textSelection(.enabled) modifier itself, not its
+                                // container, so this drops down to a plain
+                                // UITextView (see SelectableText below), which gets
+                                // real native selection for free -- the same
+                                // mechanism the SwiftUI modifier is a thin wrapper
+                                // over.
+                                SelectableText(text: plainTextByHash[post.hash] ?? post.html)
+                            }
+                            .padding(.vertical, 4)
+                            .padding(.horizontal, 16)
+                            .id(post.id)
+                            Divider()
                         }
-                        // Reads the precomputed conversion (see loadPosts())
-                        // -- deliberately never calls plainText(fromHTML:)
-                        // here. Falling back to the raw HTML string if a
-                        // post somehow has no precomputed entry is ugly but
-                        // harmless; calling the converter from inside this
-                        // row closure is not (see plainText(fromHTML:)'s
-                        // doc).
-                        // .textSelection(.enabled): SwiftUI Text is NOT
-                        // selectable by default -- the maintainer hit this
-                        // directly ("Can't select text in session for
-                        // copying to paste elsewhere"). This is exactly the
-                        // content worth grabbing (hashes, error output,
-                        // commands quoted back from an agent's reply), so
-                        // enable long-press selection/copy on it.
-                        Text(plainTextByHash[post.hash] ?? post.html)
-                            .font(.body)
-                            .textSelection(.enabled)
                     }
-                    .padding(.vertical, 4)
-                    .id(post.id)
                 }
-                .listStyle(.plain)
                 .onChange(of: posts) { _, newPosts in
                     guard let lastID = newPosts.last?.id else { return }
                     proxy.scrollTo(lastID, anchor: .bottom)
@@ -204,6 +224,46 @@ struct AgentThreadView: View {
     }
 
     // MARK: - Composer
+
+    /// Native, reliably selectable post-body rendering. See the call site's
+    /// doc for why this replaced Text + .textSelection(.enabled) -- that
+    /// SwiftUI modifier left the long-press Copy/Share menu working but the
+    /// actual selection UI (highlight + drag handles) unresponsive on-device
+    /// in two different container types. A plain UITextView, non-editable
+    /// and non-scrolling (the ScrollView it lives in already scrolls),
+    /// supplies genuine UIKit text selection instead of leaning on SwiftUI's
+    /// wrapper around it.
+    private struct SelectableText: UIViewRepresentable {
+        let text: String
+
+        func makeUIView(context: Context) -> UITextView {
+            let view = UITextView()
+            view.isEditable = false
+            view.isSelectable = true
+            view.isScrollEnabled = false
+            view.backgroundColor = .clear
+            view.textContainerInset = .zero
+            view.textContainer.lineFragmentPadding = 0
+            view.font = .preferredFont(forTextStyle: .body)
+            view.adjustsFontForContentSizeCategory = true
+            view.setContentCompressionResistancePriority(.required, for: .vertical)
+            return view
+        }
+
+        func updateUIView(_ uiView: UITextView, context: Context) {
+            if uiView.text != text {
+                uiView.text = text
+            }
+        }
+
+        /// Lets SwiftUI size this like any other text view instead of a
+        /// fixed-frame UIKit view -- without this, a UIViewRepresentable
+        /// defaults to a size that ignores the text content entirely.
+        func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
+            let width = proposal.width ?? UIView.layoutFittingCompressedSize.width
+            return uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
+        }
+    }
 
     private var composerSheet: some View {
         VStack(spacing: 20) {
