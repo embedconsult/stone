@@ -28,8 +28,14 @@ struct BuildIdentity {
     }
 }
 
-/// A small non-interactive stamp on every screen so a device install can be
-/// identified without attaching a debugger.
+/// A small stamp on every screen so a device install can be identified
+/// without attaching a debugger. The overlay itself sits in a ZStack over
+/// the whole app (see StoneApp), so it stays non-interactive everywhere
+/// except the label capsule -- otherwise it would block touches to
+/// everything underneath it. That blanket `.allowsHitTesting(false)` also
+/// swallowed long-presses on the label itself, so copying the build number
+/// silently did nothing (ticket 9626caf291); the capsule re-enables hit
+/// testing and text selection for just itself.
 struct BuildIdentityOverlay: View {
     private let identity = BuildIdentity()
 
@@ -43,6 +49,8 @@ struct BuildIdentityOverlay: View {
                     .foregroundStyle(.secondary)
                     .padding(6)
                     .background(.thinMaterial, in: Capsule())
+                    .textSelection(.enabled)
+                    .allowsHitTesting(true)
             }
         }
         .padding(8)
@@ -64,6 +72,10 @@ struct AboutView: View {
                     LabeledContent("Stamped", value: date)
                 }
             }
+            // Unlike the overlay, this Form has no competing hit-testing
+            // override -- the only gap here was never opting in to
+            // selection at all.
+            .textSelection(.enabled)
         }
         .navigationTitle("About")
     }
