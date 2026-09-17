@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 
 /// The home screen: lists repositories and offers add (clone / new) + delete.
@@ -69,6 +70,9 @@ struct RepoListView: View {
         .refreshable {
             await store.syncAll()
         }
+        .task {
+            await runAutoSyncLoop()
+        }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button { showingSettings = true } label: { Image(systemName: "gearshape") }
@@ -126,6 +130,37 @@ struct RepoListView: View {
             Button("Cancel", role: .cancel) { repoToDelete = nil }
         } message: { _ in
             Text("This permanently deletes the local repository file. This cannot be undone.")
+        }
+    }
+
+    /// Foreground-only periodic "Sync All", per the maintainer's request for
+    /// a programmable sync interval with a Low Power Mode opt-out
+    /// (SettingsView's "Automatic Sync" section). Tied to this view's
+    /// `.task` lifecycle, so it runs for as long as the home screen exists
+    /// -- effectively the whole time the app is open, since this is the
+    /// root screen -- and stops the moment the task is cancelled (app
+    /// backgrounded/torn down). This is NOT background execution: Stone
+    /// declares no Background Modes capability and registers no
+    /// BGTaskScheduler task, so nothing syncs while the app isn't in the
+    /// foreground. Reads UserDefaults directly rather than through
+    /// `@AppStorage` so every iteration sees whatever SettingsView most
+    /// recently saved, not a value snapshotted when this loop started.
+    private func runAutoSyncLoop() async {
+        let defaults = UserDefaults.standard
+        while !Task.isCancelled {
+            let minutes = defaults.object(forKey: SettingsView.autoSyncIntervalKey) as? Int
+                ?? SettingsView.defaultAutoSyncIntervalMinutes
+            try? await Task.sleep(for: .seconds(max(minutes, 1) * 60))
+            guard !Task.isCancelled else { return }
+
+            let enabled = defaults.object(forKey: SettingsView.autoSyncEnabledKey) as? Bool ?? false
+            guard enabled else { continue }
+
+            let skipsLowPower = defaults.object(forKey: SettingsView.autoSyncSkipsLowPowerKey) as? Bool ?? true
+            if skipsLowPower && ProcessInfo.processInfo.isLowPowerModeEnabled { continue }
+
+            guard !store.isSyncingAll, store.repos.contains(where: { $0.remoteURL != nil }) else { continue }
+            await store.syncAll()
         }
     }
 
