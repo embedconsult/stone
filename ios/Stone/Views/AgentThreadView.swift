@@ -33,7 +33,7 @@ struct AgentThreadView: View {
     enum LiveStatus: Equatable {
         case connecting
         case live(String)  // last event's human-readable summary
-        case polling       // SSE unavailable -- falling back to sync-on-interval
+        case polling(String?)  // SSE unavailable; the underlying error, if any
         case offline(String)
     }
 
@@ -78,10 +78,15 @@ struct AgentThreadView: View {
             case .live(let summary):
                 Image(systemName: "dot.radiowaves.left.and.right")
                 Text(summary).lineLimit(1)
-            case .polling:
+            case .polling(let reason):
                 Image(systemName: "arrow.triangle.2.circlepath")
-                Text("Live updates unavailable — checking for replies periodically")
-                    .lineLimit(1)
+                if let reason {
+                    Text("Live updates unavailable (\(reason)) — checking for replies periodically")
+                        .lineLimit(1)
+                } else {
+                    Text("Live updates unavailable — checking for replies periodically")
+                        .lineLimit(1)
+                }
             case .offline(let reason):
                 Image(systemName: "wifi.slash")
                 Text(reason).lineLimit(1)
@@ -305,17 +310,18 @@ struct AgentThreadView: View {
     private func connectLive() async {
         guard let remote = makeSession() else {
             liveStatus = .offline("This repository has no remote configured.")
-            startPolling()
+            startPolling(reason: nil)
             return
         }
         do {
             let url = try await AgentSessionClient(session: remote).liveEventsURL(root: session.root)
             eventTask = Task { await streamEvents(from: url) }
         } catch {
-            // No SSE URL available (offline, or the server doesn't expose
-            // live status yet) -- fall back to poll-on-sync per the design
-            // doc's "poll when offline-capable, SSE when connected" rule.
-            startPolling()
+            // Minting the SSE URL failed -- surface why, rather than a bare
+            // "unavailable", since this and a mid-stream drop (below) are
+            // the only two ways to end up polling and were indistinguishable
+            // before this.
+            startPolling(reason: error.localizedDescription)
         }
     }
 
@@ -323,22 +329,22 @@ struct AgentThreadView: View {
     /// that cancelling it on disappear reliably tears down the underlying
     /// connection -- see `AgentEventStream.run`'s doc.
     private func streamEvents(from url: URL) async {
+        var failure: Error?
         do {
             try await AgentEventStream.run(url: url) { event in
                 liveStatus = .live(Self.summarize(event))
             }
         } catch {
-            // Connection dropped or never established -- fall through to
-            // polling below rather than leaving the banner stuck.
+            failure = error
         }
         if !Task.isCancelled {
-            startPolling()
+            startPolling(reason: failure?.localizedDescription)
         }
     }
 
-    private func startPolling() {
+    private func startPolling(reason: String?) {
         guard pollTask == nil else { return }
-        liveStatus = .polling
+        liveStatus = .polling(reason)
         pollTask = Task {
             while !Task.isCancelled {
                 await loadPosts()
