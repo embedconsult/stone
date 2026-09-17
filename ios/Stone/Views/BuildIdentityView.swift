@@ -1,11 +1,11 @@
 import SwiftUI
 
-/// Build metadata stamped into the app's Info.plist by whichever path
-/// produced this build: `scripts/run-on-device.sh` (a Fossil checkin hash,
-/// for tethered device builds) or `ios/ci_scripts/ci_post_clone.sh` (a git
-/// commit SHA, for Xcode Cloud builds from the mirrored git export). Missing
-/// values are expected for ordinary Xcode builds. Not `private` so
-/// `BuildIdentity.label` is reachable from StoneTests via `@testable import`.
+/// Build metadata written into the built app's Info.plist by the "Stamp
+/// Build Identity" Xcode build phase (scripts/stamp-build-identity.sh) --
+/// a Fossil checkin hash for tethered device builds, a git commit SHA for
+/// Xcode Cloud builds. Missing values are expected for ordinary Xcode
+/// builds. Not `private` so `BuildIdentity.label` is reachable from
+/// StoneTests via `@testable import`.
 struct BuildIdentity {
     let commit: String?
     let date: String?
