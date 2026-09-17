@@ -112,26 +112,13 @@ struct AgentThreadView: View {
                                    systemImage: "exclamationmark.triangle",
                                    description: Text(loadError))
         } else {
-            // A thread reads chronologically oldest-first (matches the
-            // server's session_posts order), but a List otherwise opens
-            // scrolled to the top -- the maintainer's own live-testing
-            // feedback on this exact screen: "the default is to show the
-            // top of the thread, so scrolling to the bottom is a real pain."
-            // Chat-style UIs open on the newest message; jump there on
-            // every load/refresh (initial .task, the reply-composer's
-            // reload, and each poll-fallback tick all funnel through
-            // loadPosts(), so `posts` changing is the one signal that
-            // covers all of them) rather than leaving the reader to find it
-            // themselves each time.
-            //
-            // ScrollView + LazyVStack, not List: the maintainer's follow-up
-            // live-test report on the first .textSelection(.enabled) commit
-            // ("Copy is available, but i cannot seem to select text") showed
-            // the long-press menu working but the drag-to-extend selection
-            // handles not responding. List is backed by a UITableView, whose
-            // own pan gesture recognizer competes with the pan-based
-            // recognizer UITextInteraction installs to drive those handles.
-            // A plain ScrollView has no such competing recognizer.
+            // Opens scrolled to the newest post, like a chat UI, not the
+            // oldest (the server's own post order). Every reload path --
+            // initial load, composer send, poll tick -- funnels through
+            // loadPosts(), so a `posts` change alone covers all of them.
+            // ScrollView + LazyVStack rather than List: List's UITableView
+            // pan recognizer competes with UITextInteraction's, which is
+            // what SelectableText below needs for drag-to-select.
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 0) {
@@ -142,28 +129,8 @@ struct AgentThreadView: View {
                                     Spacer()
                                     Text(post.role).font(.caption2).foregroundStyle(.secondary)
                                 }
-                                // Reads the precomputed conversion (see loadPosts())
-                                // -- deliberately never calls plainText(fromHTML:)
-                                // here. Falling back to the raw HTML string if a
-                                // post somehow has no precomputed entry is ugly but
-                                // harmless; calling the converter from inside this
-                                // row closure is not (see plainText(fromHTML:)'s
-                                // doc).
-                                // SelectableText, not Text + .textSelection(.enabled):
-                                // two prior on-device reports on this exact ticket
-                                // (builds 67a080d665c0 and 2e2022d7b568) both showed
-                                // the long-press Copy/Share menu working but no
-                                // actual selection UI (word highlight, drag handles)
-                                // -- first inside a List, then inside a ScrollView +
-                                // LazyVStack after the List was swapped out to chase
-                                // this exact bug. Swapping the container twice
-                                // didn't fix it, which points at SwiftUI's
-                                // .textSelection(.enabled) modifier itself, not its
-                                // container, so this drops down to a plain
-                                // UITextView (see SelectableText below), which gets
-                                // real native selection for free -- the same
-                                // mechanism the SwiftUI modifier is a thin wrapper
-                                // over.
+                                // Precomputed in loadPosts(), never here --
+                                // see plainText(fromHTML:)'s doc for why.
                                 SelectableText(text: plainTextByHash[post.hash] ?? post.html)
                             }
                             .padding(.vertical, 4)
@@ -225,14 +192,9 @@ struct AgentThreadView: View {
 
     // MARK: - Composer
 
-    /// Native, reliably selectable post-body rendering. See the call site's
-    /// doc for why this replaced Text + .textSelection(.enabled) -- that
-    /// SwiftUI modifier left the long-press Copy/Share menu working but the
-    /// actual selection UI (highlight + drag handles) unresponsive on-device
-    /// in two different container types. A plain UITextView, non-editable
-    /// and non-scrolling (the ScrollView it lives in already scrolls),
-    /// supplies genuine UIKit text selection instead of leaning on SwiftUI's
-    /// wrapper around it.
+    /// Non-editable, non-scrolling UITextView (the enclosing ScrollView
+    /// already scrolls): gives real drag-to-select handles, which SwiftUI's
+    /// Text + .textSelection(.enabled) does not produce here.
     private struct SelectableText: UIViewRepresentable {
         let text: String
 
