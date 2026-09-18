@@ -27,16 +27,63 @@ does not cover:
                  fossil_main() calls they return SQLITE_MISUSE(21). Made
                  idempotent so they run exactly once per process.
 
-Scope is deliberately minimal: only request-scoped statics are reset, and only
-the SQLite global-config init is made idempotent. Other process-scoped one-time
-initialization (SQL function registration, table loads, etc.) is intentionally
-left untouched. Regenerate the patch if the pinned Fossil version changes;
-gen-fossil-sources.sh applies it and fails loudly if it no longer applies
-cleanly.
+A third category, added for ticket 3a4b6c6bb8 (SIGABRT in
+manifest_crosslink_begin on the phone's second sync of a session): statics
+that are scoped to *one fossil_main() invocation*, not one HTTP request, so
+they need resetting at the top of fossil_main() itself -- src/main.c, right
+after the existing memset(&g,...) -- rather than at the HTTP entry point,
+since plain CLI-style commands (sync, clone, configuration pull) never go
+through cgi_handle_http_request() at all:
+
+  src/manifest.c manifest_reset_state()  three statics client_sync's manifest
+                 crosslinking touches, all of which Fossil's own comments
+                 already describe as living for "this session" / needing an
+                 atexit() handler to clear -- upstream assumes the process
+                 exits after one invocation, which the embedded server never
+                 does:
+                   manifest_crosslink_busy            asserted ==0 on entry;
+                     a fossil_fatal() mid-crosslink (any error thrown while
+                     applying pulled configuration, e.g. a permission the
+                     login lacks) skips manifest_crosslink_end() and leaves
+                     it set, so the *next* sync's manifest_crosslink_begin()
+                     trips the assert and SIGABRTs the whole process.
+                   seenManifests                       a has-seen Bag whose
+                     own doc comment says it's freed "only from the app's
+                     atexit() handler" -- persists past db_close() even
+                     though the rows it caches state about were served by a
+                     since-closed connection.
+                   manifest_event_triggers_are_enabled guards recreating a
+                     `temp.alert_trigger1` TEMP TRIGGER, which db_close()
+                     drops at the end of *every* invocation (success or
+                     failure) -- the flag surviving means the trigger is
+                     silently never recreated after the first call in the
+                     process, on every subsequent invocation, not just an
+                     aborted one.
+
+  src/db.c       db_reset_delete_on_fail()  found while writing the Linux
+                 reproduction (scripts/linux-crosslink-test-driver.c), not
+                 named in the original crash trace, but the same class of
+                 bug and worse in effect: db_delete_on_failure() registers
+                 a just-created file (a fresh "init"/"clone" destination)
+                 to be deleted if the current command fails, and nothing
+                 ever un-registers it on success. A stale registration from
+                 an earlier, already-successful invocation survives into a
+                 later, unrelated one; the next db_force_rollback() for ANY
+                 reason deletes that earlier file. Confirmed by reproducing
+                 it: the test driver's own freshly-initialized repo was
+                 silently deleted by an unrelated later db_force_rollback()
+                 call before this fix.
+
+Scope is deliberately minimal: only request- and invocation-scoped statics are
+reset, and only the SQLite global-config init is made idempotent. Other
+process-scoped one-time initialization (SQL function registration, table
+loads, etc.) is intentionally left untouched. Regenerate the patch if the
+pinned Fossil version changes; gen-fossil-sources.sh applies it and fails
+loudly if it no longer applies cleanly.
 
 --- a/src/main.c
 +++ b/src/main.c
-@@ -735,8 +735,21 @@
+@@ -735,8 +735,25 @@
                   sqlite3_libversion());
    }
 
@@ -58,6 +105,10 @@ cleanly.
 +    }
 +  }
    memset(&g, 0, sizeof(g));
++  manifest_reset_state(); /* STONE: see src/manifest.c; must run every call,
++                           ** not just after an abort -- see that function's
++                           ** doc. */
++  db_reset_delete_on_fail(); /* STONE: see src/db.c. */
    g.now = time(0);
    g.httpHeader = empty_blob;
 --- a/src/cgi.c
@@ -189,6 +240,75 @@ cleanly.
 +  fossil_free(local_zCurrentPage);
 +  local_zCurrentPage = 0;
 +}
- 
+
  /*
  ** Set the desired $current_page to something other than g.zPath
+--- a/src/manifest.c
++++ b/src/manifest.c
+@@ -432,6 +432,31 @@
+ }
+
+ /*
++** STONE: Reset invocation-scoped manifest-crosslink state to its initial
++** values.
++**
++** manifest_crosslink_busy asserts ==0 on entry to manifest_crosslink_begin();
++** a fossil_fatal() thrown mid-crosslink (e.g. applying a pulled
++** configuration the login lacks permission for) skips
++** manifest_crosslink_end() and leaves it set, so the *next* invocation's
++** manifest_crosslink_begin() trips the assert. seenManifests (a has-seen
++** cache its own comment above says is freed "only from the app's atexit()
++** handler") and manifest_event_triggers_are_enabled (guarding a
++** `temp.alert_trigger1` TEMP TRIGGER that db_close() drops at the end of
++** *every* invocation, success or not) have the same problem: both describe
++** state tied to one SQLite connection but outlive it as plain C statics.
++** Called from the top of every fossil_main() (see src/main.c), not just
++** after an abort -- a normal invocation should already have these at these
++** values, so resetting unconditionally is always safe and needs no path
++** tracking.
++*/
++void manifest_reset_state(void){
++  manifest_crosslink_busy = 0;
++  manifest_event_triggers_are_enabled = 0;
++  bag_clear(&seenManifests);
++}
++
++/*
+ ** Parse a blob into a Manifest object.  The Manifest object
+ ** takes over the input blob and will free it when the
+ ** Manifest object is freed.  Zeros are inserted into the blob
+--- a/src/db.c
++++ b/src/db.c
+@@ -188,6 +188,32 @@
+ }
+
+ /*
++** STONE: Reset the delete-on-failure registry to its initial state.
++**
++** db_delete_on_failure() registers a just-created file (e.g. a brand-new
++** repository from "init"/"clone") to be deleted if the CURRENT command
++** fails before committing -- a safety net against leaving a half-created
++** file behind. Nothing in Fossil ever un-registers an entry on success:
++** upstream doesn't need to, since the process always exits right after.
++** In the embedded in-process server (see scripts/fossil-inprocess.patch),
++** a stale entry from an EARLIER, already-successful invocation survives
++** into a LATER, unrelated one -- the next time db_force_rollback() runs
++** for any reason at all, it deletes that earlier file. Reproduced
++** directly by this repository's own regression test
++** (scripts/linux-crosslink-test-driver.c), which lost a freshly-created
++** repository this way before this fix. Called from the top of every
++** fossil_main() (see src/main.c).
++*/
++void db_reset_delete_on_fail(void){
++  int i;
++  for(i=0; i<db.nDeleteOnFail; i++){
++    fossil_free(db.azDeleteOnFail[i]);
++    db.azDeleteOnFail[i] = 0;
++  }
++  db.nDeleteOnFail = 0;
++}
++
++/*
+ ** Return the transaction nesting depth.  0 means we are currently
+ ** not in a transaction.
+ */
