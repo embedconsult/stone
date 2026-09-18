@@ -74,6 +74,25 @@ through cgi_handle_http_request() at all:
                  silently deleted by an unrelated later db_force_rollback()
                  call before this fix.
 
+  src/tkt.c      ticket_reset_field_cache()  ticket 11018cb484 (SQLITE_ERROR
+                 "no such column: complexity" crosslinking an incoming
+                 ticket change): getAllTicketFields() reads the LOCAL
+                 ticket table's real columns via PRAGMA table_info(ticket)
+                 exactly once per process (a function-local static,
+                 "once" -- hoisted to file scope here as
+                 stoneTicketFieldsOnce so this reset can reach it) and
+                 caches the result for the rest of the process. Stone's
+                 RepoStore.syncAll() runs one fossil_main() invocation per
+                 repo in that SAME process; without this reset, every repo
+                 synced after the first reuses the FIRST repo's field
+                 list, so a column that exists in repo 1's schema but not
+                 repo 2's own schema is wrongly treated as known and
+                 included in repo 2's UPDATE -- instead of being silently
+                 skipped the way the per-repo fieldId() check is supposed
+                 to guarantee. Explains "Sync All: 1 synced, 9 failed":
+                 the first repo synced poisons the cache for the other
+                 nine, regardless of each one's own actual schema.
+
 Scope is deliberately minimal: only request- and invocation-scoped statics are
 reset, and only the SQLite global-config init is made idempotent. Other
 process-scoped one-time initialization (SQL function registration, table
@@ -83,7 +102,7 @@ loudly if it no longer applies cleanly.
 
 --- a/src/main.c
 +++ b/src/main.c
-@@ -735,8 +735,25 @@
+@@ -735,8 +735,26 @@
                   sqlite3_libversion());
    }
 
@@ -109,6 +128,7 @@ loudly if it no longer applies cleanly.
 +                           ** not just after an abort -- see that function's
 +                           ** doc. */
 +  db_reset_delete_on_fail(); /* STONE: see src/db.c. */
++  ticket_reset_field_cache(); /* STONE: see src/tkt.c. */
    g.now = time(0);
    g.httpHeader = empty_blob;
 --- a/src/cgi.c
@@ -312,3 +332,72 @@ loudly if it no longer applies cleanly.
  ** Return the transaction nesting depth.  0 means we are currently
  ** not in a transaction.
  */
+--- a/src/tkt.c
++++ b/src/tkt.c
+@@ -49,6 +49,7 @@
+ static u8 useTicketGenMt = 0;    /* use generated TICKET.MIMETYPE */
+ static u8 useTicketChngGenMt = 0;/* use generated TICKETCHNG.MIMETYPE */
+ static int nTicketBslns = 0;     /* number of valid "baseline for ..." */
++static int stoneTicketFieldsOnce = 0; /* STONE: see ticket_reset_field_cache() */
+ 
+ 
+ /*
+@@ -81,9 +82,8 @@
+ static void getAllTicketFields(void){
+   Stmt q;
+   int i, noRegularMimetype, nBaselines;
+-  static int once = 0;
+-  if( once ) return;
+-  once = 1;
++  if( stoneTicketFieldsOnce ) return;
++  stoneTicketFieldsOnce = 1;
+   nBaselines = 0;
+   db_prepare(&q, "PRAGMA table_info(ticket)");
+   while( db_step(&q)==SQLITE_ROW ){
+@@ -442,6 +442,46 @@
+     return 0;
+   }
+   return g.perm.ModTkt==0 && db_get_boolean("modreq-tkt",0)==1;
++}
++
++/*
++** STONE: Reset the process-lifetime ticket-field cache getAllTicketFields()
++** builds.
++**
++** getAllTicketFields() reads the LOCAL ticket table's actual columns via
++** PRAGMA table_info() exactly once per process (the stoneTicketFieldsOnce
++** guard above -- upstream calls it "once", a plain function-local static;
++** renamed and hoisted to file scope so this function can reach it) and
++** caches the result in aField[]/nField, on the assumption -- true for
++** upstream's one-process-per-command model, false for Stone's embedded
++** server -- that "once per process" also means "once per repository".
++** Stone's RepoStore.syncAll() runs one fossil_main() invocation per repo
++** in the SAME long-lived process; without this reset, every repo synced
++** after the first reuses the FIRST repo's field list, so an incoming
++** ticket change naming a column that exists in the first repo's schema
++** (e.g. "complexity") but not a LATER repo's own schema produces "no such
++** column" instead of being silently skipped the way fieldId()'s
++** local-schema check is supposed to guarantee (ticket 11018cb484). Called
++** from the top of every fossil_main() (see src/main.c).
++*/
++void ticket_reset_field_cache(void){
++  int i;
++  for(i=0; i<nField; i++){
++    fossil_free(aField[i].zName);
++    fossil_free(aField[i].zBsln);
++  }
++  fossil_free(aField);
++  aField = 0;
++  nField = 0;
++  haveTicket = 0;
++  haveTicketCTime = 0;
++  haveTicketChng = 0;
++  haveTicketChngRid = 0;
++  haveTicketChngUser = 0;
++  useTicketGenMt = 0;
++  useTicketChngGenMt = 0;
++  nTicketBslns = 0;
++  stoneTicketFieldsOnce = 0;
+ }
+ 
+ /*
