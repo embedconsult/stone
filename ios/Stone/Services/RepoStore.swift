@@ -97,6 +97,7 @@ final class RepoStore: ObservableObject {
         let result = await engine.run(["clone", authURL, path])
         guard result.succeeded else { throw StoreError.fossil(result.output) }
         await disableLocalauthSetting(at: path)
+        await pullSkinAndTicketConfig(authURL: authURL, path: path)
         if let password, !password.isEmpty {
             CredentialStore.setPassword(password, for: id)
         }
@@ -142,7 +143,26 @@ final class RepoStore: ObservableObject {
         let result = await engine.run(["sync", authURL, "-R", path])
         lastSyncLog = result.output
         guard result.succeeded else { throw StoreError.fossil(result.output) }
+        await pullSkinAndTicketConfig(authURL: authURL, path: path)
         return result.output
+    }
+
+    /// Pulls the remote's skin + ticket configuration into this local
+    /// clone, overwriting whatever it has. `fossil sync` does not touch
+    /// configuration areas like these at all (ticket 5d90457d88, confirmed
+    /// against vendor/fossil-src-2.26/src/sync.c: sync_cmd's configFlags
+    /// stays 0 unless a --config flag is passed, which this app never
+    /// passes) -- without this, a local clone keeps whatever skin existed
+    /// at clone time (fossil clone DOES pull it once, via CONFIGSET_ALL)
+    /// and never sees a later change on the remote. `--overwrite` is
+    /// required, not optional: a plain pull is `INSERT OR IGNORE`
+    /// (configure.c) and silently no-ops on every key this clone already
+    /// has a value for, which is all of them after the first clone.
+    /// Best-effort, matching disableLocalauthSetting's precedent: a
+    /// failure here doesn't block the clone/sync itself.
+    private func pullSkinAndTicketConfig(authURL: String, path: String) async {
+        _ = await engine.run(["configuration", "pull", "skin", authURL, "--overwrite", "-R", path])
+        _ = await engine.run(["configuration", "pull", "ticket", authURL, "--overwrite", "-R", path])
     }
 
     /// Detect the specific ground-truth failure mode behind ticket

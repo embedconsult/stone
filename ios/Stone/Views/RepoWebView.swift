@@ -30,7 +30,7 @@ final class WebViewController: ObservableObject {
     /// change, so nothing would otherwise trigger RepoWebView.updateUIView's
     /// origin check and no retry would actually happen.
     func load(_ url: URL) {
-        webView?.load(URLRequest(url: url))
+        webView?.load(RepoWebView.freshRequest(for: url))
     }
 }
 
@@ -54,7 +54,7 @@ struct RepoWebView: UIViewRepresentable {
         // app.webViews["repoWebView"] as the "a page actually rendered"
         // signal for the browse flow (ticket cfcc7e04d5).
         webView.accessibilityIdentifier = "repoWebView"
-        webView.load(URLRequest(url: baseURL))
+        webView.load(Self.freshRequest(for: baseURL))
         controller.webView = webView
         return webView
     }
@@ -71,11 +71,24 @@ struct RepoWebView: UIViewRepresentable {
         // back to baseURL's root -- only a genuine port change (the signal
         // that a restart happened) should force a reload.
         guard let current = webView.url, origin(of: current) != origin(of: baseURL) else { return }
-        webView.load(URLRequest(url: baseURL))
+        webView.load(Self.freshRequest(for: baseURL))
     }
 
     private func origin(of url: URL) -> String {
         "\(url.scheme ?? "")://\(url.host ?? ""):\(url.port ?? -1)"
+    }
+
+    /// Every load this Swift code drives (first open, a server-restart
+    /// reload, self-heal recovery) bypasses the cache, not just
+    /// `.useProtocolCachePolicy` -- ticket 5d90457d88: a published skin
+    /// change not showing up is at least partly explained by a stale
+    /// `/style.css` served from this WKWebView's own in-memory HTTP cache.
+    /// The `.nonPersistent()` data store in `makeUIView` already means
+    /// nothing survives a fresh visit to this screen, but within one
+    /// session a cached response can still be reused across these
+    /// Swift-driven reloads without this.
+    static func freshRequest(for url: URL) -> URLRequest {
+        URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData)
     }
 
     func makeCoordinator() -> Coordinator {
