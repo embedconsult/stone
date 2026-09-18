@@ -7,17 +7,24 @@
 # Linux counterpart to scripts/mac-demo.sh: compiles the same StoneFossil.c
 # shim the iOS app embeds against a native Linux build of the vendored
 # Fossil core (same source tree, same -Dexit=stone_exit embedding flags),
-# then runs scripts/linux-crosslink-test-driver.c, which drives it through
-# the exact reentry sequence that crashed: a manifest crosslink pass left
-# dangling by an aborted invocation, followed by a normal invocation that
-# also needs to crosslink. See that driver's own comments for why each step
-# is there.
+# then runs two drivers against it:
+#
+#   linux-crosslink-test-driver.c          mechanism-level: directly calls
+#     manifest_crosslink_begin() + db_force_rollback() without the paired
+#     end(), simulating what ANY fossil_fatal() mid-crosslink leaves
+#     behind, then runs ordinary invocations afterward.
+#   linux-crosslink-realsync-driver.c      command-level: the real `sync`
+#     command against a real embedded loopback server, once with a wrong
+#     password (a genuine, offline-reproducible client_sync failure) and
+#     twice more with the correct one.
+#
+# See each driver's own comments for why each step is there.
 #
 # Usage:
 #   scripts/linux-crosslink-test.sh
 #
-# Exit 0 (and prints PASS) only if both post-leak fossil_main() invocations
-# complete without aborting the process.
+# Exit 0 (and prints PASS twice) only if every post-leak fossil_main()
+# invocation, in both drivers, completes without aborting the process.
 #
 set -euo pipefail
 
@@ -84,9 +91,54 @@ done
 ${CC} ${COMMON} ${FOSSIL_OPTIONS} -c "${BRIDGE}/StoneFossil.c" -o "${OBJ}/StoneFossil.o"
 ar rcs "${WORK}/libfossil_linux.a" "${OBJ}"/*.o
 
-echo "Linking crosslink-test driver..."
+echo "Linking crosslink-test drivers..."
 ${CC} ${COMMON} ${FOSSIL_OPTIONS} -c "${REPO_ROOT}/scripts/linux-crosslink-test-driver.c" -o "${OBJ}/driver.o"
 ${CC} -o "${WORK}/crosslink-test" "${OBJ}/driver.o" "${WORK}/libfossil_linux.a" -lz -ldl -lpthread -lm
+${CC} ${COMMON} ${FOSSIL_OPTIONS} -c "${REPO_ROOT}/scripts/linux-crosslink-realsync-driver.c" -o "${OBJ}/realsync-driver.o"
+${CC} -o "${WORK}/crosslink-realsync-test" "${OBJ}/realsync-driver.o" "${WORK}/libfossil_linux.a" -lz -ldl -lpthread -lm
+${CC} ${COMMON} ${FOSSIL_OPTIONS} -c "${REPO_ROOT}/scripts/linux-crosslink-server-helper.c" -o "${OBJ}/server-helper.o"
+${CC} -o "${WORK}/crosslink-server-helper" "${OBJ}/server-helper.o" "${WORK}/libfossil_linux.a" -lz -ldl -lpthread -lm
 
-echo "Running..."
+echo "Running mechanism-level reproduction..."
 "${WORK}/crosslink-test" "${WORK}/run"
+
+echo
+echo "Running real-command (sync) reproduction..."
+mkdir -p "${WORK}/run-realsync"
+SERVER_REPO="${WORK}/run-realsync/server.fossil"
+# Ordinary standalone fossil CLI (no -Dexit=stone_exit) built as a side
+# effect of gen-fossil-sources.sh's ./configure && make -- fine for one-shot
+# setup commands that exit normally, no embedding needed here.
+FOSSIL_CLI="${SRC}/fossil"
+# This sandbox has no resolvable OS user identity (no USER/LOGNAME env,
+# unlike a real login shell), and the standalone CLI -- unlike
+# StoneFossil.c's stone_init_env(), which seeds this for every embedded
+# call -- doesn't default one on its own.
+export USER=stone
+"${FOSSIL_CLI}" init "${SERVER_REPO}" >/dev/null
+# "stone" is the admin user init creates automatically (full Setup
+# capability already) -- just override its random initial password with
+# a known one for the client to log in with.
+"${FOSSIL_CLI}" user password stone correcthorse -R "${SERVER_REPO}"
+
+# The server MUST be a separate process from the client -- see
+# linux-crosslink-server-helper.c's doc for why (StoneFossil.c's single
+# non-recursive lock deadlocks a client syncing against a same-process
+# server).
+"${WORK}/crosslink-server-helper" "${SERVER_REPO}" > "${WORK}/server-port.txt" &
+SERVER_PID=$!
+trap 'kill "${SERVER_PID}" 2>/dev/null || true' EXIT
+for _ in $(seq 1 50); do
+  if [[ -s "${WORK}/server-port.txt" ]]; then break; fi
+  sleep 0.1
+done
+SERVER_PORT="$(cat "${WORK}/server-port.txt")"
+if [[ -z "${SERVER_PORT}" ]]; then
+  echo "ERROR: server helper never printed a port." >&2
+  exit 1
+fi
+echo "server helper (pid ${SERVER_PID}) listening on 127.0.0.1:${SERVER_PORT}"
+
+"${WORK}/crosslink-realsync-test" "${WORK}/run-realsync" "${SERVER_PORT}"
+kill "${SERVER_PID}" 2>/dev/null || true
+trap - EXIT
