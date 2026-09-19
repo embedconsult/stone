@@ -45,6 +45,14 @@ targets:
       - sdk: libz.tbd
       - sdk: libiconv.tbd
       - sdk: libresolv.tbd
+      # MaintainerRequestScanner (ticket 1a55c5d8b8): a second, independent,
+      # read-only connection straight to a repo's .fossil (= SQLite) file --
+      # deliberately not routed through FossilEngine/`fossil sql`, see that
+      # file's doc. A plain system library like libz/libiconv/libresolv
+      # above, not a framework with its own autolinking module map (unlike
+      # WebKit/Speech/AVFoundation elsewhere in this target, which need no
+      # entry here), so it needs the same explicit `sdk:` entry those do.
+      - sdk: libsqlite3.tbd
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: org.beagleboard.stone

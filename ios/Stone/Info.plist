@@ -47,5 +47,29 @@
 	     every build. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<!-- Ticket 1a55c5d8b8: background sync. "fetch" lets iOS wake the app
+	     briefly and periodically to run a BGAppRefreshTask (the normal
+	     "Sync All" case); "processing" lets it grant a longer-running
+	     BGProcessingTask window (e.g. a first sync of a large repo, or
+	     several repos in one wake) when the system judges conditions good
+	     (charging/Wi-Fi are more likely, but not required). Neither needs
+	     an entitlement/capability: these are plain Info.plist keys. See
+	     BackgroundSyncScheduler.swift for where both get registered and
+	     scheduled. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>processing</string>
+	</array>
+	<!-- Every BGTaskScheduler identifier this app submits requests for must
+	     be pre-declared here, or BGTaskScheduler.submit(_:) throws at
+	     runtime (BGTaskScheduler.h). Must match
+	     BackgroundSyncScheduler.refreshTaskIdentifier /
+	     .processingTaskIdentifier exactly. -->
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>org.beagleboard.stone.sync-refresh</string>
+		<string>org.beagleboard.stone.sync-processing</string>
+	</array>
 </dict>
 </plist>

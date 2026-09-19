@@ -25,6 +25,14 @@ enum RepoSyncStatus: Equatable {
 /// that is delegated to `FossilEngine`, with secrets via `CredentialStore`.
 @MainActor
 final class RepoStore: ObservableObject {
+    /// One store for the app's whole lifetime, so the background-sync task
+    /// handlers (BackgroundSyncScheduler, registered at launch before any
+    /// SwiftUI view exists to hand them a `@StateObject` reference) and the
+    /// foreground UI operate on the exact same in-memory repo list rather
+    /// than two independently-loaded copies drifting apart. `StoneApp`'s
+    /// `@StateObject` is seeded from this same instance.
+    static let shared = RepoStore()
+
     @Published private(set) var repos: [Repo] = []
     @Published var lastSyncLog: String = ""
 
@@ -231,7 +239,17 @@ final class RepoStore: ObservableObject {
     /// same `sync(_:)` used by the per-repo screen). Repos without a remote
     /// are skipped. Runs sequentially so we never hammer a remote with
     /// concurrent requests.
-    func syncAll() async {
+    ///
+    /// `shouldContinue` is polled before each repo's sync starts (ticket
+    /// 1a55c5d8b8: a BGTask's expiration handler needs a way to stop this
+    /// loop early). It is deliberately never consulted *during* a repo's
+    /// sync -- Swift `Task` cancellation cannot interrupt the synchronous C
+    /// call inside `FossilEngine.run` once it has started, and `StoneFossil.c`
+    /// only ever leaves its process-wide lock held for the duration of one
+    /// in-flight `fossil_main()` call (see invoke_fossil's comment). So the
+    /// one safe place to stop is between repos, after the current command has
+    /// already returned and released the lock normally -- never mid-command.
+    func syncAll(shouldContinue: () -> Bool = { true }) async {
         guard !isSyncingAll else { return }
         isSyncingAll = true
         syncAllSummary = nil
@@ -242,10 +260,15 @@ final class RepoStore: ObservableObject {
         var authFailed = 0
         var failed = 0
         var skipped = 0
+        var stopped = 0
         var totalSent = 0
         var totalReceived = 0
 
         for repo in repos {
+            guard shouldContinue() else {
+                stopped = repos.count - succeeded - authFailed - failed - skipped
+                break
+            }
             guard repo.remoteURL != nil else {
                 skipped += 1
                 continue
@@ -287,6 +310,7 @@ final class RepoStore: ObservableObject {
         if authFailed > 0 { parts.append("\(authFailed) rejected by server") }
         if failed > 0 { parts.append("\(failed) failed") }
         if skipped > 0 { parts.append("\(skipped) skipped (no remote)") }
+        if stopped > 0 { parts.append("\(stopped) not reached (background time expired)") }
         syncAllSummary = parts.joined(separator: ", ")
     }
 
