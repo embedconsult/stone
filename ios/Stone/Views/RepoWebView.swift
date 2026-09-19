@@ -152,6 +152,12 @@ struct RepoDetailView: View {
     @State private var showingPathPrompt = false
     @State private var debugPathInput = ""
 
+    /// Ticket 1a55c5d8b8: a tapped maintainer-request notification pushes
+    /// this repo (StoneApp) and, once the local server is up, this consumes
+    /// the request's path (e.g. "/tktview/<uuid>") and clears it so a later
+    /// unrelated visit to this repo doesn't replay a stale deep link.
+    @ObservedObject private var deepLinkRouter = DeepLinkRouter.shared
+
     @State private var currentURL: URL?
     @State private var showingReplyComposer = false
     @State private var replyText = ""
@@ -163,6 +169,12 @@ struct RepoDetailView: View {
     /// still gets its own automatic attempt.
     @State private var recoveryAttempted = false
 
+    /// Guards `consumePendingDeepLink()` so it fires at most once per
+    /// `startServer()` run -- `onURLChange` fires again for the very
+    /// redirect that consuming the deep link itself causes, and again for
+    /// any further in-page browsing after that.
+    @State private var deepLinkConsumed = false
+
     /// Owns the live WKWebView reference; see WebViewController's doc.
     @StateObject private var webController = WebViewController()
 
@@ -171,7 +183,7 @@ struct RepoDetailView: View {
             if let url = baseURL {
                 RepoWebView(baseURL: url,
                             controller: webController,
-                            onURLChange: { currentURL = $0; recoveryAttempted = false },
+                            onURLChange: { currentURL = $0; recoveryAttempted = false; consumePendingDeepLink() },
                             onLoadFailure: { message in
                                 Task { await handleLoadFailure(message) }
                             })
@@ -437,6 +449,7 @@ struct RepoDetailView: View {
     private func startServer() async {
         errorText = nil
         recoveryAttempted = false
+        deepLinkConsumed = false
         let path = store.fileURL(for: repo).path
         // Defensive, not just clone-time (RepoStore.cloneRepo already does
         // this for new clones): repos cloned before this fix existed --
@@ -449,6 +462,25 @@ struct RepoDetailView: View {
         } catch {
             errorText = error.localizedDescription
         }
+    }
+
+    /// If a notification deep-linked into this exact repo, navigate to its
+    /// ticket page once the WKWebView has actually finished its first load
+    /// (called from `onURLChange`) -- calling this any earlier would race
+    /// `RepoWebView.makeUIView`, which creates the WKWebView (and hands it to
+    /// `webController`) asynchronously relative to `startServer()` setting
+    /// `baseURL`.
+    private func consumePendingDeepLink() {
+        guard !deepLinkConsumed else { return }
+        deepLinkConsumed = true
+        guard let base = baseURL,
+              let destination = deepLinkRouter.pending,
+              destination.repoID == repo.id else { return }
+        let relative = destination.path.hasPrefix("/") ? String(destination.path.dropFirst()) : destination.path
+        if let url = URL(string: relative, relativeTo: base)?.absoluteURL {
+            webController.load(url)
+        }
+        deepLinkRouter.clear()
     }
 
     /// A page load failing with "Could not connect to the server" (see

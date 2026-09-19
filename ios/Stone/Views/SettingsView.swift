@@ -20,6 +20,13 @@ struct SettingsView: View {
     @AppStorage(autoSyncIntervalKey) private var autoSyncIntervalMinutes = defaultAutoSyncIntervalMinutes
     @AppStorage(autoSyncSkipsLowPowerKey) private var autoSyncSkipsLowPowerMode = true
 
+    /// Ticket 1a55c5d8b8: notify when a repo has a decision or try-this
+    /// waiting for the maintainer. Default true (matches
+    /// NotificationManager.isEnabled's fallback) -- the toggle is how the
+    /// maintainer turns it *off*; permission is asked for separately, once,
+    /// the first time this is (or becomes) true.
+    @AppStorage(NotificationManager.notificationsEnabledKey) private var notificationsEnabled = true
+
     var body: some View {
         NavigationStack {
             Form {
@@ -46,7 +53,19 @@ struct SettingsView: View {
                 } header: {
                     Text("Automatic Sync")
                 } footer: {
-                    Text("Periodically runs Sync All while Stone is open on screen. Stone has no background-refresh capability yet, so nothing syncs while the app isn't in the foreground.")
+                    Text("Periodically runs Sync All while Stone is open on screen, and in the background when Automatic Sync is on and Stone leaves the foreground -- iOS decides exactly when a background sync runs, not this interval.")
+                }
+
+                Section {
+                    Toggle("Maintainer Request Alerts", isOn: $notificationsEnabled)
+                        .onChange(of: notificationsEnabled) { _, enabled in
+                            guard enabled else { return }
+                            Task { await NotificationManager.shared.requestAuthorizationIfNeeded() }
+                        }
+                } header: {
+                    Text("Notifications")
+                } footer: {
+                    Text("After a sync, Stone looks for tickets waiting on you -- a decision to confirm, or something to try. When this is on, it asks iOS once for permission to notify you, then sends one notification per repo when it finds something new. Turn it off to stop asking.")
                 }
 
                 Section {
@@ -55,6 +74,11 @@ struct SettingsView: View {
             }
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
+            .task {
+                if notificationsEnabled {
+                    await NotificationManager.shared.requestAuthorizationIfNeeded()
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") {

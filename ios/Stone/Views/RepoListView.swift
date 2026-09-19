@@ -133,18 +133,19 @@ struct RepoListView: View {
         }
     }
 
-    /// Foreground-only periodic "Sync All", per the maintainer's request for
-    /// a programmable sync interval with a Low Power Mode opt-out
+    /// Foreground periodic "Sync All", per the maintainer's request for a
+    /// programmable sync interval with a Low Power Mode opt-out
     /// (SettingsView's "Automatic Sync" section). Tied to this view's
     /// `.task` lifecycle, so it runs for as long as the home screen exists
     /// -- effectively the whole time the app is open, since this is the
     /// root screen -- and stops the moment the task is cancelled (app
-    /// backgrounded/torn down). This is NOT background execution: Stone
-    /// declares no Background Modes capability and registers no
-    /// BGTaskScheduler task, so nothing syncs while the app isn't in the
-    /// foreground. Reads UserDefaults directly rather than through
-    /// `@AppStorage` so every iteration sees whatever SettingsView most
-    /// recently saved, not a value snapshotted when this loop started.
+    /// backgrounded/torn down). Background execution (ticket 1a55c5d8b8) is
+    /// a separate path -- BackgroundSyncScheduler's BGTaskScheduler tasks --
+    /// that takes over once the app leaves the foreground; `isSyncingAll`
+    /// keeps the two from ever running at the same time. Reads UserDefaults
+    /// directly rather than through `@AppStorage` so every iteration sees
+    /// whatever SettingsView most recently saved, not a value snapshotted
+    /// when this loop started.
     private func runAutoSyncLoop() async {
         let defaults = UserDefaults.standard
         while !Task.isCancelled {
@@ -161,6 +162,11 @@ struct RepoListView: View {
 
             guard !store.isSyncingAll, store.repos.contains(where: { $0.remoteURL != nil }) else { continue }
             await store.syncAll()
+            // Same post-sync scan/notify step a background task runs, so a
+            // decision or try-this found while the app is open in the
+            // foreground surfaces exactly the same way as one found while
+            // backgrounded.
+            await BackgroundSyncScheduler.scanAndNotify(store: store)
         }
     }
 

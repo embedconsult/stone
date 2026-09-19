@@ -41,6 +41,13 @@
 		010E40CA3B094723FFA0671F /* AgentSessionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5141ABB5B1DC5130FACA9C5E /* AgentSessionTests.swift */; };
 		73F59F7C3AA8A47E1C9EAF47 /* StoneUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A9AD9AAEF914205FF8A946D /* StoneUITests.swift */; };
 		BBE54402D1D1CF7B3486B8C5 /* XCTest.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 617096E1A68C1784B86BDF02 /* XCTest.framework */; };
+		1F55BAB422F359E453CDD64A /* BackgroundSyncScheduler.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC471CA563548307B1973E27 /* BackgroundSyncScheduler.swift */; };
+		8BB890CD8F312009BB68874E /* MaintainerRequestScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4D07A3105A7597C5C797658 /* MaintainerRequestScanner.swift */; };
+		180C27EC00CD7EC61836148B /* MaintainerRequestStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3D33A87BD6464721FE2A386 /* MaintainerRequestStore.swift */; };
+		F5CF596AD2E826E777192657 /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F478424E78656147DD03954 /* NotificationManager.swift */; };
+		EA75B2F5A71E5BCC15C990A6 /* DeepLinkRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EBA844DDE5D7699C78EF218 /* DeepLinkRouter.swift */; };
+		C8398D9753F0C9AF1ABF1D93 /* MaintainerRequestScannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5CBC2F3733E6F06A44BC147 /* MaintainerRequestScannerTests.swift */; };
+		1E52E6E207FD25DD28C49C46 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 98C38E4D31B96A67D0F28F98 /* libsqlite3.tbd */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -100,6 +107,13 @@
 		5141ABB5B1DC5130FACA9C5E /* AgentSessionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentSessionTests.swift; sourceTree = "<group>"; };
 		3A9AD9AAEF914205FF8A946D /* StoneUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoneUITests.swift; sourceTree = "<group>"; };
 		AA669E3B3DB6DE5193D8D7E3 /* StoneUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = StoneUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		BC471CA563548307B1973E27 /* BackgroundSyncScheduler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackgroundSyncScheduler.swift; sourceTree = "<group>"; };
+		E4D07A3105A7597C5C797658 /* MaintainerRequestScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MaintainerRequestScanner.swift; sourceTree = "<group>"; };
+		E3D33A87BD6464721FE2A386 /* MaintainerRequestStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MaintainerRequestStore.swift; sourceTree = "<group>"; };
+		3F478424E78656147DD03954 /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
+		3EBA844DDE5D7699C78EF218 /* DeepLinkRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLinkRouter.swift; sourceTree = "<group>"; };
+		C5CBC2F3733E6F06A44BC147 /* MaintainerRequestScannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MaintainerRequestScannerTests.swift; sourceTree = "<group>"; };
+		98C38E4D31B96A67D0F28F98 /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -111,6 +125,7 @@
 				F950237064962AB4095E2A53 /* libz.tbd in Frameworks */,
 				DC4CFDC297E0BF35ECFC4B95 /* libiconv.tbd in Frameworks */,
 				22B6C84F80DB4982A027A752 /* libresolv.tbd in Frameworks */,
+				1E52E6E207FD25DD28C49C46 /* libsqlite3.tbd in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -185,6 +200,7 @@
 				F9EA2AB04F790C358050645B /* libiconv.tbd */,
 				9E014CFB9EA1256EB886BFB0 /* libresolv.tbd */,
 				4D25049A3A3EBDD505883DBD /* libz.tbd */,
+				98C38E4D31B96A67D0F28F98 /* libsqlite3.tbd */,
 				617096E1A68C1784B86BDF02 /* XCTest.framework */,
 			);
 			name = Frameworks;
@@ -222,6 +238,7 @@
 				E8C022B8B9872071DA204C69 /* FossilEngineServerTests.swift */,
 				51C5229E290E03D30B958641 /* BuildIdentityTests.swift */,
 				5141ABB5B1DC5130FACA9C5E /* AgentSessionTests.swift */,
+				C5CBC2F3733E6F06A44BC147 /* MaintainerRequestScannerTests.swift */,
 			);
 			path = StoneTests;
 			sourceTree = "<group>";
@@ -279,6 +296,11 @@
 				1858E564976384C5C2DEE5A7 /* PhraseRecognizer.swift */,
 				D2C1D074773AD93EB677F4C2 /* AgentSessionClient.swift */,
 				6B277362D78A780578707BDC /* AgentEventStream.swift */,
+				BC471CA563548307B1973E27 /* BackgroundSyncScheduler.swift */,
+				E4D07A3105A7597C5C797658 /* MaintainerRequestScanner.swift */,
+				E3D33A87BD6464721FE2A386 /* MaintainerRequestStore.swift */,
+				3F478424E78656147DD03954 /* NotificationManager.swift */,
+				3EBA844DDE5D7699C78EF218 /* DeepLinkRouter.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -408,6 +430,11 @@
 				CD814A19F83720619A36C70A /* AgentEventStream.swift in Sources */,
 				E8EB8CF08211B151271D2EA6 /* AgentSessionListView.swift in Sources */,
 				C918DD7193A0B4E30856C781 /* AgentThreadView.swift in Sources */,
+				1F55BAB422F359E453CDD64A /* BackgroundSyncScheduler.swift in Sources */,
+				8BB890CD8F312009BB68874E /* MaintainerRequestScanner.swift in Sources */,
+				180C27EC00CD7EC61836148B /* MaintainerRequestStore.swift in Sources */,
+				F5CF596AD2E826E777192657 /* NotificationManager.swift in Sources */,
+				EA75B2F5A71E5BCC15C990A6 /* DeepLinkRouter.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -419,6 +446,7 @@
 				E0B666C794E05E8DFFE26B5C /* FossilEngineServerTests.swift in Sources */,
 				C93147D7DDE725E6D119F89E /* BuildIdentityTests.swift in Sources */,
 				010E40CA3B094723FFA0671F /* AgentSessionTests.swift in Sources */,
+				C8398D9753F0C9AF1ABF1D93 /* MaintainerRequestScannerTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
