@@ -53,7 +53,7 @@
 	     BGProcessingTask window (e.g. a first sync of a large repo, or
 	     several repos in one wake) when the system judges conditions good
 	     (charging/Wi-Fi are more likely, but not required). Neither needs
-	     an entitlement/capability -- these are plain Info.plist keys. See
+	     an entitlement/capability: these are plain Info.plist keys. See
 	     BackgroundSyncScheduler.swift for where both get registered and
 	     scheduled. -->
 	<key>UIBackgroundModes</key>
