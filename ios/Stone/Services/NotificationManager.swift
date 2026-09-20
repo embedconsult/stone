@@ -63,7 +63,11 @@ final class NotificationManager: NSObject {
         if newRequests.count == 1, let only = newRequests.first {
             content.title = only.title
             content.body = only.kind.displayName
-            content.userInfo = ["repoID": repo.id.uuidString, "path": "/tktview/\(only.ticketUUID)"]
+            // Carries the repo id plus the ticket uuid (not a path) --
+            // ticket 98c06fb7a7: `TicketOpener` verifies the ticket is
+            // actually in this repo's clone before routing to it, so the
+            // handler needs the uuid on its own, not a pre-built local path.
+            content.userInfo = ["repoID": repo.id.uuidString, "ticketUUID": only.ticketUUID]
         } else {
             content.title = "\(newRequests.count) requests"
             let kinds = Set(newRequests.map(\.kind.displayName)).sorted()
@@ -104,12 +108,14 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         [.banner, .badge, .sound, .list]
     }
 
-    /// Tapping the notification: route to the repo's ticket page
-    /// (RepoWebView), via DeepLinkRouter -- RepoListView pushes the repo,
-    /// RepoDetailView loads the path once its local server is up. A
-    /// coalesced notification (several requests, no single ticket to name)
-    /// carries `"screen": "requests"` instead of a repo/path pair, and opens
-    /// the Requests screen (ticket 4c75227cc7) rather than any one repo.
+    /// Tapping the notification: resolve to the repo's ticket page via
+    /// `TicketOpener` (ticket 98c06fb7a7) -- verifies the ticket is actually
+    /// in that repo's local clone (syncing once if not) before routing
+    /// there, and falls back to the server's own ticket page over https
+    /// rather than ever opening an empty local one. A coalesced notification
+    /// (several requests, no single ticket to name) carries
+    /// `"screen": "requests"` instead of a repo/ticket pair, and opens the
+    /// Requests screen (ticket 4c75227cc7) rather than any one repo.
     @MainActor
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
@@ -122,7 +128,8 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         }
         guard let repoIDString = info["repoID"] as? String,
               let repoID = UUID(uuidString: repoIDString),
-              let path = info["path"] as? String else { return }
-        DeepLinkRouter.shared.route(repoID: repoID, path: path)
+              let ticketUUID = info["ticketUUID"] as? String,
+              let repo = RepoStore.shared.repos.first(where: { $0.id == repoID }) else { return }
+        await TicketOpener.open(repo: repo, ticketUUID: ticketUUID)
     }
 }
