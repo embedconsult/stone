@@ -76,9 +76,16 @@ final class NotificationManager: NSObject {
     }
 }
 
+/// @MainActor here isn't just style: these are `async` implementations of
+/// ObjC-bridged `UNUserNotificationCenterDelegate` methods, so the compiler
+/// synthesizes a completion-handler-based bridge for UIKit to call, and that
+/// bridge invokes the completion handler on whatever executor the async body
+/// finished on. Off the main actor, UIKit asserts (SIGABRT) because it
+/// requires that completion handler on the main thread -- ticket 0878b97fc2.
 extension NotificationManager: UNUserNotificationCenterDelegate {
     /// Without this, a notification that arrives while Stone is already in
     /// the foreground is suppressed entirely by default.
+    @MainActor
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
@@ -89,6 +96,7 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
     /// Tapping the notification: route to the repo's ticket page
     /// (RepoWebView), via DeepLinkRouter -- RepoListView pushes the repo,
     /// RepoDetailView loads the path once its local server is up.
+    @MainActor
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
@@ -97,6 +105,6 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         guard let repoIDString = info["repoID"] as? String,
               let repoID = UUID(uuidString: repoIDString),
               let path = info["path"] as? String else { return }
-        await DeepLinkRouter.shared.route(repoID: repoID, path: path)
+        DeepLinkRouter.shared.route(repoID: repoID, path: path)
     }
 }
