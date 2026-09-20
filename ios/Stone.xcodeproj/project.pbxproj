@@ -47,6 +47,7 @@
 		F5CF596AD2E826E777192657 /* NotificationManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F478424E78656147DD03954 /* NotificationManager.swift */; };
 		EA75B2F5A71E5BCC15C990A6 /* DeepLinkRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EBA844DDE5D7699C78EF218 /* DeepLinkRouter.swift */; };
 		C8398D9753F0C9AF1ABF1D93 /* MaintainerRequestScannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5CBC2F3733E6F06A44BC147 /* MaintainerRequestScannerTests.swift */; };
+		52556CB5356072A481342262 /* NotificationManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1576379C5888B887C5F45A62 /* NotificationManagerTests.swift */; };
 		1E52E6E207FD25DD28C49C46 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 98C38E4D31B96A67D0F28F98 /* libsqlite3.tbd */; };
 /* End PBXBuildFile section */
 
@@ -113,6 +114,7 @@
 		3F478424E78656147DD03954 /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
 		3EBA844DDE5D7699C78EF218 /* DeepLinkRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLinkRouter.swift; sourceTree = "<group>"; };
 		C5CBC2F3733E6F06A44BC147 /* MaintainerRequestScannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MaintainerRequestScannerTests.swift; sourceTree = "<group>"; };
+		1576379C5888B887C5F45A62 /* NotificationManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManagerTests.swift; sourceTree = "<group>"; };
 		98C38E4D31B96A67D0F28F98 /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
@@ -239,6 +241,7 @@
 				51C5229E290E03D30B958641 /* BuildIdentityTests.swift */,
 				5141ABB5B1DC5130FACA9C5E /* AgentSessionTests.swift */,
 				C5CBC2F3733E6F06A44BC147 /* MaintainerRequestScannerTests.swift */,
+				1576379C5888B887C5F45A62 /* NotificationManagerTests.swift */,
 			);
 			path = StoneTests;
 			sourceTree = "<group>";
@@ -447,6 +450,7 @@
 				C93147D7DDE725E6D119F89E /* BuildIdentityTests.swift in Sources */,
 				010E40CA3B094723FFA0671F /* AgentSessionTests.swift in Sources */,
 				C8398D9753F0C9AF1ABF1D93 /* MaintainerRequestScannerTests.swift in Sources */,
+				52556CB5356072A481342262 /* NotificationManagerTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
