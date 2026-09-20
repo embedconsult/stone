@@ -1,5 +1,4 @@
 import Foundation
-import SQLite3
 
 /// One thing in a repo's ticket table the maintainer needs to look at:
 /// either a decision (`design_input = 'confirm'`, which includes the
@@ -65,27 +64,32 @@ struct MaintainerRequest: Identifiable, Equatable {
 /// Scans a Fossil repository's local `.fossil` file for open maintainer
 /// requests, straight from the SQLite file on disk.
 ///
-/// Deliberately does NOT go through `FossilEngine`/`stone_fossil_run`: the
-/// only Fossil CLI command that can run an arbitrary read query (`fossil
-/// sql`) hands off to the vendored sqlite3 command-line shell, whose
-/// argument/stdin handling is not something `StoneFossil.c`'s one-shot,
-/// stdin-unredirected `invoke_fossil` can drive safely -- a query passed as
-/// a bare positional argument is indistinguishable, to that shell, from a
-/// database *filename* to open (see sqlcmd.c's `cmd_sqlite3`: `-R`'s value
-/// is stripped from argv before the remaining positional argument reaches
-/// the sqlite3 shell), and a query passed via stdin would need a real pipe
-/// this bridge doesn't wire up. Either way risks the single process-wide
-/// Fossil lock (StoneFossil.c's `g_fossil_lock`) being held by something
-/// waiting on input that will never arrive -- exactly the "wedged"
-/// FossilEngine failure mode this unit's ticket warns against.
+/// Deliberately does NOT go through `FossilEngine.run`/`stone_fossil_run`
+/// with a `fossil sql` command: the only Fossil CLI command that can run an
+/// arbitrary read query hands off to the vendored sqlite3 command-line
+/// shell, whose argument/stdin handling is not something `StoneFossil.c`'s
+/// one-shot, stdin-unredirected `invoke_fossil` can drive safely -- a query
+/// passed as a bare positional argument is indistinguishable, to that shell,
+/// from a database *filename* to open (see sqlcmd.c's `cmd_sqlite3`: `-R`'s
+/// value is stripped from argv before the remaining positional argument
+/// reaches the sqlite3 shell), and a query passed via stdin would need a
+/// real pipe this bridge doesn't wire up. Either way risks the single
+/// process-wide Fossil lock (StoneFossil.c's `g_fossil_lock`) being held by
+/// something waiting on input that will never arrive -- exactly the
+/// "wedged" FossilEngine failure mode this unit's ticket warns against.
 ///
-/// A `.fossil` file is a plain SQLite database, so a second, independent,
-/// read-only `sqlite3_open_v2` connection (via the system libsqlite3, a
-/// different library instance than the one statically linked inside
-/// FossilCore.xcframework) is both simpler and safe: SQLite supports
-/// concurrent readers against one file, and `SQLITE_OPEN_READONLY` here
-/// never takes a write lock that could contend with the embedded server or
-/// a sync in progress.
+/// Instead, this goes through `stone_fossil_query` (ticket f0c612c027): a
+/// small dedicated bridge entry point that opens the `.fossil` file
+/// read-only using Fossil's OWN bundled SQLite -- the same library instance
+/// `fossil_main()` itself uses. An earlier version of this scanner opened a
+/// second, independent connection directly via iOS's system `libsqlite3`,
+/// reasoning that two SQLite connections to one file are fine for
+/// concurrent readers -- true in general, but not when they come from two
+/// *different* SQLite library instances in the same process: Fossil's own
+/// authorizer/protection state and the scanner's connection crossed wires,
+/// and the first write Fossil attempted after a sync (its post-sync
+/// `DELETE FROM unsent` cleanup) was refused with SQLITE_AUTH. Routing
+/// through the bridge keeps exactly one SQLite in the process.
 enum MaintainerRequestScanner {
     /// `design_input`/`human_verify` are custom ticket fields this project's
     /// own Fossil repos are configured with (RepoStore.pullTicketConfig
@@ -95,18 +99,7 @@ enum MaintainerRequestScanner {
     /// nothing to report" (per the ticket: "Repos without the design_input
     /// column simply contribute nothing").
     static func scan(fossilPath: String) -> [MaintainerRequest] {
-        var db: OpaquePointer?
-        // Immutable + read-only: this must never block on, or contend
-        // with, a write lock the embedded Fossil engine or an in-flight
-        // sync might be holding.
-        let flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX
-        guard sqlite3_open_v2(fossilPath, &db, flags, nil) == SQLITE_OK, let db else {
-            sqlite3_close(db)
-            return []
-        }
-        defer { sqlite3_close(db) }
-
-        let columns = Set(tableColumns(db, table: "ticket"))
+        let columns = Set(queryRows(fossilPath, "PRAGMA table_info(ticket)").map { $0[1] })
         let hasDesignInput = columns.contains("design_input")
         let hasHumanVerify = columns.contains("human_verify")
         guard hasDesignInput || hasHumanVerify else { return [] }
@@ -119,8 +112,8 @@ enum MaintainerRequestScanner {
 
         // Optional columns are appended in this fixed order, so their result
         // indices are computed once here rather than re-derived per row.
-        let designInputIndex: Int32? = hasDesignInput ? 4 : nil
-        let humanVerifyIndex: Int32? = hasHumanVerify ? (hasDesignInput ? 5 : 4) : nil
+        let designInputIndex: Int? = hasDesignInput ? 4 : nil
+        let humanVerifyIndex: Int? = hasHumanVerify ? (hasDesignInput ? 5 : 4) : nil
 
         let sql = """
         SELECT tkt_uuid, title, tkt_mtime, comment\(hasDesignInput ? ", design_input" : "")\(hasHumanVerify ? ", human_verify" : "")
@@ -128,21 +121,15 @@ enum MaintainerRequestScanner {
         WHERE \(predicates.joined(separator: " OR "))
         """
 
-        var stmt: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK, let stmt else {
-            return []
-        }
-        defer { sqlite3_finalize(stmt) }
-
         var results: [MaintainerRequest] = []
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            let uuid = text(stmt, 0)
+        for row in queryRows(fossilPath, sql) {
+            let uuid = row[0]
             guard !uuid.isEmpty else { continue }
-            let title = text(stmt, 1)
-            let mtime = text(stmt, 2)
-            let comment = text(stmt, 3)
-            let designInput = designInputIndex.map { text(stmt, $0) } ?? ""
-            let humanVerify = humanVerifyIndex.map { text(stmt, $0) } ?? ""
+            let title = row[1]
+            let mtime = row[2]
+            let comment = row[3]
+            let designInput = designInputIndex.map { row[$0] } ?? ""
+            let humanVerify = humanVerifyIndex.map { row[$0] } ?? ""
             let isDecision = hasDesignInput && designInput == "confirm"
             let isMergeGate = isDecision && comment.contains("OCX-MERGE-GATE")
             let isTryThis = hasHumanVerify && !humanVerify.isEmpty && humanVerify != "none"
@@ -157,24 +144,27 @@ enum MaintainerRequestScanner {
         return results
     }
 
-    private static func tableColumns(_ db: OpaquePointer, table: String) -> [String] {
-        var stmt: OpaquePointer?
-        // `table` is always the literal "ticket" from this file -- never
-        // caller/user input -- so string interpolation into PRAGMA (which
-        // does not accept bound parameters for identifiers) is safe here.
-        guard sqlite3_prepare_v2(db, "PRAGMA table_info(\(table))", -1, &stmt, nil) == SQLITE_OK,
-              let stmt else { return [] }
-        defer { sqlite3_finalize(stmt) }
-
-        var names: [String] = []
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            names.append(text(stmt, 1)) // column 1 of table_info is "name"
+    /// Runs `sql` against `fossilPath` through `stone_fossil_query` and
+    /// splits its result encoding (rows separated by the ASCII Record
+    /// Separator, columns within a row by the ASCII Unit Separator -- never
+    /// '\n'/'\t', since ticket text can legitimately contain either) into
+    /// `[[String]]`. Empty array on any failure (missing file, bad SQL,
+    /// unreadable, no design_input/human_verify support) -- matches this
+    /// scanner's existing "nothing to report" behavior for absent/
+    /// incompatible repos.
+    private static func queryRows(_ fossilPath: String, _ sql: String) -> [[String]] {
+        var outPtr: UnsafeMutablePointer<CChar>?
+        let rc = fossilPath.withCString { pathC in
+            sql.withCString { sqlC in
+                stone_fossil_query(pathC, sqlC, &outPtr)
+            }
         }
-        return names
-    }
-
-    private static func text(_ stmt: OpaquePointer, _ index: Int32) -> String {
-        guard let cString = sqlite3_column_text(stmt, index) else { return "" }
-        return String(cString: cString)
+        defer { if let outPtr { free(outPtr) } }
+        guard rc == 0, let outPtr else { return [] }
+        let text = String(cString: outPtr)
+        guard !text.isEmpty else { return [] }
+        return text.split(separator: "\u{1E}").map {
+            $0.split(separator: "\u{1F}", omittingEmptySubsequences: false).map(String.init)
+        }
     }
 }

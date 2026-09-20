@@ -17,6 +17,11 @@
 #     command against a real embedded loopback server, once with a wrong
 #     password (a genuine, offline-reproducible client_sync failure) and
 #     twice more with the correct one.
+#   linux-ticket-cache-driver.c            ticket 11018cb484's stale
+#     per-process ticket-field cache across two repos with different schemas.
+#   linux-query-driver.c                   ticket f0c612c027's
+#     stone_fossil_query() -- MaintainerRequestScanner's read path -- against
+#     a real .fossil file, using Fossil's own bundled SQLite exclusively.
 #
 # See each driver's own comments for why each step is there.
 #
@@ -100,6 +105,8 @@ ${CC} ${COMMON} ${FOSSIL_OPTIONS} -c "${REPO_ROOT}/scripts/linux-crosslink-serve
 ${CC} -o "${WORK}/crosslink-server-helper" "${OBJ}/server-helper.o" "${WORK}/libfossil_linux.a" -lz -ldl -lpthread -lm
 ${CC} ${COMMON} ${FOSSIL_OPTIONS} -c "${REPO_ROOT}/scripts/linux-ticket-cache-driver.c" -o "${OBJ}/ticket-cache-driver.o"
 ${CC} -o "${WORK}/ticket-cache-test" "${OBJ}/ticket-cache-driver.o" "${WORK}/libfossil_linux.a" -lz -ldl -lpthread -lm
+${CC} ${COMMON} ${FOSSIL_OPTIONS} -c "${REPO_ROOT}/scripts/linux-query-driver.c" -o "${OBJ}/query-driver.o"
+${CC} -o "${WORK}/query-test" "${OBJ}/query-driver.o" "${WORK}/libfossil_linux.a" -lz -ldl -lpthread -lm
 
 echo "Running mechanism-level reproduction..."
 "${WORK}/crosslink-test" "${WORK}/run"
@@ -108,6 +115,11 @@ echo
 echo "Running ticket-field-cache reproduction (ticket 11018cb484)..."
 bash "${REPO_ROOT}/scripts/linux-ticket-cache-setup.sh" "${WORK}/run-tkcache"
 "${WORK}/ticket-cache-test" "${WORK}/run-tkcache/repoA.fossil" "${WORK}/run-tkcache/repoB.fossil"
+
+echo
+echo "Running stone_fossil_query reproduction (ticket f0c612c027)..."
+mkdir -p "${WORK}/run-query"
+"${WORK}/query-test" "${WORK}/run-query"
 
 echo
 echo "Running real-command (sync) reproduction..."

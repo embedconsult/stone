@@ -45,14 +45,16 @@ targets:
       - sdk: libz.tbd
       - sdk: libiconv.tbd
       - sdk: libresolv.tbd
-      # MaintainerRequestScanner (ticket 1a55c5d8b8): a second, independent,
-      # read-only connection straight to a repo's .fossil (= SQLite) file --
-      # deliberately not routed through FossilEngine/`fossil sql`, see that
-      # file's doc. A plain system library like libz/libiconv/libresolv
-      # above, not a framework with its own autolinking module map (unlike
-      # WebKit/Speech/AVFoundation elsewhere in this target, which need no
-      # entry here), so it needs the same explicit `sdk:` entry those do.
-      - sdk: libsqlite3.tbd
+      # NOTE (ticket f0c612c027): this target deliberately does NOT link
+      # libsqlite3.tbd. MaintainerRequestScanner used to (ticket 1a55c5d8b8),
+      # for a second, independent, read-only connection straight to a
+      # repo's .fossil (= SQLite) file -- but a second SQLite library in the
+      # same process as FossilCore.xcframework's own bundled SQLite crossed
+      # authorizer/protection state with Fossil's, and made Fossil's own
+      # post-sync writes fail with SQLITE_AUTH. The scanner now reads
+      # through `stone_fossil_query` (FossilBridge/StoneFossil.h), which
+      # uses Fossil's own bundled SQLite -- see that file's doc. Do not
+      # re-add this entry without also re-auditing that fix.
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: org.beagleboard.stone

@@ -206,6 +206,14 @@ struct RepoListView: View {
             Image(systemName: "key.slash.fill")
                 .foregroundStyle(.orange)
                 .accessibilityLabel("Server refused the push: \(reason)")
+        case .localFailure(let reason):
+            // Ticket f0c612c027: a LOCAL failure inside this phone's own
+            // clone (e.g. a crossed-wires SQLite authorizer error) -- kept
+            // visually distinct from .authFailed so it is never mistaken
+            // for the server refusing anything.
+            Image(systemName: "ladybug.fill")
+                .foregroundStyle(.red)
+                .accessibilityLabel("Sync failed on this phone: \(reason)")
         case .failure(let message):
             Image(systemName: "exclamationmark.circle.fill")
                 .foregroundStyle(.red)

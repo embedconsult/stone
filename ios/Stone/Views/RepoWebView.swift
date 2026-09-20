@@ -536,14 +536,20 @@ struct RepoDetailView: View {
         do {
             let output = try await store.sync(repo)
             await rescanAfterSync()
-            // Ground truth (ticket 94ea2161f5): a stale/rotated remote
-            // password let a sync report a plausible "sent" count while the
-            // server actually refused the content -- Fossil's own client
-            // can silently disable pushing mid-session without printing
-            // anything. Check for that BEFORE trusting parseArtifactCounts'
-            // numbers, so a rejected push reads as a loud warning, not as
-            // "Sync complete."
-            if let reason = RepoStore.detectAuthFailure(output) {
+            // Ground truth (ticket f0c612c027): a LOCAL SQLite failure
+            // (e.g. this phone's own clone rejecting a post-sync write with
+            // SQLITE_AUTH) must be checked BEFORE detectAuthFailure -- its
+            // "not authorized" text would otherwise be misread as the
+            // server refusing the push. Ground truth (ticket 94ea2161f5): a
+            // stale/rotated remote password let a sync report a plausible
+            // "sent" count while the server actually refused the content --
+            // Fossil's own client can silently disable pushing mid-session
+            // without printing anything. Check for that BEFORE trusting
+            // parseArtifactCounts' numbers, so a rejected push reads as a
+            // loud warning, not as "Sync complete."
+            if let reason = RepoStore.detectLocalSQLiteFailure(output) {
+                syncMessage = "⚠️ Sync failed on this phone: \(reason)."
+            } else if let reason = RepoStore.detectAuthFailure(output) {
                 syncMessage = "⚠️ Server refused the push: \(reason)."
             } else if let counts = RepoStore.parseArtifactCounts(output) {
                 // A zero exit code only means the round-trip completed --
@@ -556,8 +562,9 @@ struct RepoDetailView: View {
                 syncMessage = "Sync complete."
             }
         } catch {
-            if case .fossil(let msg)? = error as? RepoStore.StoreError,
-               let reason = RepoStore.detectAuthFailure(msg) {
+            if case .fossil(let msg)? = error as? RepoStore.StoreError, let reason = RepoStore.detectLocalSQLiteFailure(msg) {
+                syncMessage = "⚠️ Sync failed on this phone: \(reason)."
+            } else if case .fossil(let msg)? = error as? RepoStore.StoreError, let reason = RepoStore.detectAuthFailure(msg) {
                 syncMessage = "⚠️ Server refused the push: \(reason)."
             } else {
                 syncMessage = error.localizedDescription
