@@ -75,7 +75,7 @@ struct RepoListView: View {
         }
         .refreshable {
             await store.syncAll()
-            await BackgroundSyncScheduler.scanAndNotify(store: store)
+            await BackgroundSyncScheduler.scanAndNotify(store: store, receivedCounts: store.lastSyncReceivedCounts)
         }
         .task {
             await runAutoSyncLoop()
@@ -95,7 +95,7 @@ struct RepoListView: View {
                 Button {
                     Task {
                         await store.syncAll()
-                        await BackgroundSyncScheduler.scanAndNotify(store: store)
+                        await BackgroundSyncScheduler.scanAndNotify(store: store, receivedCounts: store.lastSyncReceivedCounts)
                     }
                 } label: {
                     if store.isSyncingAll { ProgressView() }
@@ -183,7 +183,7 @@ struct RepoListView: View {
             // decision or try-this found while the app is open in the
             // foreground surfaces exactly the same way as one found while
             // backgrounded.
-            await BackgroundSyncScheduler.scanAndNotify(store: store)
+            await BackgroundSyncScheduler.scanAndNotify(store: store, receivedCounts: store.lastSyncReceivedCounts)
         }
     }
 

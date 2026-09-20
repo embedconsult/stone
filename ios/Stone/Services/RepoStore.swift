@@ -48,6 +48,27 @@ final class RepoStore: ObservableObject {
     @Published private(set) var isSyncingAll = false
     @Published private(set) var syncAllSummary: String?
 
+    /// Per-repo "Artifacts received" tally from the most recent `syncAll()`
+    /// run -- every repo `sync(_:)` touches merges its count in here, and
+    /// `syncAll()` resets this to `[:]` right before its loop so, once the
+    /// loop finishes, it reflects exactly that run and nothing older. Read
+    /// by `BackgroundSyncScheduler.scanAndNotify` (via `RepoListView`/
+    /// `BackgroundSyncScheduler.runOnce`, both of which call `syncAll()`
+    /// immediately before reading it) to skip the maintainer-request scan
+    /// for repos that couldn't possibly have anything new this round
+    /// (ticket d4d02c604f). A single-repo sync (`RepoWebView.runSync`) does
+    /// NOT use this property -- it builds its own one-entry
+    /// `[repo.id: received]` map instead, so an unrelated repo's tally from
+    /// some earlier `syncAll()` can never leak into that decision.
+    @Published private(set) var lastSyncReceivedCounts: [UUID: Int] = [:]
+
+    /// Clears `lastSyncReceivedCounts` -- called at the start of `syncAll()`
+    /// so a leftover count from an earlier run doesn't survive into this
+    /// one for a repo that, say, gets skipped this time (no remote).
+    private func resetReceivedTally() {
+        lastSyncReceivedCounts = [:]
+    }
+
     private let engine = FossilEngine.shared
     private let fileManager = FileManager.default
 
@@ -117,7 +138,13 @@ final class RepoStore: ObservableObject {
         if let password, !password.isEmpty {
             CredentialStore.setPassword(password, for: id)
         }
-        repos.append(Repo(id: id, name: name, fileName: fileName, remoteURL: remoteURL))
+        // Both pulls just ran above, so record them now -- otherwise this
+        // repo's very first real `sync()` would see `nil` timestamps and
+        // immediately consider both "due", pulling a second time for no
+        // reason seconds after the clone already fetched them fresh.
+        let now = Date()
+        repos.append(Repo(id: id, name: name, fileName: fileName, remoteURL: remoteURL,
+                           lastTicketConfigPullAt: now, lastSkinPullAt: now))
         save()
     }
 
@@ -147,7 +174,77 @@ final class RepoStore: ObservableObject {
         _ = await engine.run(["settings", "localauth", "off", "-R", path])
     }
 
+    /// Minimum time between proactive (not error-triggered) `configuration
+    /// pull` refreshes of either ticket config or skin, per repo (ticket
+    /// d4d02c604f). A wall-clock cap rather than comparing against the
+    /// remote's actual config hash: learning the remote's current hash
+    /// needs its own round trip to the server, which costs as much as just
+    /// doing the pull -- there is no cheaper "is it stale" check available,
+    /// so capping how often we bother asking is what actually saves time.
+    static let configPullMinInterval: TimeInterval = 24 * 60 * 60
+
+    /// Whether it has been long enough since `lastPullAt` (or it has never
+    /// happened) to allow another proactive `configuration pull`.
+    nonisolated static func isConfigPullDue(lastPullAt: Date?, now: Date = Date()) -> Bool {
+        guard let lastPullAt else { return true }
+        return now.timeIntervalSince(lastPullAt) >= configPullMinInterval
+    }
+
+    /// Whether `sync`'s raw output shows the specific failure ticket
+    /// 11018cb484 was about: this clone's local TICKET table is missing a
+    /// column the incoming ticket artifact's crosslinker just tried to
+    /// write, because `configuration pull ticket` was never run against
+    /// this clone (or the remote's schema changed since it last was).
+    /// Fossil surfaces this as a plain SQLite "no such column: ..." error
+    /// out of the crosslinking step (src/tkt.c).
+    nonisolated static func indicatesMissingTicketColumn(_ output: String) -> Bool {
+        output.lowercased().contains("no such column")
+    }
+
+    /// Formats a one-line summary of how long each phase of a sync took and
+    /// appends it to Fossil's own output, so the maintainer can see where
+    /// the wall-clock time actually goes (ticket d4d02c604f: sync got ~5x
+    /// slower once a ticket-config pull, and the rebuild it triggers, ran
+    /// before every sync). This is meant to stay in every build permanently,
+    /// not be a one-off debug print.
+    nonisolated static func appendPhaseTimings(
+        to output: String,
+        ticketConfigPullSeconds: TimeInterval?,
+        syncSeconds: TimeInterval,
+        skinPullSeconds: TimeInterval?
+    ) -> String {
+        func phase(_ name: String, _ seconds: TimeInterval?) -> String {
+            guard let seconds else { return "\(name) skipped" }
+            return "\(name) \(String(format: "%.2f", seconds))s"
+        }
+        let line = "[Stone timing] " + [
+            phase("ticket-config pull", ticketConfigPullSeconds),
+            phase("sync", syncSeconds),
+            phase("skin pull", skinPullSeconds),
+        ].joined(separator: " | ")
+        return output.isEmpty ? line : output + "\n\n" + line
+    }
+
+    /// Appends the maintainer-request scan's own timing to `lastSyncLog`,
+    /// right after whichever repo's sync-phase timings are already there, so
+    /// the "View Log" sheet shows where a whole "Sync All" spent its time,
+    /// not just the last repo's own sync/config-pull phases.
+    func appendRequestScanTiming(ran: Bool, seconds: TimeInterval) {
+        let line = ran
+            ? "[Stone timing] request scan \(String(format: "%.2f", seconds))s"
+            : "[Stone timing] request scan skipped (nothing received)"
+        lastSyncLog = lastSyncLog.isEmpty ? line : lastSyncLog + "\n" + line
+    }
+
     /// Pull + push against the repository's configured remote.
+    ///
+    /// Ticket config used to be pulled (with a full local TICKET table
+    /// rebuild) before every single sync of every repo -- ticket 11018cb484
+    /// fixed a real self-healing gap but made every sync pay for it, which
+    /// is the bulk of the ~5x slowdown ticket d4d02c604f reports. Now the
+    /// pull only happens when sync's own crosslinker proves it's actually
+    /// needed (a missing column), or when a day has passed since the last
+    /// refresh -- see `isConfigPullDue` and `indicatesMissingTicketColumn`.
     @discardableResult
     func sync(_ repo: Repo) async throws -> String {
         guard let remote = repo.remoteURL, !remote.isEmpty else {
@@ -156,17 +253,76 @@ final class RepoStore: ObservableObject {
         let password = CredentialStore.password(for: repo.id)
         let authURL = try Self.urlWithPassword(remote, password: password)
         let path = fileURL(for: repo).path
-        // Before, not after: a stale local ticket schema makes sync's own
-        // incoming-artifact crosslinking fail (an incoming ticket change
-        // naming a column this clone's table doesn't have yet).
-        await pullTicketConfig(authURL: authURL, path: path)
-        let result = await engine.run(["sync", authURL, "-R", path])
-        lastSyncLog = result.output
-        guard result.succeeded else { throw StoreError.fossil(result.output) }
-        // Skin stays after: it's cosmetic, not something that can fail
-        // sync's own crosslinking the way a schema mismatch can.
-        await pullSkinConfig(authURL: authURL, path: path)
-        return result.output
+
+        var ticketConfigPullSeconds: TimeInterval?
+        var skinPullSeconds: TimeInterval?
+
+        var syncStartedAt = Date()
+        var result = await engine.run(["sync", authURL, "-R", path])
+        var syncSeconds = Date().timeIntervalSince(syncStartedAt)
+
+        if !result.succeeded, Self.indicatesMissingTicketColumn(result.output) {
+            // Self-heal (ticket 11018cb484's original case): sync itself
+            // just proved this clone's schema is stale, so pull-and-rebuild
+            // now and retry once, rather than leaving the repo broken until
+            // some future once-a-day window opens.
+            let pullStartedAt = Date()
+            await pullTicketConfig(authURL: authURL, path: path)
+            ticketConfigPullSeconds = Date().timeIntervalSince(pullStartedAt)
+            recordTicketConfigPull(for: repo.id)
+
+            syncStartedAt = Date()
+            result = await engine.run(["sync", authURL, "-R", path])
+            syncSeconds += Date().timeIntervalSince(syncStartedAt)
+        } else if result.succeeded, Self.isConfigPullDue(lastPullAt: repo.lastTicketConfigPullAt) {
+            // Not broken, but ticket config also carries report/edit setup
+            // that can legitimately drift without ever producing a sync
+            // error -- refresh it at most once a day so that isn't silently
+            // stale forever either.
+            let pullStartedAt = Date()
+            await pullTicketConfig(authURL: authURL, path: path)
+            ticketConfigPullSeconds = Date().timeIntervalSince(pullStartedAt)
+            recordTicketConfigPull(for: repo.id)
+        }
+
+        guard result.succeeded else {
+            lastSyncLog = Self.appendPhaseTimings(
+                to: result.output,
+                ticketConfigPullSeconds: ticketConfigPullSeconds,
+                syncSeconds: syncSeconds,
+                skinPullSeconds: nil
+            )
+            throw StoreError.fossil(lastSyncLog)
+        }
+
+        if Self.isConfigPullDue(lastPullAt: repo.lastSkinPullAt) {
+            let pullStartedAt = Date()
+            await pullSkinConfig(authURL: authURL, path: path)
+            skinPullSeconds = Date().timeIntervalSince(pullStartedAt)
+            recordSkinPull(for: repo.id)
+        }
+
+        let annotated = Self.appendPhaseTimings(
+            to: result.output,
+            ticketConfigPullSeconds: ticketConfigPullSeconds,
+            syncSeconds: syncSeconds,
+            skinPullSeconds: skinPullSeconds
+        )
+        lastSyncLog = annotated
+        lastSyncReceivedCounts[repo.id] = Self.parseArtifactCounts(result.output)?.received ?? 0
+        return annotated
+    }
+
+    private func recordTicketConfigPull(for id: UUID, at date: Date = Date()) {
+        guard let idx = repos.firstIndex(where: { $0.id == id }) else { return }
+        repos[idx].lastTicketConfigPullAt = date
+        save()
+    }
+
+    private func recordSkinPull(for id: UUID, at date: Date = Date()) {
+        guard let idx = repos.firstIndex(where: { $0.id == id }) else { return }
+        repos[idx].lastSkinPullAt = date
+        save()
     }
 
     /// Pulls the remote's ticket configuration (schema + report/edit
@@ -297,6 +453,7 @@ final class RepoStore: ObservableObject {
         isSyncingAll = true
         syncAllSummary = nil
         syncStatuses = [:]
+        resetReceivedTally()
         defer { isSyncingAll = false }
 
         var succeeded = 0

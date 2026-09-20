@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 import WebKit
 
@@ -520,14 +521,17 @@ struct RepoDetailView: View {
         }
     }
 
-    /// Rescans every repo (not just this one) after a single-repo sync, same
-    /// as "Sync All" -- ticket 4c75227cc7: the badge/Requests screen must be
-    /// recomputed from the current scan after every sync, and
-    /// `MaintainerRequestStore.scanAfterSync` replaces its whole result set
-    /// wholesale, so scanning only this repo would make every other repo's
-    /// requests vanish until the next full-store scan.
-    private func rescanAfterSync() async {
-        await BackgroundSyncScheduler.scanAndNotify(store: store)
+    /// Recomputes the badge/Requests screen after a single-repo sync, same
+    /// as "Sync All" -- ticket 4c75227cc7: they must be recomputed from the
+    /// current scan after every sync. `MaintainerRequestStore.scanAfterSync`
+    /// is still handed every repo in the store (never a subset -- it
+    /// replaces its whole result set wholesale, so dropping a repo would
+    /// make its requests vanish), but `receivedCounts` limits the actual
+    /// per-repo rescan work to just this one repo (ticket d4d02c604f): every
+    /// other repo's tally is implicitly zero this round, so its existing
+    /// rows are carried over instead of re-scanned.
+    private func rescanAfterSync(receivedCounts: [UUID: Int]) async {
+        await BackgroundSyncScheduler.scanAndNotify(store: store, receivedCounts: receivedCounts)
     }
 
     private func runSync() async {
@@ -535,7 +539,8 @@ struct RepoDetailView: View {
         defer { syncing = false }
         do {
             let output = try await store.sync(repo)
-            await rescanAfterSync()
+            let received = RepoStore.parseArtifactCounts(output)?.received ?? 0
+            await rescanAfterSync(receivedCounts: [repo.id: received])
             // Ground truth (ticket f0c612c027): a LOCAL SQLite failure
             // (e.g. this phone's own clone rejecting a post-sync write with
             // SQLITE_AUTH) must be checked BEFORE detectAuthFailure -- its

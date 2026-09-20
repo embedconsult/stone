@@ -81,7 +81,19 @@ final class MaintainerRequestStore: ObservableObject {
     /// `visibleRequests` and `openRequestCount` are replaced wholesale from
     /// what's passed in, so scanning only some repos would make the others'
     /// requests vanish until the next full scan.
-    func scanAfterSync(repos: [Repo], fossilPath: (Repo) -> String) async -> [ScanOutcome] {
+    ///
+    /// `receivedCounts`, when given (ticket d4d02c604f), restricts the
+    /// actual per-repo `MaintainerRequestScanner.scan` -- a full pass over
+    /// that repo's ticket table -- to repos whose count is nonzero; a repo
+    /// that received nothing this round can't have anything new, so its
+    /// existing rows in `visibleRequests` are carried over unchanged instead
+    /// of re-scanning to reproduce the same result. `nil` (the default)
+    /// scans every repo unconditionally, same as before this ticket.
+    func scanAfterSync(
+        repos: [Repo],
+        receivedCounts: [UUID: Int]? = nil,
+        fossilPath: (Repo) -> String
+    ) async -> [ScanOutcome] {
         var outcomes: [ScanOutcome] = []
         var updatedSeen = seenByRepo
         var updatedFirstSeen = firstSeenByRepo
@@ -89,6 +101,11 @@ final class MaintainerRequestStore: ObservableObject {
         var rows: [Row] = []
 
         for repo in repos {
+            if let receivedCounts, (receivedCounts[repo.id] ?? 0) == 0 {
+                rows.append(contentsOf: visibleRequests.filter { $0.repo.id == repo.id })
+                continue
+            }
+
             let path = fossilPath(repo)
             let matches = await Task.detached(priority: .utility) {
                 MaintainerRequestScanner.scan(fossilPath: path)

@@ -107,19 +107,37 @@ enum BackgroundSyncScheduler {
         guard !store.isSyncingAll, store.repos.contains(where: { $0.remoteURL != nil }) else { return }
 
         await store.syncAll(shouldContinue: shouldContinue)
-        await scanAndNotify(store: store)
+        await scanAndNotify(store: store, receivedCounts: store.lastSyncReceivedCounts)
     }
 
     /// Also called by the foreground loop (RepoListView) after its own
     /// `syncAll()`, so a decision or try-this made while the app was open
     /// notifies exactly the same way as one found in the background.
+    ///
+    /// `receivedCounts` is `store.lastSyncReceivedCounts` after a "Sync
+    /// All", or a single `[repo.id: received]` entry after a one-repo sync
+    /// (`RepoWebView.runSync`) -- either way, it's this round's tally, not
+    /// history. When every entry is zero (or the map is empty), nothing
+    /// that just happened could have changed any repo's ticket table, so
+    /// the whole scan is skipped (ticket d4d02c604f) rather than paying for
+    /// a full sqlite pass over every repo just to reproduce the same
+    /// `visibleRequests` that's already showing.
     @MainActor
-    static func scanAndNotify(store: RepoStore) async {
+    static func scanAndNotify(store: RepoStore, receivedCounts: [UUID: Int]) async {
         let requestStore = MaintainerRequestStore.shared
+        guard receivedCounts.values.contains(where: { $0 > 0 }) else {
+            store.appendRequestScanTiming(ran: false, seconds: 0)
+            await NotificationManager.shared.updateBadge(requestStore.openRequestCount)
+            return
+        }
+
+        let scanStartedAt = Date()
         let outcomes = await requestStore.scanAfterSync(
             repos: store.repos,
+            receivedCounts: receivedCounts,
             fossilPath: { store.fileURL(for: $0).path }
         )
+        store.appendRequestScanTiming(ran: true, seconds: Date().timeIntervalSince(scanStartedAt))
         for outcome in outcomes {
             await NotificationManager.shared.post(for: outcome.repo, newRequests: outcome.newRequests)
         }
