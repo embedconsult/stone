@@ -164,6 +164,22 @@ final class MaintainerRequestScannerTests: XCTestCase {
         XCTAssertEqual(results.map(\.kind), [.tryThis])
     }
 
+    // MARK: - Ticket existence check (TicketOpener, ticket 98c06fb7a7)
+
+    func testHasTicketIsTrueForAKnownUUID() throws {
+        let path = try makeFixture(rows: [
+            (uuid: "known1", title: "A ticket", mtime: "1", comment: "", designInput: nil, humanVerify: nil),
+        ])
+        XCTAssertTrue(MaintainerRequestScanner.hasTicket(fossilPath: path, uuid: "known1"))
+    }
+
+    func testHasTicketIsFalseForAUUIDNotInThisClone() throws {
+        let path = try makeFixture(rows: [
+            (uuid: "known1", title: "A ticket", mtime: "1", comment: "", designInput: nil, humanVerify: nil),
+        ])
+        XCTAssertFalse(MaintainerRequestScanner.hasTicket(fossilPath: path, uuid: "missing1"))
+    }
+
     // MARK: - Seen-set diffing (MaintainerRequestStore.diff)
 
     private func request(_ uuid: String, mtime: String) -> MaintainerRequest {

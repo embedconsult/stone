@@ -201,4 +201,62 @@ final class MaintainerRequestStoreTests: XCTestCase {
         _ = await store.scanAfterSync(repos: [repo.repo], fossilPath: { _ in repo.path })
         XCTAssertEqual(store.openRequestCount, 0)
     }
+
+    // MARK: - Server list is the source of truth (ticket 98c06fb7a7)
+
+    /// The console dashboard's Needs-you list, not the local clone's own
+    /// scan, is what the maintainer should see whenever the server is
+    /// reachable -- even though the local `.fossil` file here has its own
+    /// (different) matching ticket, the server's list wins outright.
+    func testServerListBeatsLocalScanWhenReachable() async throws {
+        let path = try makeFixture(rows: [(uuid: "local1", mtime: "1", designInput: "confirm")])
+        let repo = makeRepo(named: "repo-a", at: path)
+        let serverCards = [MaintainerRequest(ticketUUID: "server1", title: "From server", mtime: "1", isMergeGate: false)]
+
+        let store = MaintainerRequestStore(defaults: defaults)
+        let outcomes = await store.scanAfterSync(
+            repos: [repo.repo],
+            fossilPath: { _ in repo.path },
+            serverList: { _ in serverCards })
+
+        XCTAssertEqual(store.visibleRequests.map(\.request.ticketUUID), ["server1"])
+        XCTAssertEqual(outcomes.first?.newRequests.map(\.ticketUUID), ["server1"])
+    }
+
+    /// A merge card whose merge is delegated to the coordinator is already
+    /// excluded from the console's own Needs-you list (ticket c974ede9a4).
+    /// The local clone here is stale and still has it flagged -- but once
+    /// the server is reachable, it must never surface, in either the
+    /// visible rows or a notification outcome.
+    func testDelegatedMergeCardNeverNotifiesWhenServerOmitsIt() async throws {
+        let path = try makeFixture(rows: [(uuid: "gate1", mtime: "1", designInput: "confirm")])
+        let repo = makeRepo(named: "repo-a", at: path)
+
+        let store = MaintainerRequestStore(defaults: defaults)
+        let outcomes = await store.scanAfterSync(
+            repos: [repo.repo],
+            fossilPath: { _ in repo.path },
+            serverList: { _ in [] })
+
+        XCTAssertTrue(store.visibleRequests.isEmpty)
+        XCTAssertEqual(store.openRequestCount, 0)
+        XCTAssertTrue(outcomes.isEmpty)
+    }
+
+    /// A repo with no remote (or any other unreachable server) still falls
+    /// back to the local scan -- the default `serverList` behavior,
+    /// unchanged from every other test in this file that never passes one.
+    func testFallsBackToLocalScanWhenServerListReturnsNil() async throws {
+        let path = try makeFixture(rows: [(uuid: "a1", mtime: "1", designInput: "confirm")])
+        let repo = makeRepo(named: "repo-a", at: path)
+
+        let store = MaintainerRequestStore(defaults: defaults)
+        let outcomes = await store.scanAfterSync(
+            repos: [repo.repo],
+            fossilPath: { _ in repo.path },
+            serverList: { _ in nil })
+
+        XCTAssertEqual(store.visibleRequests.map(\.request.ticketUUID), ["a1"])
+        XCTAssertEqual(outcomes.first?.newRequests.map(\.ticketUUID), ["a1"])
+    }
 }

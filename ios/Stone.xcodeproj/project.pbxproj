@@ -51,6 +51,9 @@
 		1E52E6E207FD25DD28C49C46 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 98C38E4D31B96A67D0F28F98 /* libsqlite3.tbd */; };
 		8A733E2E0AEDBB77ED87AFA7 /* RequestsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 932119BCC1A12F715DAD9B65 /* RequestsView.swift */; };
 		0C1F75EB5A1BC62460487F19 /* MaintainerRequestStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F7090437A380669878819A7 /* MaintainerRequestStoreTests.swift */; };
+		1659320489DC190FBDD8F232 /* NeedsYouClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31F547A2A5A5E54F572CCA59 /* NeedsYouClient.swift */; };
+		1CFDE3D2A6BAEB9FB69713E4 /* TicketOpener.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22C77704D31CD3BC4686952D /* TicketOpener.swift */; };
+		FBC5250259F06AC7CD7B19BE /* TicketOpenerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4D7E4948668360CDAF2677C1 /* TicketOpenerTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -120,6 +123,9 @@
 		98C38E4D31B96A67D0F28F98 /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
 		932119BCC1A12F715DAD9B65 /* RequestsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RequestsView.swift; sourceTree = "<group>"; };
 		2F7090437A380669878819A7 /* MaintainerRequestStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MaintainerRequestStoreTests.swift; sourceTree = "<group>"; };
+		31F547A2A5A5E54F572CCA59 /* NeedsYouClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NeedsYouClient.swift; sourceTree = "<group>"; };
+		22C77704D31CD3BC4686952D /* TicketOpener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TicketOpener.swift; sourceTree = "<group>"; };
+		4D7E4948668360CDAF2677C1 /* TicketOpenerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TicketOpenerTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -247,6 +253,7 @@
 				C5CBC2F3733E6F06A44BC147 /* MaintainerRequestScannerTests.swift */,
 				1576379C5888B887C5F45A62 /* NotificationManagerTests.swift */,
 				2F7090437A380669878819A7 /* MaintainerRequestStoreTests.swift */,
+				4D7E4948668360CDAF2677C1 /* TicketOpenerTests.swift */,
 			);
 			path = StoneTests;
 			sourceTree = "<group>";
@@ -310,6 +317,8 @@
 				E3D33A87BD6464721FE2A386 /* MaintainerRequestStore.swift */,
 				3F478424E78656147DD03954 /* NotificationManager.swift */,
 				3EBA844DDE5D7699C78EF218 /* DeepLinkRouter.swift */,
+				31F547A2A5A5E54F572CCA59 /* NeedsYouClient.swift */,
+				22C77704D31CD3BC4686952D /* TicketOpener.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -445,6 +454,8 @@
 				F5CF596AD2E826E777192657 /* NotificationManager.swift in Sources */,
 				EA75B2F5A71E5BCC15C990A6 /* DeepLinkRouter.swift in Sources */,
 				8A733E2E0AEDBB77ED87AFA7 /* RequestsView.swift in Sources */,
+				1659320489DC190FBDD8F232 /* NeedsYouClient.swift in Sources */,
+				1CFDE3D2A6BAEB9FB69713E4 /* TicketOpener.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -459,6 +470,7 @@
 				C8398D9753F0C9AF1ABF1D93 /* MaintainerRequestScannerTests.swift in Sources */,
 				52556CB5356072A481342262 /* NotificationManagerTests.swift in Sources */,
 				0C1F75EB5A1BC62460487F19 /* MaintainerRequestStoreTests.swift in Sources */,
+				FBC5250259F06AC7CD7B19BE /* TicketOpenerTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

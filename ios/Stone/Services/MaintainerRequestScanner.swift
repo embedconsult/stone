@@ -157,6 +157,30 @@ enum MaintainerRequestScanner {
         return results
     }
 
+    /// Read-only existence check for a single ticket uuid, on the same
+    /// second-connection discipline as `scan` above -- used by `TicketOpener`
+    /// (ticket 98c06fb7a7) to verify a deep link's target actually exists in
+    /// this clone before routing a WebView to it, since Fossil renders an
+    /// empty ticket page rather than erroring when it doesn't.
+    static func hasTicket(fossilPath: String, uuid: String) -> Bool {
+        var db: OpaquePointer?
+        let flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX
+        guard sqlite3_open_v2(fossilPath, &db, flags, nil) == SQLITE_OK, let db else {
+            sqlite3_close(db)
+            return false
+        }
+        defer { sqlite3_close(db) }
+
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "SELECT 1 FROM ticket WHERE tkt_uuid = ? LIMIT 1", -1, &stmt, nil) == SQLITE_OK,
+              let stmt else { return false }
+        defer { sqlite3_finalize(stmt) }
+
+        let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self) // SQLITE_TRANSIENT
+        sqlite3_bind_text(stmt, 1, uuid, -1, transient)
+        return sqlite3_step(stmt) == SQLITE_ROW
+    }
+
     private static func tableColumns(_ db: OpaquePointer, table: String) -> [String] {
         var stmt: OpaquePointer?
         // `table` is always the literal "ticket" from this file -- never

@@ -73,15 +73,30 @@ final class MaintainerRequestStore: ObservableObject {
         self.dismissedByRepo = Self.load(from: defaults, key: Self.dismissedDefaultsKey)
     }
 
-    /// Scan every repo's local `.fossil` file and refresh the seen-set,
-    /// `visibleRequests`, and `openRequestCount`. Call this after any "Sync
-    /// All" run (foreground loop or a background task) -- never before a
-    /// sync, since it reads whatever the repo's local clone currently has on
-    /// disk. Always pass every repo in the store, never a subset: both
+    /// Scan every repo and refresh the seen-set, `visibleRequests`, and
+    /// `openRequestCount`. Call this after any "Sync All" run (foreground
+    /// loop or a background task) -- never before a sync, since the local
+    /// fallback reads whatever the repo's local clone currently has on disk.
+    /// Always pass every repo in the store, never a subset: both
     /// `visibleRequests` and `openRequestCount` are replaced wholesale from
     /// what's passed in, so scanning only some repos would make the others'
     /// requests vanish until the next full scan.
-    func scanAfterSync(repos: [Repo], fossilPath: (Repo) -> String) async -> [ScanOutcome] {
+    ///
+    /// Ticket 98c06fb7a7: for each repo, `serverList` (the console
+    /// dashboard's own Needs-you list -- `NeedsYouClient`, source of truth)
+    /// is tried first; only when it returns `nil` (unreachable: no remote,
+    /// network failure, or an older server without this endpoint) does this
+    /// fall back to the local `.fossil` scan (`MaintainerRequestScanner`).
+    /// Because each repo's `matches` wholesale-replaces whatever this store
+    /// showed for it before, a repo whose server is reachable never keeps a
+    /// local-scan-only match around (e.g. a merge card delegated away, or a
+    /// ticket already cleared server-side but still sitting in a stale
+    /// clone) -- it simply isn't in `matches` once the server list is used.
+    func scanAfterSync(
+        repos: [Repo],
+        fossilPath: (Repo) -> String,
+        serverList: (Repo) async -> [MaintainerRequest]? = Self.defaultServerList
+    ) async -> [ScanOutcome] {
         var outcomes: [ScanOutcome] = []
         var updatedSeen = seenByRepo
         var updatedFirstSeen = firstSeenByRepo
@@ -89,10 +104,15 @@ final class MaintainerRequestStore: ObservableObject {
         var rows: [Row] = []
 
         for repo in repos {
-            let path = fossilPath(repo)
-            let matches = await Task.detached(priority: .utility) {
-                MaintainerRequestScanner.scan(fossilPath: path)
-            }.value
+            let matches: [MaintainerRequest]
+            if let serverMatches = await serverList(repo) {
+                matches = serverMatches
+            } else {
+                let path = fossilPath(repo)
+                matches = await Task.detached(priority: .utility) {
+                    MaintainerRequestScanner.scan(fossilPath: path)
+                }.value
+            }
 
             let repoKey = repo.id.uuidString
 
@@ -141,6 +161,22 @@ final class MaintainerRequestStore: ObservableObject {
         visibleRequests = rows
         openRequestCount = rows.count
         return outcomes
+    }
+
+    /// Real network implementation of `scanAfterSync`'s `serverList`
+    /// parameter: fetches the console's Needs-you cards for `repo` over its
+    /// configured remote (`NeedsYouClient`). Returns `nil` -- "unreachable,
+    /// fall back to the local scan" -- for a repo with no remote, a failed
+    /// login, a network error, or a server that doesn't serve this endpoint;
+    /// never for "the server said there's nothing to show," which is a
+    /// legitimate empty array. `nonisolated` (not actor-isolated despite
+    /// living on this `@MainActor` type, matching `RepoStore`'s pure static
+    /// helpers) so it can serve as a plain default-parameter value.
+    nonisolated static func defaultServerList(for repo: Repo) async -> [MaintainerRequest]? {
+        guard let remoteURL = repo.remoteURL, !remoteURL.isEmpty,
+              let session = RemoteSession(remoteURL: remoteURL, password: CredentialStore.password(for: repo.id))
+        else { return nil }
+        return try? await NeedsYouClient(session: session).fetchCards()
     }
 
     /// Swipe-to-dismiss on the Requests screen: hides this one row on this

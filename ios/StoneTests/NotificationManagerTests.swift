@@ -18,7 +18,7 @@ import XCTest
 final class NotificationManagerTests: XCTestCase {
     func testDidReceiveCompletionHandlerFiresOnMainThread() {
         let delegate: UNUserNotificationCenterDelegate = NotificationManager.shared
-        let response = Self.makeResponse(userInfo: ["repoID": UUID().uuidString, "path": "/ticket"])
+        let response = Self.makeResponse(userInfo: ["repoID": UUID().uuidString, "ticketUUID": "abc123"])
 
         let expectation = expectation(description: "completion handler called")
         Task.detached {

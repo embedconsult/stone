@@ -98,12 +98,15 @@ struct RequestsView: View {
         }
     }
 
-    /// Same routing a tapped single-ticket notification uses
+    /// Same resolution a tapped single-ticket notification uses
     /// (NotificationManager.userNotificationCenter(didReceive:)) --
-    /// StoneApp's `deepLinkRouter.pending` observer pushes the repo, and
-    /// RepoDetailView.consumePendingDeepLink() navigates its WebView to this
-    /// exact ticket once the local server is up.
+    /// `TicketOpener` verifies the ticket is actually in this repo's local
+    /// clone (syncing once if not) before routing there, falling back to
+    /// the server's own ticket page rather than ever opening an empty local
+    /// one (ticket 98c06fb7a7).
     private func open(_ row: MaintainerRequestStore.Row) {
-        DeepLinkRouter.shared.route(repoID: row.repo.id, path: "/tktview/\(row.request.ticketUUID)")
+        Task {
+            await TicketOpener.open(repo: row.repo, ticketUUID: row.request.ticketUUID)
+        }
     }
 }
