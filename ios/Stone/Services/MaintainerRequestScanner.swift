@@ -21,9 +21,9 @@ struct MaintainerRequest: Identifiable, Equatable {
     /// True when this row matched `design_input = 'confirm'` (a subset of
     /// which is `isMergeGate`). Defaulted so existing call sites/tests that
     /// only care about the merge-gate distinction don't need updating.
-    let isDecision: Bool = true
+    var isDecision: Bool = true
     /// True when this row matched on `human_verify`, not `design_input`.
-    let isTryThis: Bool = false
+    var isTryThis: Bool = false
 
     /// Ticket 4c75227cc7: the Requests screen groups rows by this, one of
     /// "decision" (design_input=confirm), "merge card" (that plus an
