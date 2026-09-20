@@ -48,7 +48,6 @@
 		EA75B2F5A71E5BCC15C990A6 /* DeepLinkRouter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3EBA844DDE5D7699C78EF218 /* DeepLinkRouter.swift */; };
 		C8398D9753F0C9AF1ABF1D93 /* MaintainerRequestScannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C5CBC2F3733E6F06A44BC147 /* MaintainerRequestScannerTests.swift */; };
 		52556CB5356072A481342262 /* NotificationManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1576379C5888B887C5F45A62 /* NotificationManagerTests.swift */; };
-		1E52E6E207FD25DD28C49C46 /* libsqlite3.tbd in Frameworks */ = {isa = PBXBuildFile; fileRef = 98C38E4D31B96A67D0F28F98 /* libsqlite3.tbd */; };
 		8A733E2E0AEDBB77ED87AFA7 /* RequestsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 932119BCC1A12F715DAD9B65 /* RequestsView.swift */; };
 		0C1F75EB5A1BC62460487F19 /* MaintainerRequestStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F7090437A380669878819A7 /* MaintainerRequestStoreTests.swift */; };
 /* End PBXBuildFile section */
@@ -117,7 +116,6 @@
 		3EBA844DDE5D7699C78EF218 /* DeepLinkRouter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeepLinkRouter.swift; sourceTree = "<group>"; };
 		C5CBC2F3733E6F06A44BC147 /* MaintainerRequestScannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MaintainerRequestScannerTests.swift; sourceTree = "<group>"; };
 		1576379C5888B887C5F45A62 /* NotificationManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManagerTests.swift; sourceTree = "<group>"; };
-		98C38E4D31B96A67D0F28F98 /* libsqlite3.tbd */ = {isa = PBXFileReference; lastKnownFileType = "sourcecode.text-based-dylib-definition"; name = libsqlite3.tbd; path = usr/lib/libsqlite3.tbd; sourceTree = SDKROOT; };
 		932119BCC1A12F715DAD9B65 /* RequestsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RequestsView.swift; sourceTree = "<group>"; };
 		2F7090437A380669878819A7 /* MaintainerRequestStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MaintainerRequestStoreTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -131,7 +129,6 @@
 				F950237064962AB4095E2A53 /* libz.tbd in Frameworks */,
 				DC4CFDC297E0BF35ECFC4B95 /* libiconv.tbd in Frameworks */,
 				22B6C84F80DB4982A027A752 /* libresolv.tbd in Frameworks */,
-				1E52E6E207FD25DD28C49C46 /* libsqlite3.tbd in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -206,7 +203,6 @@
 				F9EA2AB04F790C358050645B /* libiconv.tbd */,
 				9E014CFB9EA1256EB886BFB0 /* libresolv.tbd */,
 				4D25049A3A3EBDD505883DBD /* libz.tbd */,
-				98C38E4D31B96A67D0F28F98 /* libsqlite3.tbd */,
 				617096E1A68C1784B86BDF02 /* XCTest.framework */,
 			);
 			name = Frameworks;

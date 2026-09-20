@@ -76,6 +76,49 @@ final class RepoStoreSyncCredentialTests: XCTestCase {
         XCTAssertNil(RepoStore.detectAuthFailure("Round-trips: 1   Artifacts sent: 3  received: 0\n"))
     }
 
+    // MARK: - detectLocalSQLiteFailure (ticket f0c612c027)
+
+    /// The exact bug: this LOCAL SQLite authorizer message contains "not
+    /// authorized", which detectAuthFailure alone would misclassify as the
+    /// server refusing the push. detectLocalSQLiteFailure must recognize it
+    /// first.
+    func testDetectLocalSQLiteFailureRecognizesSQLiteAuth() {
+        let output = #"SQLITE_AUTH(23): not authorized in "DELETE FROM unsent""#
+        let reason = RepoStore.detectLocalSQLiteFailure(output)
+        XCTAssertNotNil(reason)
+        XCTAssertTrue(reason?.contains("DELETE FROM unsent") == true)
+    }
+
+    /// Not just SQLITE_AUTH -- any SQLite error surfaced in Fossil's
+    /// "SQLITE_<NAME>(<code>): <msg>" formatting is equally a local failure.
+    func testDetectLocalSQLiteFailureRecognizesOtherSQLiteCodes() {
+        XCTAssertNotNil(RepoStore.detectLocalSQLiteFailure("SQLITE_BUSY(5): database is locked"))
+        XCTAssertNotNil(RepoStore.detectLocalSQLiteFailure("SQLITE_CORRUPT(11): database disk image is malformed"))
+    }
+
+    func testDetectLocalSQLiteFailureReturnsNilForOrdinaryOutput() {
+        XCTAssertNil(RepoStore.detectLocalSQLiteFailure("Round-trips: 1   Artifacts sent: 3  received: 0\n"))
+    }
+
+    func testDetectLocalSQLiteFailureReturnsNilForRealServerRefusal() {
+        XCTAssertNil(RepoStore.detectLocalSQLiteFailure("server says: not authorized to push\n"))
+    }
+
+    /// The full regression: given the maintainer's actual sync log, a
+    /// caller checking detectLocalSQLiteFailure first (as every call site
+    /// must -- RepoStore.syncAll, RepoWebView.runSync) gets the local
+    /// classification and never falls through to detectAuthFailure's
+    /// "server refused" text.
+    func testLocalSQLiteAuthErrorIsNeverReportedAsServerRefusal() {
+        let output = #"SQLITE_AUTH(23): not authorized in "DELETE FROM unsent""#
+        XCTAssertNotNil(RepoStore.detectLocalSQLiteFailure(output))
+        // detectAuthFailure would (correctly, by design) still match this
+        // text in isolation -- which is exactly why callers must check
+        // detectLocalSQLiteFailure FIRST and only fall back to
+        // detectAuthFailure when it returns nil.
+        XCTAssertNotNil(RepoStore.detectAuthFailure(output))
+    }
+
     // MARK: - parseArtifactCounts
 
     /// The other half of the fix: even once auth is correct, "the command
