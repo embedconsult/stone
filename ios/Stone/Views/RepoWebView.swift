@@ -520,11 +520,22 @@ struct RepoDetailView: View {
         }
     }
 
+    /// Rescans every repo (not just this one) after a single-repo sync, same
+    /// as "Sync All" -- ticket 4c75227cc7: the badge/Requests screen must be
+    /// recomputed from the current scan after every sync, and
+    /// `MaintainerRequestStore.scanAfterSync` replaces its whole result set
+    /// wholesale, so scanning only this repo would make every other repo's
+    /// requests vanish until the next full-store scan.
+    private func rescanAfterSync() async {
+        await BackgroundSyncScheduler.scanAndNotify(store: store)
+    }
+
     private func runSync() async {
         syncing = true
         defer { syncing = false }
         do {
             let output = try await store.sync(repo)
+            await rescanAfterSync()
             // Ground truth (ticket 94ea2161f5): a stale/rotated remote
             // password let a sync report a plausible "sent" count while the
             // server actually refused the content -- Fossil's own client

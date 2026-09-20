@@ -1,8 +1,8 @@
 import Foundation
 
 /// Owns the "have we already told the maintainer about this?" bookkeeping
-/// (ticket 1a55c5d8b8) and the badge count, across both the foreground
-/// auto-sync loop and background sync tasks.
+/// (ticket 1a55c5d8b8), the Requests screen's rows, and the badge count,
+/// across both the foreground auto-sync loop and background sync tasks.
 ///
 /// Runs the actual per-repo scan (`MaintainerRequestScanner`) after every
 /// "Sync All", whichever triggered it, so background and foreground share
@@ -12,9 +12,26 @@ import Foundation
 final class MaintainerRequestStore: ObservableObject {
     static let shared = MaintainerRequestStore()
 
-    /// Total count of tickets currently matching either request kind, across
-    /// every repo -- independent of whether they're "new". This is exactly
-    /// what the ticket calls "the badge count."
+    /// One row in the Requests screen (ticket 4c75227cc7): a request plus
+    /// which repo it came from and when it was first seen. Recomputed from
+    /// scratch on every scan -- never mutated in place -- so it can never
+    /// drift from what the current scan actually found.
+    struct Row: Identifiable, Equatable {
+        let repo: Repo
+        let request: MaintainerRequest
+        let firstSeenAt: Date
+        var id: String { "\(repo.id.uuidString)/\(request.ticketUUID)" }
+    }
+
+    /// Every currently-visible request, across every repo -- i.e. everything
+    /// the scan just found, minus anything dismissed on this phone for its
+    /// current `tkt_mtime`. This is exactly what the Requests screen shows.
+    @Published private(set) var visibleRequests: [Row] = []
+
+    /// The number of rows in `visibleRequests` -- the badge count. Ticket
+    /// 4c75227cc7: "the badge number is the number of rows currently shown,
+    /// never an accumulated count." Recomputed alongside `visibleRequests`
+    /// on every scan and every dismiss/clear-all, never incremented.
     @Published private(set) var openRequestCount = 0
 
     /// One "new since last time we looked" batch, grouped per repo, so the
@@ -26,43 +43,133 @@ final class MaintainerRequestStore: ObservableObject {
 
     private let defaults: UserDefaults
     private static let seenDefaultsKey = "maintainerRequestsSeenV1"
+    private static let firstSeenDefaultsKey = "maintainerRequestsFirstSeenV1"
+    private static let dismissedDefaultsKey = "maintainerRequestsDismissedV1"
 
-    /// repo id (UUID string) -> ticket uuid -> last-seen tkt_mtime.
+    /// repo id (UUID string) -> ticket uuid -> last-seen tkt_mtime. Used only
+    /// for the "is this new" notification diff -- unaffected by dismissal.
     private var seenByRepo: [String: [String: String]]
+
+    private struct FirstSeen: Codable, Equatable {
+        let mtime: String
+        let seenAt: Date
+    }
+    /// repo id -> ticket uuid -> the mtime it was seen at, and when. Kept
+    /// separate from `seenByRepo` (which drives notifications, not display)
+    /// so a ticket's displayed "first seen" date survives even once a
+    /// notification for it has already fired and stopped being "new".
+    private var firstSeenByRepo: [String: [String: FirstSeen]]
+
+    /// repo id -> ticket uuid -> the mtime it was dismissed at. A row is
+    /// hidden exactly as long as its current mtime still matches this --
+    /// ticket 4c75227cc7: "a swipe-to-dismiss hides a row on this phone
+    /// until the ticket's mtime changes again."
+    private var dismissedByRepo: [String: [String: String]]
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        self.seenByRepo = Self.loadSeen(from: defaults)
+        self.seenByRepo = Self.load(from: defaults, key: Self.seenDefaultsKey)
+        self.firstSeenByRepo = Self.load(from: defaults, key: Self.firstSeenDefaultsKey)
+        self.dismissedByRepo = Self.load(from: defaults, key: Self.dismissedDefaultsKey)
     }
 
-    /// Scan every repo's local `.fossil` file and refresh both the seen-set
-    /// and `openRequestCount`. Call this after any "Sync All" run (foreground
-    /// loop or a background task) -- never before a sync, since it reads
-    /// whatever the repo's local clone currently has on disk.
+    /// Scan every repo's local `.fossil` file and refresh the seen-set,
+    /// `visibleRequests`, and `openRequestCount`. Call this after any "Sync
+    /// All" run (foreground loop or a background task) -- never before a
+    /// sync, since it reads whatever the repo's local clone currently has on
+    /// disk. Always pass every repo in the store, never a subset: both
+    /// `visibleRequests` and `openRequestCount` are replaced wholesale from
+    /// what's passed in, so scanning only some repos would make the others'
+    /// requests vanish until the next full scan.
     func scanAfterSync(repos: [Repo], fossilPath: (Repo) -> String) async -> [ScanOutcome] {
         var outcomes: [ScanOutcome] = []
-        var totalOpen = 0
         var updatedSeen = seenByRepo
+        var updatedFirstSeen = firstSeenByRepo
+        var updatedDismissed = dismissedByRepo
+        var rows: [Row] = []
 
         for repo in repos {
             let path = fossilPath(repo)
             let matches = await Task.detached(priority: .utility) {
                 MaintainerRequestScanner.scan(fossilPath: path)
             }.value
-            totalOpen += matches.count
 
             let repoKey = repo.id.uuidString
+
             let (newOnes, nextSeen) = Self.diff(current: matches, previouslySeen: updatedSeen[repoKey] ?? [:])
             updatedSeen[repoKey] = nextSeen
             if !newOnes.isEmpty {
                 outcomes.append(ScanOutcome(repo: repo, newRequests: newOnes))
             }
+
+            // Drop bookkeeping for tickets that no longer match at all
+            // (resolved, or the repo's schema changed) -- otherwise both
+            // dicts would grow forever, and a stale dismissed-mtime could
+            // theoretically collide with a much-later, unrelated ticket
+            // reusing... well, uuids don't get reused, but there's no
+            // reason to keep it around once the ticket itself is gone.
+            let currentUUIDs = Set(matches.map(\.ticketUUID))
+            var firstSeenForRepo = (updatedFirstSeen[repoKey] ?? [:]).filter { currentUUIDs.contains($0.key) }
+            var dismissedForRepo = (updatedDismissed[repoKey] ?? [:]).filter { currentUUIDs.contains($0.key) }
+
+            for request in matches {
+                let seenAt: Date
+                if let existing = firstSeenForRepo[request.ticketUUID], existing.mtime == request.mtime {
+                    seenAt = existing.seenAt
+                } else {
+                    seenAt = Date()
+                }
+                firstSeenForRepo[request.ticketUUID] = FirstSeen(mtime: request.mtime, seenAt: seenAt)
+
+                let isDismissed = dismissedForRepo[request.ticketUUID] == request.mtime
+                if !isDismissed {
+                    rows.append(Row(repo: repo, request: request, firstSeenAt: seenAt))
+                }
+            }
+
+            updatedFirstSeen[repoKey] = firstSeenForRepo
+            updatedDismissed[repoKey] = dismissedForRepo
         }
 
         seenByRepo = updatedSeen
-        persistSeen()
-        openRequestCount = totalOpen
+        firstSeenByRepo = updatedFirstSeen
+        dismissedByRepo = updatedDismissed
+        persist(seenByRepo, key: Self.seenDefaultsKey)
+        persist(firstSeenByRepo, key: Self.firstSeenDefaultsKey)
+        persist(dismissedByRepo, key: Self.dismissedDefaultsKey)
+
+        visibleRequests = rows
+        openRequestCount = rows.count
         return outcomes
+    }
+
+    /// Swipe-to-dismiss on the Requests screen: hides this one row on this
+    /// phone until its ticket's mtime changes. Takes effect immediately --
+    /// does not wait for the next sync.
+    func dismiss(_ row: Row) {
+        let repoKey = row.repo.id.uuidString
+        var forRepo = dismissedByRepo[repoKey] ?? [:]
+        forRepo[row.request.ticketUUID] = row.request.mtime
+        dismissedByRepo[repoKey] = forRepo
+        persist(dismissedByRepo, key: Self.dismissedDefaultsKey)
+
+        visibleRequests.removeAll { $0.id == row.id }
+        openRequestCount = visibleRequests.count
+    }
+
+    /// "Clear all" on the Requests screen: dismisses every row currently
+    /// shown, same as swiping each one individually.
+    func clearAll() {
+        for row in visibleRequests {
+            let repoKey = row.repo.id.uuidString
+            var forRepo = dismissedByRepo[repoKey] ?? [:]
+            forRepo[row.request.ticketUUID] = row.request.mtime
+            dismissedByRepo[repoKey] = forRepo
+        }
+        persist(dismissedByRepo, key: Self.dismissedDefaultsKey)
+
+        visibleRequests = []
+        openRequestCount = 0
     }
 
     /// Pure diffing logic, split out from `scanAfterSync` so it's directly
@@ -89,15 +196,15 @@ final class MaintainerRequestStore: ObservableObject {
         return (newOnes, updated)
     }
 
-    private static func loadSeen(from defaults: UserDefaults) -> [String: [String: String]] {
-        guard let data = defaults.data(forKey: seenDefaultsKey),
-              let decoded = try? JSONDecoder().decode([String: [String: String]].self, from: data)
+    private static func load<T: Decodable>(from defaults: UserDefaults, key: String) -> T where T: ExpressibleByDictionaryLiteral {
+        guard let data = defaults.data(forKey: key),
+              let decoded = try? JSONDecoder().decode(T.self, from: data)
         else { return [:] }
         return decoded
     }
 
-    private func persistSeen() {
-        guard let data = try? JSONEncoder().encode(seenByRepo) else { return }
-        defaults.set(data, forKey: Self.seenDefaultsKey)
+    private func persist<T: Encodable>(_ value: T, key: String) {
+        guard let data = try? JSONEncoder().encode(value) else { return }
+        defaults.set(data, forKey: key)
     }
 }

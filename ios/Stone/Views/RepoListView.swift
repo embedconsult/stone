@@ -4,6 +4,7 @@ import SwiftUI
 /// The home screen: lists repositories and offers add (clone / new) + delete.
 struct RepoListView: View {
     @EnvironmentObject private var store: RepoStore
+    @ObservedObject private var requestStore = MaintainerRequestStore.shared
     @State private var showingAdd = false
     @State private var showingSettings = false
     @State private var repoToRename: Repo?
@@ -67,8 +68,14 @@ struct RepoListView: View {
         .navigationDestination(for: Repo.self) { repo in
             RepoDetailView(repo: repo)
         }
+        .navigationDestination(for: AppRoute.self) { route in
+            switch route {
+            case .requests: RequestsView()
+            }
+        }
         .refreshable {
             await store.syncAll()
+            await BackgroundSyncScheduler.scanAndNotify(store: store)
         }
         .task {
             await runAutoSyncLoop()
@@ -77,9 +84,19 @@ struct RepoListView: View {
             ToolbarItem(placement: .topBarLeading) {
                 Button { showingSettings = true } label: { Image(systemName: "gearshape") }
             }
+            ToolbarItem(placement: .topBarLeading) {
+                NavigationLink(value: AppRoute.requests) {
+                    bellIcon
+                }
+                .accessibilityIdentifier("requestsBellButton")
+                .accessibilityLabel("Requests (\(requestStore.openRequestCount))")
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    Task { await store.syncAll() }
+                    Task {
+                        await store.syncAll()
+                        await BackgroundSyncScheduler.scanAndNotify(store: store)
+                    }
                 } label: {
                     if store.isSyncingAll { ProgressView() }
                     else { Image(systemName: "arrow.triangle.2.circlepath") }
@@ -195,6 +212,24 @@ struct RepoListView: View {
                 .accessibilityLabel("Sync failed: \(message)")
         case .none:
             EmptyView()
+        }
+    }
+
+    /// A bell plus the current badge count (ticket 4c75227cc7) --
+    /// `requestStore.openRequestCount` is always "rows currently shown",
+    /// recomputed from the latest scan, never an accumulated total.
+    @ViewBuilder
+    private var bellIcon: some View {
+        ZStack(alignment: .topTrailing) {
+            Image(systemName: "bell")
+            if requestStore.openRequestCount > 0 {
+                Text("\(requestStore.openRequestCount)")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.white)
+                    .padding(4)
+                    .background(Circle().fill(Color.red))
+                    .offset(x: 10, y: -10)
+            }
         }
     }
 }

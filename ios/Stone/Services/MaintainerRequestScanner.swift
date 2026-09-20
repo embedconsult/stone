@@ -19,6 +19,47 @@ struct MaintainerRequest: Identifiable, Equatable {
     /// representations).
     let mtime: String
     let isMergeGate: Bool
+    /// True when this row matched `design_input = 'confirm'` (a subset of
+    /// which is `isMergeGate`). Defaulted so existing call sites/tests that
+    /// only care about the merge-gate distinction don't need updating.
+    let isDecision: Bool = true
+    /// True when this row matched on `human_verify`, not `design_input`.
+    let isTryThis: Bool = false
+
+    /// Ticket 4c75227cc7: the Requests screen groups rows by this, one of
+    /// "decision" (design_input=confirm), "merge card" (that plus an
+    /// OCX-MERGE-GATE comment), or "try-this" (human_verify). Merge card
+    /// takes priority over plain decision since it's the narrower, more
+    /// specific case; a row can't otherwise be both a decision and a
+    /// try-this at once in practice, but if the data somehow says so,
+    /// decision wins (it's the one requiring resolution to close the ticket).
+    enum Kind: Equatable {
+        case mergeCard
+        case decision
+        case tryThis
+
+        var displayName: String {
+            switch self {
+            case .mergeCard: return "Merge card"
+            case .decision: return "Decision"
+            case .tryThis: return "Try this"
+            }
+        }
+
+        var systemImage: String {
+            switch self {
+            case .mergeCard: return "arrow.triangle.merge"
+            case .decision: return "questionmark.circle"
+            case .tryThis: return "checkmark.seal"
+            }
+        }
+    }
+
+    var kind: Kind {
+        if isMergeGate { return .mergeCard }
+        if isDecision { return .decision }
+        return .tryThis
+    }
 }
 
 /// Scans a Fossil repository's local `.fossil` file for open maintainer
@@ -76,8 +117,13 @@ enum MaintainerRequestScanner {
             predicates.append("(human_verify IS NOT NULL AND human_verify <> '' AND human_verify <> 'none')")
         }
 
+        // Optional columns are appended in this fixed order, so their result
+        // indices are computed once here rather than re-derived per row.
+        let designInputIndex: Int32? = hasDesignInput ? 4 : nil
+        let humanVerifyIndex: Int32? = hasHumanVerify ? (hasDesignInput ? 5 : 4) : nil
+
         let sql = """
-        SELECT tkt_uuid, title, tkt_mtime, comment\(hasDesignInput ? ", design_input" : "")
+        SELECT tkt_uuid, title, tkt_mtime, comment\(hasDesignInput ? ", design_input" : "")\(hasHumanVerify ? ", human_verify" : "")
         FROM ticket
         WHERE \(predicates.joined(separator: " OR "))
         """
@@ -95,13 +141,18 @@ enum MaintainerRequestScanner {
             let title = text(stmt, 1)
             let mtime = text(stmt, 2)
             let comment = text(stmt, 3)
-            let designInput = hasDesignInput ? text(stmt, 4) : ""
-            let isMergeGate = designInput == "confirm" && comment.contains("OCX-MERGE-GATE")
+            let designInput = designInputIndex.map { text(stmt, $0) } ?? ""
+            let humanVerify = humanVerifyIndex.map { text(stmt, $0) } ?? ""
+            let isDecision = hasDesignInput && designInput == "confirm"
+            let isMergeGate = isDecision && comment.contains("OCX-MERGE-GATE")
+            let isTryThis = hasHumanVerify && !humanVerify.isEmpty && humanVerify != "none"
             results.append(MaintainerRequest(
                 ticketUUID: uuid,
                 title: title.isEmpty ? "(untitled ticket)" : title,
                 mtime: mtime,
-                isMergeGate: isMergeGate))
+                isMergeGate: isMergeGate,
+                isDecision: isDecision,
+                isTryThis: isTryThis))
         }
         return results
     }

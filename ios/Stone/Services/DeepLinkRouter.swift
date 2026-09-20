@@ -12,16 +12,28 @@ final class DeepLinkRouter: ObservableObject {
 
     struct Destination: Equatable {
         let repoID: UUID
-        /// Path on the repo's local Fossil server, e.g. "/tktview/<uuid>" for
-        /// one ticket or "/ticket" for the general ticket page (coalesced
-        /// notifications, which don't name a single ticket).
+        /// Path on the repo's local Fossil server, e.g. "/tktview/<uuid>" --
+        /// always names a single ticket. A notification with no single
+        /// target to name (several requests at once) uses
+        /// `requestsScreenRequested` below instead of this.
         let path: String
     }
 
     @Published var pending: Destination?
 
+    /// Set true when a notification carries no single ticket to deep-link
+    /// to (several requests arrived at once) -- ticket 4c75227cc7. StoneApp
+    /// pushes the Requests screen in response, then clears this the same
+    /// way `pending` is cleared, so a later unrelated notification tap
+    /// doesn't replay it.
+    @Published var requestsScreenRequested = false
+
     func route(repoID: UUID, path: String) {
         pending = Destination(repoID: repoID, path: path)
+    }
+
+    func routeToRequestsScreen() {
+        requestsScreenRequested = true
     }
 
     /// Called once RepoListView has pushed the matching repo and
@@ -29,5 +41,9 @@ final class DeepLinkRouter: ObservableObject {
     /// navigation doesn't replay a stale deep link.
     func clear() {
         pending = nil
+    }
+
+    func clearRequestsScreenRequest() {
+        requestsScreenRequested = false
     }
 }
