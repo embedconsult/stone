@@ -135,6 +135,35 @@ final class MaintainerRequestScannerTests: XCTestCase {
         XCTAssertEqual(results, ["a", "b"])
     }
 
+    // MARK: - Kind classification (ticket 4c75227cc7)
+
+    func testKindIsMergeCardWhenMergeGateFlagged() throws {
+        let path = try makeFixture(rows: [
+            (uuid: "gate1", title: "Merge candidate A", mtime: "2026-09-19",
+             comment: "OCX-MERGE-GATE: pick between A and B", designInput: "confirm", humanVerify: nil),
+        ])
+        let results = MaintainerRequestScanner.scan(fossilPath: path)
+        XCTAssertEqual(results.map(\.kind), [.mergeCard])
+    }
+
+    func testKindIsDecisionForPlainDesignInputConfirm() throws {
+        let path = try makeFixture(rows: [
+            (uuid: "plain1", title: "Plain decision", mtime: "2026-09-19",
+             comment: "just asking for a call", designInput: "confirm", humanVerify: nil),
+        ])
+        let results = MaintainerRequestScanner.scan(fossilPath: path)
+        XCTAssertEqual(results.map(\.kind), [.decision])
+    }
+
+    func testKindIsTryThisForHumanVerifyOnly() throws {
+        let path = try makeFixture(rows: [
+            (uuid: "verify1", title: "Try this build", mtime: "2026-09-19",
+             comment: "", designInput: "none", humanVerify: "please test on device"),
+        ])
+        let results = MaintainerRequestScanner.scan(fossilPath: path)
+        XCTAssertEqual(results.map(\.kind), [.tryThis])
+    }
+
     // MARK: - Seen-set diffing (MaintainerRequestStore.diff)
 
     private func request(_ uuid: String, mtime: String) -> MaintainerRequest {

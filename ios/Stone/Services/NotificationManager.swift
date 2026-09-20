@@ -44,21 +44,32 @@ final class NotificationManager: NSObject {
     /// ticket, which would flood the notification center for a repo with a
     /// backlog. Silently does nothing if the toggle is off or the system
     /// permission was never granted (denied, or not yet asked).
+    ///
+    /// Ticket 4c75227cc7: the repo always goes in the subtitle and the
+    /// kind(s) in the body, so a maintainer can tell what a notification is
+    /// about without opening it. A single new request names its own ticket
+    /// and deep-links straight to it; several at once have no single
+    /// target, so they deep-link to the Requests screen instead
+    /// (NotificationManager.userNotificationCenter(didReceive:)).
     func post(for repo: Repo, newRequests: [MaintainerRequest]) async {
         guard isEnabled, !newRequests.isEmpty else { return }
         let settings = await center.notificationSettings()
         guard settings.authorizationStatus == .authorized else { return }
 
         let content = UNMutableNotificationContent()
+        content.subtitle = repo.name
+        content.sound = .default
+
         if newRequests.count == 1, let only = newRequests.first {
-            content.title = "Ollama-Codex needs you: \(only.title)"
-            content.subtitle = repo.name
+            content.title = only.title
+            content.body = only.kind.displayName
             content.userInfo = ["repoID": repo.id.uuidString, "path": "/tktview/\(only.ticketUUID)"]
         } else {
-            content.title = "\(newRequests.count) requests on \(repo.name)"
-            content.userInfo = ["repoID": repo.id.uuidString, "path": "/ticket"]
+            content.title = "\(newRequests.count) requests"
+            let kinds = Set(newRequests.map(\.kind.displayName)).sorted()
+            content.body = kinds.joined(separator: ", ")
+            content.userInfo = ["screen": "requests"]
         }
-        content.sound = .default
 
         let request = UNNotificationRequest(
             identifier: "maintainer-request-\(repo.id.uuidString)-\(UUID().uuidString)",
@@ -95,13 +106,20 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
 
     /// Tapping the notification: route to the repo's ticket page
     /// (RepoWebView), via DeepLinkRouter -- RepoListView pushes the repo,
-    /// RepoDetailView loads the path once its local server is up.
+    /// RepoDetailView loads the path once its local server is up. A
+    /// coalesced notification (several requests, no single ticket to name)
+    /// carries `"screen": "requests"` instead of a repo/path pair, and opens
+    /// the Requests screen (ticket 4c75227cc7) rather than any one repo.
     @MainActor
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
     ) async {
         let info = response.notification.request.content.userInfo
+        if info["screen"] as? String == "requests" {
+            DeepLinkRouter.shared.routeToRequestsScreen()
+            return
+        }
         guard let repoIDString = info["repoID"] as? String,
               let repoID = UUID(uuidString: repoIDString),
               let path = info["path"] as? String else { return }

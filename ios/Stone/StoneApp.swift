@@ -61,6 +61,11 @@ struct StoneApp: App {
                 else { return }
                 path.append(repo)
             }
+            .onChange(of: deepLinkRouter.requestsScreenRequested) { _, requested in
+                guard requested else { return }
+                path.append(AppRoute.requests)
+                deepLinkRouter.clearRequestsScreenRequest()
+            }
         }
         // Submitted here rather than only from inside a running background
         // task, so there is always a next attempt pending even the very
