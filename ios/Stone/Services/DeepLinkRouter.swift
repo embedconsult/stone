@@ -28,12 +28,22 @@ final class DeepLinkRouter: ObservableObject {
     /// doesn't replay it.
     @Published var requestsScreenRequested = false
 
+    /// Set when `TicketOpener` determines the ticket isn't (yet) in this
+    /// clone even after a fresh sync -- ticket 98c06fb7a7. StoneApp opens
+    /// this externally (Safari) rather than ever routing to a local ticket
+    /// page Fossil would render empty.
+    @Published var pendingRemoteURL: URL?
+
     func route(repoID: UUID, path: String) {
         pending = Destination(repoID: repoID, path: path)
     }
 
     func routeToRequestsScreen() {
         requestsScreenRequested = true
+    }
+
+    func routeToRemote(url: URL) {
+        pendingRemoteURL = url
     }
 
     /// Called once RepoListView has pushed the matching repo and
@@ -45,5 +55,9 @@ final class DeepLinkRouter: ObservableObject {
 
     func clearRequestsScreenRequest() {
         requestsScreenRequested = false
+    }
+
+    func clearRemote() {
+        pendingRemoteURL = nil
     }
 }

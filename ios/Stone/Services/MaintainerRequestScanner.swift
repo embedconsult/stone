@@ -1,11 +1,10 @@
 import Foundation
 import SQLite3
 
-/// One thing in a repo's ticket table the maintainer needs to look at:
-/// either a decision (`design_input = 'confirm'`, which includes the
-/// OCX-MERGE-GATE merge-card case) or a "try this" (`human_verify` set to
-/// anything other than empty/`none`). See MaintainerRequestScanner's doc for
-/// where these come from.
+/// One thing in a repo's ticket table the maintainer needs to look at, per
+/// the server-synced `needs_you` custom ticket field (ollama ticket
+/// a6fb296ac3). See MaintainerRequestScanner's doc for how that field
+/// reaches this clone.
 struct MaintainerRequest: Identifiable, Equatable {
     var id: String { ticketUUID }
     let ticketUUID: String
@@ -18,25 +17,33 @@ struct MaintainerRequest: Identifiable, Equatable {
     /// (SQLite's date functions aren't perfectly round-trip stable across
     /// representations).
     let mtime: String
-    let isMergeGate: Bool
-    /// True when this row matched `design_input = 'confirm'` (a subset of
-    /// which is `isMergeGate`). Defaulted so existing call sites/tests that
-    /// only care about the merge-gate distinction don't need updating.
-    let isDecision: Bool = true
-    /// True when this row matched on `human_verify`, not `design_input`.
-    let isTryThis: Bool = false
+    let kind: Kind
 
-    /// Ticket 4c75227cc7: the Requests screen groups rows by this, one of
-    /// "decision" (design_input=confirm), "merge card" (that plus an
-    /// OCX-MERGE-GATE comment), or "try-this" (human_verify). Merge card
-    /// takes priority over plain decision since it's the narrower, more
-    /// specific case; a row can't otherwise be both a decision and a
-    /// try-this at once in practice, but if the data somehow says so,
-    /// decision wins (it's the one requiring resolution to close the ticket).
+    /// Ticket 98c06fb7a7: the console -- not this phone -- decides who needs
+    /// to act, and writes that verdict into one synced `needs_you` ticket
+    /// field with five possible values: `decision`, `merge`, `try-this`,
+    /// `coordinator`, `none`. Only the first three ever produce a row here;
+    /// `coordinator` (a merge delegated away from the maintainer) and `none`
+    /// never notify -- see `Kind.init(needsYouValue:)`. There is deliberately
+    /// no local re-derivation from `design_input`/`human_verify` anymore:
+    /// this field alone is the source of truth, so this phone can never show
+    /// a card the console itself no longer shows.
     enum Kind: Equatable {
         case mergeCard
         case decision
         case tryThis
+
+        /// `nil` for any value that must never notify (`coordinator`,
+        /// `none`, or anything unrecognized) -- callers drop the row
+        /// entirely rather than guessing a kind for it.
+        init?(needsYouValue: String) {
+            switch needsYouValue {
+            case "merge": self = .mergeCard
+            case "decision": self = .decision
+            case "try-this": self = .tryThis
+            default: return nil
+            }
+        }
 
         var displayName: String {
             switch self {
@@ -53,12 +60,6 @@ struct MaintainerRequest: Identifiable, Equatable {
             case .tryThis: return "checkmark.seal"
             }
         }
-    }
-
-    var kind: Kind {
-        if isMergeGate { return .mergeCard }
-        if isDecision { return .decision }
-        return .tryThis
     }
 }
 
@@ -87,13 +88,13 @@ struct MaintainerRequest: Identifiable, Equatable {
 /// never takes a write lock that could contend with the embedded server or
 /// a sync in progress.
 enum MaintainerRequestScanner {
-    /// `design_input`/`human_verify` are custom ticket fields this project's
-    /// own Fossil repos are configured with (RepoStore.pullTicketConfig
-    /// pulls that schema into every local clone) -- NOT part of Fossil's
-    /// stock ticket table. A repo whose remote never configured them simply
-    /// won't have the columns; that is not an error, it is "this repo has
-    /// nothing to report" (per the ticket: "Repos without the design_input
-    /// column simply contribute nothing").
+    /// `needs_you` is a custom ticket field this project's own Fossil repos
+    /// are configured with (RepoStore.pullTicketConfig pulls that schema
+    /// into every local clone, and an ordinary ticket sync brings each
+    /// ticket's current value in) -- NOT part of Fossil's stock ticket
+    /// table, and NOT derived here from any other field. A repo whose
+    /// remote never configured it simply won't have the column; that is not
+    /// an error, it is "this repo has nothing to report".
     static func scan(fossilPath: String) -> [MaintainerRequest] {
         var db: OpaquePointer?
         // Immutable + read-only: this must never block on, or contend
@@ -107,25 +108,12 @@ enum MaintainerRequestScanner {
         defer { sqlite3_close(db) }
 
         let columns = Set(tableColumns(db, table: "ticket"))
-        let hasDesignInput = columns.contains("design_input")
-        let hasHumanVerify = columns.contains("human_verify")
-        guard hasDesignInput || hasHumanVerify else { return [] }
-
-        var predicates: [String] = []
-        if hasDesignInput { predicates.append("design_input = 'confirm'") }
-        if hasHumanVerify {
-            predicates.append("(human_verify IS NOT NULL AND human_verify <> '' AND human_verify <> 'none')")
-        }
-
-        // Optional columns are appended in this fixed order, so their result
-        // indices are computed once here rather than re-derived per row.
-        let designInputIndex: Int32? = hasDesignInput ? 4 : nil
-        let humanVerifyIndex: Int32? = hasHumanVerify ? (hasDesignInput ? 5 : 4) : nil
+        guard columns.contains("needs_you") else { return [] }
 
         let sql = """
-        SELECT tkt_uuid, title, tkt_mtime, comment\(hasDesignInput ? ", design_input" : "")\(hasHumanVerify ? ", human_verify" : "")
+        SELECT tkt_uuid, title, tkt_mtime, needs_you
         FROM ticket
-        WHERE \(predicates.joined(separator: " OR "))
+        WHERE needs_you IN ('decision', 'merge', 'try-this')
         """
 
         var stmt: OpaquePointer?
@@ -137,24 +125,44 @@ enum MaintainerRequestScanner {
         var results: [MaintainerRequest] = []
         while sqlite3_step(stmt) == SQLITE_ROW {
             let uuid = text(stmt, 0)
-            guard !uuid.isEmpty else { continue }
+            // The WHERE clause above already excludes `coordinator`/`none`/
+            // anything else, but `Kind.init?` is the actual gate a delegated
+            // merge card never notifies through -- belt and suspenders
+            // against a future change to this SQL.
+            guard !uuid.isEmpty, let kind = MaintainerRequest.Kind(needsYouValue: text(stmt, 3)) else { continue }
             let title = text(stmt, 1)
             let mtime = text(stmt, 2)
-            let comment = text(stmt, 3)
-            let designInput = designInputIndex.map { text(stmt, $0) } ?? ""
-            let humanVerify = humanVerifyIndex.map { text(stmt, $0) } ?? ""
-            let isDecision = hasDesignInput && designInput == "confirm"
-            let isMergeGate = isDecision && comment.contains("OCX-MERGE-GATE")
-            let isTryThis = hasHumanVerify && !humanVerify.isEmpty && humanVerify != "none"
             results.append(MaintainerRequest(
                 ticketUUID: uuid,
                 title: title.isEmpty ? "(untitled ticket)" : title,
                 mtime: mtime,
-                isMergeGate: isMergeGate,
-                isDecision: isDecision,
-                isTryThis: isTryThis))
+                kind: kind))
         }
         return results
+    }
+
+    /// Read-only existence check for a single ticket uuid, on the same
+    /// second-connection discipline as `scan` above -- used by `TicketOpener`
+    /// (ticket 98c06fb7a7) to verify a deep link's target actually exists in
+    /// this clone before routing a WebView to it, since Fossil renders an
+    /// empty ticket page rather than erroring when it doesn't.
+    static func hasTicket(fossilPath: String, uuid: String) -> Bool {
+        var db: OpaquePointer?
+        let flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX
+        guard sqlite3_open_v2(fossilPath, &db, flags, nil) == SQLITE_OK, let db else {
+            sqlite3_close(db)
+            return false
+        }
+        defer { sqlite3_close(db) }
+
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "SELECT 1 FROM ticket WHERE tkt_uuid = ? LIMIT 1", -1, &stmt, nil) == SQLITE_OK,
+              let stmt else { return false }
+        defer { sqlite3_finalize(stmt) }
+
+        let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self) // SQLITE_TRANSIENT
+        sqlite3_bind_text(stmt, 1, uuid, -1, transient)
+        return sqlite3_step(stmt) == SQLITE_ROW
     }
 
     private static func tableColumns(_ db: OpaquePointer, table: String) -> [String] {
