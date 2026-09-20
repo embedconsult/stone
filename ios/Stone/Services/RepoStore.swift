@@ -15,6 +15,13 @@ enum RepoSyncStatus: Equatable {
     /// not folded into .failure, so the UI can make it visually distinct
     /// from both "it worked" and "the command errored."
     case authFailed(String)
+    /// Ground truth (ticket f0c612c027): a LOCAL failure inside this
+    /// phone's own SQLite -- e.g. `SQLITE_AUTH(23): not authorized in
+    /// "DELETE FROM unsent"` from a crossed-wires authorizer -- is not the
+    /// server refusing anything. Kept distinct from `.authFailed` so the UI
+    /// never tells the maintainer "the server said X" about a failure the
+    /// server never saw. See RepoStore.detectLocalSQLiteFailure.
+    case localFailure(String)
     case failure(String)
 }
 
@@ -181,6 +188,37 @@ final class RepoStore: ObservableObject {
         _ = await engine.run(["configuration", "pull", "skin", authURL, "--overwrite", "-R", path])
     }
 
+    /// Detect a LOCAL SQLite failure inside this phone's own clone -- ground
+    /// truth for ticket f0c612c027: a stale second SQLite connection
+    /// (previously MaintainerRequestScanner's own, before it was moved onto
+    /// Fossil's bundled library) or any other cause can leave Fossil's
+    /// authorizer/protection state confused, so the FIRST write Fossil
+    /// attempts against a clone -- typically its own post-sync `DELETE FROM
+    /// unsent` cleanup -- is refused with SQLITE_AUTH. That message reads
+    /// `SQLITE_AUTH(23): not authorized in "DELETE FROM unsent"`, which
+    /// naively matches detectAuthFailure's "not authorized" check even
+    /// though no server was ever involved -- callers MUST check this
+    /// function BEFORE detectAuthFailure, so a local error is never
+    /// misreported as "the server refused the push."
+    ///
+    /// Recognized by Fossil's own error-formatting convention (src/db.c's
+    /// `db_err()`, built from SQLite's symbolic result-code name + the
+    /// numeric code + `sqlite3_errmsg()`): `SQLITE_<NAME>(<code>): <msg>`,
+    /// e.g. `SQLITE_AUTH(23)`, `SQLITE_BUSY(5)`, `SQLITE_CORRUPT(11)` -- any
+    /// SQLite error surfaces this way, not just SQLITE_AUTH, and all of
+    /// them are equally "this phone's own database," never the server.
+    nonisolated static func detectLocalSQLiteFailure(_ output: String) -> String? {
+        guard let regex = try? NSRegularExpression(pattern: "SQLITE_[A-Z_]+\\(\\d+\\):\\s*(.+)") else {
+            return nil
+        }
+        let range = NSRange(output.startIndex..<output.endIndex, in: output)
+        guard let match = regex.firstMatch(in: output, range: range),
+              let msgRange = Range(match.range(at: 1), in: output)
+        else { return nil }
+        let detail = output[msgRange].trimmingCharacters(in: .whitespacesAndNewlines)
+        return "this phone's own local database rejected a write (\(detail)) -- not a server response"
+    }
+
     /// Detect the specific ground-truth failure mode behind ticket
     /// 94ea2161f5: a stale/rotated remote password. Confirmed against
     /// Fossil's real source (src/xfer.c): the server rejects a bad login
@@ -196,6 +234,11 @@ final class RepoStore: ObservableObject {
     /// with nothing actually delivered. Scanned against BOTH a successful
     /// sync's raw output and a thrown failure's message, so this catches
     /// the case whichever exit path Fossil actually takes.
+    ///
+    /// Callers MUST check detectLocalSQLiteFailure(_:) first (ticket
+    /// f0c612c027): a local SQLite authorizer error's own text contains
+    /// "not authorized", which this function's check below would otherwise
+    /// misclassify as the server refusing a push.
     nonisolated static func detectAuthFailure(_ output: String) -> String? {
         let lower = output.lowercased()
         if lower.contains("login failed") {
@@ -258,6 +301,7 @@ final class RepoStore: ObservableObject {
 
         var succeeded = 0
         var authFailed = 0
+        var localFailed = 0
         var failed = 0
         var skipped = 0
         var stopped = 0
@@ -276,11 +320,19 @@ final class RepoStore: ObservableObject {
             syncStatuses[repo.id] = .syncing
             do {
                 let output = try await sync(repo)
-                // Ground truth (ticket 94ea2161f5): check for a rejected
-                // push before trusting the sent/received counts -- see
-                // RepoStore.detectAuthFailure and RepoWebView.runSync's
-                // matching check on the single-repo path.
-                if let reason = Self.detectAuthFailure(output) {
+                // Ground truth (ticket f0c612c027): check for a LOCAL
+                // SQLite failure before a server refusal -- a local
+                // authorizer error's own text would otherwise match
+                // detectAuthFailure's "not authorized" check. Ground truth
+                // (ticket 94ea2161f5): check for a rejected push before
+                // trusting the sent/received counts -- see
+                // RepoStore.detectAuthFailure/detectLocalSQLiteFailure and
+                // RepoWebView.runSync's matching checks on the single-repo
+                // path.
+                if let reason = Self.detectLocalSQLiteFailure(output) {
+                    syncStatuses[repo.id] = .localFailure(reason)
+                    localFailed += 1
+                } else if let reason = Self.detectAuthFailure(output) {
                     syncStatuses[repo.id] = .authFailed(reason)
                     authFailed += 1
                 } else {
@@ -291,8 +343,10 @@ final class RepoStore: ObservableObject {
                     succeeded += 1
                 }
             } catch {
-                if case .fossil(let msg)? = error as? StoreError,
-                   let reason = Self.detectAuthFailure(msg) {
+                if case .fossil(let msg)? = error as? StoreError, let reason = Self.detectLocalSQLiteFailure(msg) {
+                    syncStatuses[repo.id] = .localFailure(reason)
+                    localFailed += 1
+                } else if case .fossil(let msg)? = error as? StoreError, let reason = Self.detectAuthFailure(msg) {
                     syncStatuses[repo.id] = .authFailed(reason)
                     authFailed += 1
                 } else {
@@ -308,6 +362,7 @@ final class RepoStore: ObservableObject {
         // that actually sent something.
         var parts = ["\(succeeded) synced (\(totalSent) sent, \(totalReceived) received)"]
         if authFailed > 0 { parts.append("\(authFailed) rejected by server") }
+        if localFailed > 0 { parts.append("\(localFailed) failed on this phone (not the server)") }
         if failed > 0 { parts.append("\(failed) failed") }
         if skipped > 0 { parts.append("\(skipped) skipped (no remote)") }
         if stopped > 0 { parts.append("\(stopped) not reached (background time expired)") }
