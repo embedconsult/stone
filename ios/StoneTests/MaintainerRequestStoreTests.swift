@@ -201,4 +201,63 @@ final class MaintainerRequestStoreTests: XCTestCase {
         _ = await store.scanAfterSync(repos: [repo.repo], fossilPath: { _ in repo.path })
         XCTAssertEqual(store.openRequestCount, 0)
     }
+
+    // MARK: - receivedCounts skips repos with nothing new (ticket d4d02c604f)
+
+    /// A repo whose tally is zero this round can't have anything new in its
+    /// ticket table, so its previously-scanned rows must be carried over
+    /// unchanged rather than dropped -- passing `receivedCounts` must never
+    /// make another repo's requests vanish, the same guarantee the "always
+    /// pass every repo" doc comment already makes for the plain `repos` list.
+    func testZeroReceivedCarriesOverExistingRowsWithoutRescanning() async throws {
+        let pathA = try makeFixture(rows: [(uuid: "a1", mtime: "1", designInput: "confirm")])
+        let pathB = try makeFixture(rows: [(uuid: "b1", mtime: "1", designInput: "confirm")])
+        let repoA = makeRepo(named: "repo-a", at: pathA)
+        let repoB = makeRepo(named: "repo-b", at: pathB)
+        let paths: [UUID: String] = [repoA.repo.id: repoA.path, repoB.repo.id: repoB.path]
+
+        let store = MaintainerRequestStore(defaults: defaults)
+        _ = await store.scanAfterSync(repos: [repoA.repo, repoB.repo], fossilPath: { paths[$0.id]! })
+        XCTAssertEqual(store.openRequestCount, 2)
+
+        // Repo B resolved its ticket server-side, but its tally is zero this
+        // round (nothing received), so scanAfterSync must not notice --
+        // fed a path that would report zero rows if it were actually
+        // rescanned, to prove it wasn't.
+        let resolvedPathB = try makeFixture(rows: [])
+        let pathsAfter: [UUID: String] = [repoA.repo.id: pathA, repoB.repo.id: resolvedPathB]
+        _ = await store.scanAfterSync(
+            repos: [repoA.repo, repoB.repo],
+            receivedCounts: [repoA.repo.id: 1, repoB.repo.id: 0],
+            fossilPath: { pathsAfter[$0.id]! }
+        )
+
+        XCTAssertEqual(store.openRequestCount, 2)
+        XCTAssertEqual(Set(store.visibleRequests.map(\.request.ticketUUID)), ["a1", "b1"])
+    }
+
+    /// The other half: when a repo's tally IS nonzero, it must actually be
+    /// rescanned (not just carried over), so a resolved ticket really does
+    /// disappear.
+    func testNonzeroReceivedActuallyRescansAndPicksUpChanges() async throws {
+        let path = try makeFixture(rows: [
+            (uuid: "a1", mtime: "1", designInput: "confirm"),
+            (uuid: "a2", mtime: "1", designInput: "confirm"),
+        ])
+        let repo = makeRepo(named: "repo-a", at: path)
+
+        let store = MaintainerRequestStore(defaults: defaults)
+        _ = await store.scanAfterSync(repos: [repo.repo], fossilPath: { _ in repo.path })
+        XCTAssertEqual(store.openRequestCount, 2)
+
+        let resolvedPath = try makeFixture(rows: [(uuid: "a2", mtime: "1", designInput: "confirm")])
+        _ = await store.scanAfterSync(
+            repos: [repo.repo],
+            receivedCounts: [repo.repo.id: 1],
+            fossilPath: { _ in resolvedPath }
+        )
+
+        XCTAssertEqual(store.openRequestCount, 1)
+        XCTAssertEqual(store.visibleRequests.map(\.request.ticketUUID), ["a2"])
+    }
 }

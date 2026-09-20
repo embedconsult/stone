@@ -110,4 +110,74 @@ final class RepoStoreSyncCredentialTests: XCTestCase {
         XCTAssertEqual(RepoStore.combinedRemoteURL(host: "https://example.com/repo", username: "  "),
                        "https://example.com/repo")
     }
+
+    // MARK: - indicatesMissingTicketColumn (ticket d4d02c604f)
+
+    /// The exact ticket 11018cb484 case: sync's crosslinker fails to write
+    /// an incoming ticket change because this clone's local TICKET table
+    /// doesn't have a column the change names -- Fossil surfaces this as a
+    /// plain SQLite "no such column" error.
+    func testIndicatesMissingTicketColumnRecognizesSQLiteError() {
+        XCTAssertTrue(RepoStore.indicatesMissingTicketColumn("SQLITE_ERROR: no such column: foo\n"))
+    }
+
+    func testIndicatesMissingTicketColumnIsCaseInsensitive() {
+        XCTAssertTrue(RepoStore.indicatesMissingTicketColumn("Error: No Such Column: foo"))
+    }
+
+    func testIndicatesMissingTicketColumnReturnsFalseForOrdinaryOutput() {
+        XCTAssertFalse(RepoStore.indicatesMissingTicketColumn("Round-trips: 1   Artifacts sent: 3  received: 0\n"))
+    }
+
+    // MARK: - isConfigPullDue
+
+    func testConfigPullIsDueWhenNeverPulledBefore() {
+        XCTAssertTrue(RepoStore.isConfigPullDue(lastPullAt: nil))
+    }
+
+    func testConfigPullIsNotDueLessThanADayAfterLastPull() {
+        let now = Date()
+        let twoHoursAgo = now.addingTimeInterval(-2 * 60 * 60)
+        XCTAssertFalse(RepoStore.isConfigPullDue(lastPullAt: twoHoursAgo, now: now))
+    }
+
+    func testConfigPullIsDueAfterMoreThanADay() {
+        let now = Date()
+        let twoDaysAgo = now.addingTimeInterval(-2 * 24 * 60 * 60)
+        XCTAssertTrue(RepoStore.isConfigPullDue(lastPullAt: twoDaysAgo, now: now))
+    }
+
+    func testConfigPullIsDueAtExactlyTheMinimumInterval() {
+        let now = Date()
+        let exactlyADayAgo = now.addingTimeInterval(-RepoStore.configPullMinInterval)
+        XCTAssertTrue(RepoStore.isConfigPullDue(lastPullAt: exactlyADayAgo, now: now))
+    }
+
+    // MARK: - appendPhaseTimings
+
+    /// The maintainer's ask: every sync's log should say where the time
+    /// went, not just whether it succeeded.
+    func testAppendPhaseTimingsIncludesAllThreePhases() {
+        let annotated = RepoStore.appendPhaseTimings(
+            to: "Round-trips: 1   Artifacts sent: 0  received: 0",
+            ticketConfigPullSeconds: 1.5,
+            syncSeconds: 0.25,
+            skinPullSeconds: nil
+        )
+        XCTAssertTrue(annotated.contains("Round-trips: 1"))
+        XCTAssertTrue(annotated.contains("ticket-config pull 1.50s"))
+        XCTAssertTrue(annotated.contains("sync 0.25s"))
+        XCTAssertTrue(annotated.contains("skin pull skipped"))
+    }
+
+    func testAppendPhaseTimingsMarksSkippedPhasesAsNil() {
+        let annotated = RepoStore.appendPhaseTimings(
+            to: "ok",
+            ticketConfigPullSeconds: nil,
+            syncSeconds: 0.1,
+            skinPullSeconds: nil
+        )
+        XCTAssertTrue(annotated.contains("ticket-config pull skipped"))
+        XCTAssertTrue(annotated.contains("skin pull skipped"))
+    }
 }
