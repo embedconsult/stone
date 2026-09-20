@@ -181,7 +181,7 @@ final class RepoStore: ObservableObject {
     /// needs its own round trip to the server, which costs as much as just
     /// doing the pull -- there is no cheaper "is it stale" check available,
     /// so capping how often we bother asking is what actually saves time.
-    static let configPullMinInterval: TimeInterval = 24 * 60 * 60
+    nonisolated static let configPullMinInterval: TimeInterval = 24 * 60 * 60
 
     /// Whether it has been long enough since `lastPullAt` (or it has never
     /// happened) to allow another proactive `configuration pull`.

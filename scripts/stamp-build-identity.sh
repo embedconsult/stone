@@ -23,6 +23,16 @@
 #
 # Best-effort only: a stamping failure must never fail the actual app
 # build, so nothing here uses `set -e` and every step is allowed to no-op.
+#
+# This run-script phase declares no outputs and has "Based on dependency
+# analysis" unchecked (alwaysOutOfDate = 1 in project.pbxproj) on purpose:
+# its real input is the current VCS commit/dirty state, which isn't a file
+# Xcode's build graph can see, so there is no output-file mtime trick that
+# would let dependency analysis skip a rerun safely -- skipping this script
+# on an unrelated rebuild would leave a stale commit/dirty stamp in the
+# built product. It must run on every build.
+
+
 
 PATH="$PATH:/usr/local/bin:/opt/homebrew/bin"
 
