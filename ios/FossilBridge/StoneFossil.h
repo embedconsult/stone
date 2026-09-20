@@ -86,6 +86,34 @@ int stone_fossil_server_set_repo(const char *repo_path);
 /* Stop the running server, if any. Safe to call when none is running. */
 void stone_fossil_server_stop(void);
 
+/*
+ * Run a read-only SQL query against a Fossil repository's underlying SQLite
+ * file, using Fossil's own bundled SQLite -- the exact same library instance
+ * `fossil_main()` uses internally, never a second, independent one. (Ticket
+ * f0c612c027: a caller that opened the .fossil file itself through a
+ * different SQLite library -- e.g. iOS's system libsqlite3 -- put two
+ * SQLite implementations' authorizer/protection state in the same process,
+ * which made Fossil's own post-sync `DELETE FROM unsent` fail with
+ * SQLITE_AUTH.)
+ *
+ *   repo_path : absolute path to the .fossil (SQLite) file to query.
+ *   sql       : a single SELECT/PRAGMA statement. Caller-controlled only
+ *               (never end-user input) -- no parameter binding is offered.
+ *   out_text  : on success, a newly malloc()'d NUL-terminated string, one
+ *               result row per line, columns separated by the ASCII Unit
+ *               Separator (0x1F) and rows separated by the ASCII Record
+ *               Separator (0x1E) -- not '\n'/'\t', since ticket text can
+ *               legitimately contain either. A NULL column value is
+ *               represented as an empty field. Caller must free() it. Left
+ *               untouched on failure. A query matching no rows still
+ *               yields "" (non-NULL).
+ *
+ * Returns 0 on success (the query ran, however many rows it returned),
+ * non-zero if the database could not be opened read-only or the statement
+ * failed to prepare/step.
+ */
+int stone_fossil_query(const char *repo_path, const char *sql, char **out_text);
+
 #ifdef __cplusplus
 }
 #endif

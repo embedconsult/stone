@@ -27,6 +27,13 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+/* Fossil's own bundled SQLite (extsrc/sqlite3.c, compiled into this same
+ * archive -- see build-fossil-xcframework.sh/linux-crosslink-test.sh). Used
+ * only by stone_fossil_query() below, which is the ONE place other than
+ * Fossil's own command dispatch that touches a .fossil file's SQLite
+ * directly -- deliberately the same library instance. */
+#include "sqlite3.h"
+
 /* Provided by the vendored Fossil core (src/main.c). */
 extern int fossil_main(int argc, char **argv);
 
@@ -508,4 +515,96 @@ void stone_fossil_server_stop(void) {
     g_server.repo_path = NULL;
     pthread_mutex_unlock(&g_repo_lock);
     g_server.port = 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Read-only query (MaintainerRequestScanner)                          */
+/* ------------------------------------------------------------------ */
+
+/* Append `srclen` bytes at `src` to the growable buffer `*bufp`/`*lenp`
+ * (capacity `*capp`), growing it as needed. Returns 0 on success, -1 on
+ * allocation failure (buffer already freed in that case). */
+static int query_buf_append(char **bufp, size_t *lenp, size_t *capp,
+                             const char *src, size_t srclen) {
+    size_t need = *lenp + srclen + 1;
+    if (need > *capp) {
+        size_t newcap = *capp;
+        while (newcap < need) newcap *= 2;
+        char *nb = (char *)realloc(*bufp, newcap);
+        if (nb == NULL) {
+            free(*bufp);
+            *bufp = NULL;
+            return -1;
+        }
+        *bufp = nb;
+        *capp = newcap;
+    }
+    memcpy(*bufp + *lenp, src, srclen);
+    *lenp += srclen;
+    (*bufp)[*lenp] = '\0';
+    return 0;
+}
+
+int stone_fossil_query(const char *repo_path, const char *sql, char **out_text) {
+    if (repo_path == NULL || sql == NULL || out_text == NULL) return -1;
+    *out_text = NULL;
+
+    sqlite3 *db = NULL;
+    /* Read-only + no-mutex, same reasoning as the caller this replaces: this
+     * must never block on, or contend with, a write lock the embedded
+     * Fossil engine or an in-flight sync might be holding. */
+    int flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX;
+    if (sqlite3_open_v2(repo_path, &db, flags, NULL) != SQLITE_OK || db == NULL) {
+        if (db) sqlite3_close(db);
+        return -1;
+    }
+
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK || stmt == NULL) {
+        sqlite3_close(db);
+        return -1;
+    }
+
+    size_t cap = 4096, len = 0;
+    char *buf = (char *)malloc(cap);
+    if (buf == NULL) {
+        sqlite3_finalize(stmt);
+        sqlite3_close(db);
+        return -1;
+    }
+    buf[0] = '\0';
+
+    int rc;
+    int failed = 0;
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {
+        int n = sqlite3_column_count(stmt);
+        for (int i = 0; i < n; i++) {
+            if (i > 0 && query_buf_append(&buf, &len, &cap, "\x1F", 1) != 0) {
+                failed = 1;
+                break;
+            }
+            const unsigned char *text = sqlite3_column_text(stmt, i);
+            if (text != NULL &&
+                query_buf_append(&buf, &len, &cap, (const char *)text, strlen((const char *)text)) != 0) {
+                failed = 1;
+                break;
+            }
+        }
+        if (failed) break;
+        if (query_buf_append(&buf, &len, &cap, "\x1E", 1) != 0) {
+            failed = 1;
+            break;
+        }
+    }
+
+    sqlite3_finalize(stmt);
+    sqlite3_close(db);
+
+    if (failed || rc != SQLITE_DONE) {
+        free(buf);
+        return -1;
+    }
+
+    *out_text = buf;
+    return 0;
 }
