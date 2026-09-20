@@ -127,7 +127,7 @@ final class MaintainerRequestStore: ObservableObject {
             // reason to keep it around once the ticket itself is gone.
             let currentUUIDs = Set(matches.map(\.ticketUUID))
             var firstSeenForRepo = (updatedFirstSeen[repoKey] ?? [:]).filter { currentUUIDs.contains($0.key) }
-            var dismissedForRepo = (updatedDismissed[repoKey] ?? [:]).filter { currentUUIDs.contains($0.key) }
+            let dismissedForRepo = (updatedDismissed[repoKey] ?? [:]).filter { currentUUIDs.contains($0.key) }
 
             for request in matches {
                 let seenAt: Date

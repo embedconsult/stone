@@ -165,6 +165,7 @@
 /* Begin PBXShellScriptBuildPhase section */
 		667D37CABA7C5AA5761B9809 /* Stamp Build Identity */ = {
 			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);
