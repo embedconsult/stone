@@ -18,7 +18,7 @@ import XCTest
 final class NotificationManagerTests: XCTestCase {
     func testDidReceiveCompletionHandlerFiresOnMainThread() {
         let delegate: UNUserNotificationCenterDelegate = NotificationManager.shared
-        let response = Self.makeResponse(userInfo: ["repoID": UUID().uuidString, "path": "/ticket"])
+        let response = Self.makeResponse(userInfo: ["repoID": UUID().uuidString, "ticketUUID": "abc123"])
 
         let expectation = expectation(description: "completion handler called")
         Task.detached {
@@ -50,6 +50,48 @@ final class NotificationManagerTests: XCTestCase {
             )
         }
         wait(for: [expectation], timeout: 5)
+    }
+
+    // MARK: - Notification body per kind (acceptance: 2026-09-21 00:0xZ)
+
+    /// The maintainer's own complaint: a notification body used to be just
+    /// the kind's display name ("Decision"), never the actual question.
+    /// `NotificationManager.body(for:)` is the pure logic behind the fix --
+    /// pinned once per kind so each shape can't silently regress into
+    /// another.
+    func testTryThisBodyIsTheHumanVerifyPrompt() {
+        let request = MaintainerRequest(
+            ticketUUID: "t1", title: "Try the new build", mtime: "1", kind: .tryThis,
+            humanVerify: "Build 27, tap Sync twice and confirm no crash.", latestCommentSummary: nil)
+        XCTAssertEqual(NotificationManager.body(for: request), "Build 27, tap Sync twice and confirm no crash.")
+    }
+
+    func testTryThisBodyFallsBackToTitleWhenHumanVerifyIsMissing() {
+        let request = MaintainerRequest(
+            ticketUUID: "t1", title: "Try the new build", mtime: "1", kind: .tryThis,
+            humanVerify: nil, latestCommentSummary: nil)
+        XCTAssertEqual(NotificationManager.body(for: request), "Try the new build")
+    }
+
+    func testDecisionBodyCombinesTitleAndLatestNonOCXComment() {
+        let request = MaintainerRequest(
+            ticketUUID: "t1", title: "Pick a rollout strategy", mtime: "1", kind: .decision,
+            humanVerify: nil, latestCommentSummary: "Ship to 10% or 100%?")
+        XCTAssertEqual(NotificationManager.body(for: request), "Pick a rollout strategy — Ship to 10% or 100%?")
+    }
+
+    func testDecisionBodyFallsBackToTitleWhenNoCommentSummary() {
+        let request = MaintainerRequest(
+            ticketUUID: "t1", title: "Pick a rollout strategy", mtime: "1", kind: .decision,
+            humanVerify: nil, latestCommentSummary: nil)
+        XCTAssertEqual(NotificationManager.body(for: request), "Pick a rollout strategy")
+    }
+
+    func testMergeCardBodyIsTheTicketTitle() {
+        let request = MaintainerRequest(
+            ticketUUID: "t1", title: "Merge candidate A", mtime: "1", kind: .mergeCard,
+            humanVerify: nil, latestCommentSummary: nil)
+        XCTAssertEqual(NotificationManager.body(for: request), "Merge candidate A")
     }
 
     // MARK: - Fixtures

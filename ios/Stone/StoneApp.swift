@@ -17,6 +17,7 @@ struct StoneApp: App {
     /// drives navigation (RepoListView's row taps) -- ticket 1a55c5d8b8.
     @State private var path = NavigationPath()
     @ObservedObject private var deepLinkRouter = DeepLinkRouter.shared
+    @Environment(\.openURL) private var openURL
 
     init() {
         // Must happen before the app finishes launching -- BGTaskScheduler
@@ -65,6 +66,15 @@ struct StoneApp: App {
                 guard requested else { return }
                 path.append(AppRoute.requests)
                 deepLinkRouter.clearRequestsScreenRequest()
+            }
+            // TicketOpener (ticket 98c06fb7a7): the ticket isn't in any
+            // local clone even after a fresh sync -- open the server's own
+            // page externally rather than ever landing on an empty local
+            // ticket page.
+            .onChange(of: deepLinkRouter.pendingRemoteURL) { _, url in
+                guard let url else { return }
+                openURL(url)
+                deepLinkRouter.clearRemote()
             }
         }
         // Submitted here rather than only from inside a running background

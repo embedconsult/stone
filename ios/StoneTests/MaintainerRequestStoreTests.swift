@@ -32,7 +32,7 @@ final class MaintainerRequestStoreTests: XCTestCase {
 
     // MARK: - Fixture building (same shape as MaintainerRequestScannerTests)
 
-    private func makeFixture(rows: [(uuid: String, mtime: String, designInput: String)]) throws -> String {
+    private func makeFixture(rows: [(uuid: String, mtime: String, needsYou: String)]) throws -> String {
         let path = tempDir.appendingPathComponent("\(UUID().uuidString).fossil").path
         var db: OpaquePointer?
         guard sqlite3_open(path, &db) == SQLITE_OK, let db else {
@@ -43,12 +43,12 @@ final class MaintainerRequestStoreTests: XCTestCase {
 
         exec(db, """
         CREATE TABLE ticket(tkt_id INTEGER PRIMARY KEY, tkt_uuid TEXT, tkt_mtime TEXT,
-                             title TEXT, comment TEXT, status TEXT, design_input TEXT)
+                             title TEXT, comment TEXT, status TEXT, needs_you TEXT)
         """)
         for row in rows {
             exec(db, """
-            INSERT INTO ticket(tkt_uuid, tkt_mtime, title, comment, status, design_input)
-            VALUES ('\(row.uuid)', '\(row.mtime)', 'Title \(row.uuid)', '', 'Open', '\(row.designInput)')
+            INSERT INTO ticket(tkt_uuid, tkt_mtime, title, comment, status, needs_you)
+            VALUES ('\(row.uuid)', '\(row.mtime)', 'Title \(row.uuid)', '', 'Open', '\(row.needsYou)')
             """)
         }
         return path
@@ -71,11 +71,11 @@ final class MaintainerRequestStoreTests: XCTestCase {
 
     func testBadgeEqualsVisibleRowCount() async throws {
         let pathA = try makeFixture(rows: [
-            (uuid: "a1", mtime: "1", designInput: "confirm"),
-            (uuid: "a2", mtime: "1", designInput: "confirm"),
+            (uuid: "a1", mtime: "1", needsYou: "decision"),
+            (uuid: "a2", mtime: "1", needsYou: "decision"),
         ])
         let pathB = try makeFixture(rows: [
-            (uuid: "b1", mtime: "1", designInput: "confirm"),
+            (uuid: "b1", mtime: "1", needsYou: "decision"),
         ])
         let repoA = makeRepo(named: "repo-a", at: pathA)
         let repoB = makeRepo(named: "repo-b", at: pathB)
@@ -92,7 +92,7 @@ final class MaintainerRequestStoreTests: XCTestCase {
     /// a running total -- rescanning the same, unchanged state must report
     /// the same count, not double it.
     func testRescanningUnchangedStateDoesNotAccumulateTheBadge() async throws {
-        let path = try makeFixture(rows: [(uuid: "a1", mtime: "1", designInput: "confirm")])
+        let path = try makeFixture(rows: [(uuid: "a1", mtime: "1", needsYou: "decision")])
         let repo = makeRepo(named: "repo-a", at: path)
 
         let store = MaintainerRequestStore(defaults: defaults)
@@ -107,8 +107,8 @@ final class MaintainerRequestStoreTests: XCTestCase {
 
     func testTicketResolvedBetweenScansVanishesFromListAndBadge() async throws {
         let path = try makeFixture(rows: [
-            (uuid: "a1", mtime: "1", designInput: "confirm"),
-            (uuid: "a2", mtime: "1", designInput: "confirm"),
+            (uuid: "a1", mtime: "1", needsYou: "decision"),
+            (uuid: "a2", mtime: "1", needsYou: "decision"),
         ])
         let repo = makeRepo(named: "repo-a", at: path)
 
@@ -117,10 +117,11 @@ final class MaintainerRequestStoreTests: XCTestCase {
         XCTAssertEqual(store.openRequestCount, 2)
 
         // The maintainer resolved "a1" server-side; the next sync's local
-        // clone no longer has it matching (simulated here by a fixture with
-        // design_input reset to "none", same as a closed ticket would read).
+        // clone no longer has it matching (simulated here by a fixture that
+        // simply omits "a1", same as a closed ticket's needs_you resetting
+        // to "none" would read).
         let resolvedPath = try makeFixture(rows: [
-            (uuid: "a2", mtime: "1", designInput: "confirm"),
+            (uuid: "a2", mtime: "1", needsYou: "decision"),
         ])
         _ = await store.scanAfterSync(repos: [repo.repo], fossilPath: { _ in resolvedPath })
 
@@ -132,8 +133,8 @@ final class MaintainerRequestStoreTests: XCTestCase {
 
     func testDismissHidesRowImmediatelyAndBadgeDrops() async throws {
         let path = try makeFixture(rows: [
-            (uuid: "a1", mtime: "1", designInput: "confirm"),
-            (uuid: "a2", mtime: "1", designInput: "confirm"),
+            (uuid: "a1", mtime: "1", needsYou: "decision"),
+            (uuid: "a2", mtime: "1", needsYou: "decision"),
         ])
         let repo = makeRepo(named: "repo-a", at: path)
 
@@ -148,7 +149,7 @@ final class MaintainerRequestStoreTests: XCTestCase {
     }
 
     func testDismissedRowStaysHiddenAcrossAnUnchangedRescan() async throws {
-        let path = try makeFixture(rows: [(uuid: "a1", mtime: "1", designInput: "confirm")])
+        let path = try makeFixture(rows: [(uuid: "a1", mtime: "1", needsYou: "decision")])
         let repo = makeRepo(named: "repo-a", at: path)
 
         let store = MaintainerRequestStore(defaults: defaults)
@@ -166,7 +167,7 @@ final class MaintainerRequestStoreTests: XCTestCase {
     /// ticket is edited (new mtime), a dismissed row must reappear rather
     /// than staying hidden forever.
     func testDismissedRowReappearsOnceTheTicketsMtimeChanges() async throws {
-        let path = try makeFixture(rows: [(uuid: "a1", mtime: "1", designInput: "confirm")])
+        let path = try makeFixture(rows: [(uuid: "a1", mtime: "1", needsYou: "decision")])
         let repo = makeRepo(named: "repo-a", at: path)
 
         let store = MaintainerRequestStore(defaults: defaults)
@@ -174,7 +175,7 @@ final class MaintainerRequestStoreTests: XCTestCase {
         let row = try XCTUnwrap(store.visibleRequests.first)
         store.dismiss(row)
 
-        let editedPath = try makeFixture(rows: [(uuid: "a1", mtime: "2", designInput: "confirm")])
+        let editedPath = try makeFixture(rows: [(uuid: "a1", mtime: "2", needsYou: "decision")])
         _ = await store.scanAfterSync(repos: [repo.repo], fossilPath: { _ in editedPath })
 
         XCTAssertEqual(store.openRequestCount, 1)
@@ -185,8 +186,8 @@ final class MaintainerRequestStoreTests: XCTestCase {
 
     func testClearAllDismissesEveryVisibleRow() async throws {
         let path = try makeFixture(rows: [
-            (uuid: "a1", mtime: "1", designInput: "confirm"),
-            (uuid: "a2", mtime: "1", designInput: "confirm"),
+            (uuid: "a1", mtime: "1", needsYou: "decision"),
+            (uuid: "a2", mtime: "1", needsYou: "decision"),
         ])
         let repo = makeRepo(named: "repo-a", at: path)
 
@@ -210,8 +211,8 @@ final class MaintainerRequestStoreTests: XCTestCase {
     /// make another repo's requests vanish, the same guarantee the "always
     /// pass every repo" doc comment already makes for the plain `repos` list.
     func testZeroReceivedCarriesOverExistingRowsWithoutRescanning() async throws {
-        let pathA = try makeFixture(rows: [(uuid: "a1", mtime: "1", designInput: "confirm")])
-        let pathB = try makeFixture(rows: [(uuid: "b1", mtime: "1", designInput: "confirm")])
+        let pathA = try makeFixture(rows: [(uuid: "a1", mtime: "1", needsYou: "decision")])
+        let pathB = try makeFixture(rows: [(uuid: "b1", mtime: "1", needsYou: "decision")])
         let repoA = makeRepo(named: "repo-a", at: pathA)
         let repoB = makeRepo(named: "repo-b", at: pathB)
         let paths: [UUID: String] = [repoA.repo.id: repoA.path, repoB.repo.id: repoB.path]
@@ -241,8 +242,8 @@ final class MaintainerRequestStoreTests: XCTestCase {
     /// disappear.
     func testNonzeroReceivedActuallyRescansAndPicksUpChanges() async throws {
         let path = try makeFixture(rows: [
-            (uuid: "a1", mtime: "1", designInput: "confirm"),
-            (uuid: "a2", mtime: "1", designInput: "confirm"),
+            (uuid: "a1", mtime: "1", needsYou: "decision"),
+            (uuid: "a2", mtime: "1", needsYou: "decision"),
         ])
         let repo = makeRepo(named: "repo-a", at: path)
 
@@ -250,7 +251,7 @@ final class MaintainerRequestStoreTests: XCTestCase {
         _ = await store.scanAfterSync(repos: [repo.repo], fossilPath: { _ in repo.path })
         XCTAssertEqual(store.openRequestCount, 2)
 
-        let resolvedPath = try makeFixture(rows: [(uuid: "a2", mtime: "1", designInput: "confirm")])
+        let resolvedPath = try makeFixture(rows: [(uuid: "a2", mtime: "1", needsYou: "decision")])
         _ = await store.scanAfterSync(
             repos: [repo.repo],
             receivedCounts: [repo.repo.id: 1],
@@ -259,5 +260,26 @@ final class MaintainerRequestStoreTests: XCTestCase {
 
         XCTAssertEqual(store.openRequestCount, 1)
         XCTAssertEqual(store.visibleRequests.map(\.request.ticketUUID), ["a2"])
+    }
+
+    // MARK: - A delegated merge never notifies (ticket 98c06fb7a7)
+
+    /// The console excludes a merge whose merge is delegated to the
+    /// coordinator by writing `needs_you = "coordinator"` for it rather than
+    /// `"merge"`. That must never surface as a row or count toward the
+    /// badge, through the full `scanAfterSync` path, not just the scanner.
+    func testDelegatedMergeCardNeverNotifiesOrCountsTowardTheBadge() async throws {
+        let path = try makeFixture(rows: [
+            (uuid: "own1", mtime: "1", needsYou: "merge"),
+            (uuid: "delegated1", mtime: "1", needsYou: "coordinator"),
+        ])
+        let repo = makeRepo(named: "repo-a", at: path)
+
+        let store = MaintainerRequestStore(defaults: defaults)
+        let outcomes = await store.scanAfterSync(repos: [repo.repo], fossilPath: { _ in repo.path })
+
+        XCTAssertEqual(store.openRequestCount, 1)
+        XCTAssertEqual(store.visibleRequests.map(\.request.ticketUUID), ["own1"])
+        XCTAssertEqual(outcomes.flatMap(\.newRequests).map(\.ticketUUID), ["own1"])
     }
 }
