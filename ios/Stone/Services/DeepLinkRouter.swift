@@ -17,6 +17,14 @@ final class DeepLinkRouter: ObservableObject {
         /// target to name (several requests at once) uses
         /// `requestsScreenRequested` below instead of this.
         let path: String
+        /// Ticket 98c06fb7a7's per-kind routing: true for a decision/
+        /// try-this card, so RepoDetailView scrolls to and focuses Fossil's
+        /// own ticket comment field once this path finishes loading.
+        let focusComposer: Bool
+        /// Set for a merge card opened locally only because there was no
+        /// remote to build a console link from -- shown once as a banner so
+        /// the maintainer knows this page can't approve anything.
+        let note: String?
     }
 
     @Published var pending: Destination?
@@ -28,12 +36,22 @@ final class DeepLinkRouter: ObservableObject {
     /// doesn't replay it.
     @Published var requestsScreenRequested = false
 
-    func route(repoID: UUID, path: String) {
-        pending = Destination(repoID: repoID, path: path)
+    /// Set when `TicketOpener` determines the ticket isn't (yet) in this
+    /// clone even after a fresh sync -- ticket 98c06fb7a7. StoneApp opens
+    /// this externally (Safari) rather than ever routing to a local ticket
+    /// page Fossil would render empty.
+    @Published var pendingRemoteURL: URL?
+
+    func route(repoID: UUID, path: String, focusComposer: Bool = false, note: String? = nil) {
+        pending = Destination(repoID: repoID, path: path, focusComposer: focusComposer, note: note)
     }
 
     func routeToRequestsScreen() {
         requestsScreenRequested = true
+    }
+
+    func routeToRemote(url: URL) {
+        pendingRemoteURL = url
     }
 
     /// Called once RepoListView has pushed the matching repo and
@@ -45,5 +63,9 @@ final class DeepLinkRouter: ObservableObject {
 
     func clearRequestsScreenRequest() {
         requestsScreenRequested = false
+    }
+
+    func clearRemote() {
+        pendingRemoteURL = nil
     }
 }

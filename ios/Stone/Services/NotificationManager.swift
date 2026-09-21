@@ -62,8 +62,20 @@ final class NotificationManager: NSObject {
 
         if newRequests.count == 1, let only = newRequests.first {
             content.title = only.title
-            content.body = only.kind.displayName
-            content.userInfo = ["repoID": repo.id.uuidString, "path": "/tktview/\(only.ticketUUID)"]
+            content.body = Self.body(for: only)
+            // Carries the repo id plus the ticket uuid (not a path) --
+            // ticket 98c06fb7a7: `TicketOpener` verifies the ticket is
+            // actually in this repo's clone before routing to it, so the
+            // handler needs the uuid on its own, not a pre-built local path.
+            // `kind` rides along too (as the server's own `needs_you`
+            // string) so the tap resolves to the same kind-specific target
+            // TicketOpener would pick right now, not just wherever a plain
+            // ticket-uuid lookup would land.
+            content.userInfo = [
+                "repoID": repo.id.uuidString,
+                "ticketUUID": only.ticketUUID,
+                "kind": only.kind.needsYouValue,
+            ]
         } else {
             content.title = "\(newRequests.count) requests"
             let kinds = Set(newRequests.map(\.kind.displayName)).sorted()
@@ -76,6 +88,35 @@ final class NotificationManager: NSObject {
             content: content,
             trigger: nil) // nil trigger = deliver as soon as possible
         _ = try? await center.add(request)
+    }
+
+    /// The maintainer's own follow-up complaint: a notification's body used
+    /// to just be the kind's display name ("Merge card"/"Decision"/"Try
+    /// this") -- never enough to act on without opening the app first. Each
+    /// kind now carries the text that's actually informative for it:
+    /// try-this's own instructions, a decision's question (its latest
+    /// non-`OCX-` comment), or -- for a merge card, which has no question of
+    /// its own to ask -- the ticket title, same as a bare "what is this"
+    /// would show.
+    ///
+    /// Not `private`, so StoneTests can pin each kind's body shape via
+    /// `@testable import` without needing a real `UNNotificationRequest`
+    /// round trip.
+    static func body(for request: MaintainerRequest) -> String {
+        switch request.kind {
+        case .mergeCard:
+            return request.title
+        case .tryThis:
+            if let humanVerify = request.humanVerify, !humanVerify.isEmpty {
+                return humanVerify
+            }
+            return request.title
+        case .decision:
+            if let comment = request.latestCommentSummary, !comment.isEmpty {
+                return "\(request.title) — \(comment)"
+            }
+            return request.title
+        }
     }
 
     /// "The badge count is the number of open requests" (ticket 1a55c5d8b8)
@@ -104,12 +145,14 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         [.banner, .badge, .sound, .list]
     }
 
-    /// Tapping the notification: route to the repo's ticket page
-    /// (RepoWebView), via DeepLinkRouter -- RepoListView pushes the repo,
-    /// RepoDetailView loads the path once its local server is up. A
-    /// coalesced notification (several requests, no single ticket to name)
-    /// carries `"screen": "requests"` instead of a repo/path pair, and opens
-    /// the Requests screen (ticket 4c75227cc7) rather than any one repo.
+    /// Tapping the notification: resolve to the repo's ticket page via
+    /// `TicketOpener` (ticket 98c06fb7a7) -- verifies the ticket is actually
+    /// in that repo's local clone (syncing once if not) before routing
+    /// there, and falls back to the server's own ticket page over https
+    /// rather than ever opening an empty local one. A coalesced notification
+    /// (several requests, no single ticket to name) carries
+    /// `"screen": "requests"` instead of a repo/ticket pair, and opens the
+    /// Requests screen (ticket 4c75227cc7) rather than any one repo.
     @MainActor
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
@@ -122,7 +165,10 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         }
         guard let repoIDString = info["repoID"] as? String,
               let repoID = UUID(uuidString: repoIDString),
-              let path = info["path"] as? String else { return }
-        DeepLinkRouter.shared.route(repoID: repoID, path: path)
+              let ticketUUID = info["ticketUUID"] as? String,
+              let kindString = info["kind"] as? String,
+              let kind = MaintainerRequest.Kind(needsYouValue: kindString),
+              let repo = RepoStore.shared.repos.first(where: { $0.id == repoID }) else { return }
+        await TicketOpener.open(repo: repo, ticketUUID: ticketUUID, kind: kind)
     }
 }

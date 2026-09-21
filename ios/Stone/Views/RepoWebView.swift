@@ -33,6 +33,28 @@ final class WebViewController: ObservableObject {
     func load(_ url: URL) {
         webView?.load(RepoWebView.freshRequest(for: url))
     }
+
+    /// Ticket 98c06fb7a7's per-kind routing: a decision/try-this deep link
+    /// asks for the reply composer to be focused once its ticket page
+    /// finishes loading, so the maintainer can start typing an answer
+    /// immediately instead of hunting for Fossil's own "Append Change"
+    /// field. Best-effort, not a confirmed DOM contract: Fossil's stock
+    /// ticket-view theme names that field's textarea `comment`, so this
+    /// tries the common id/name shapes and does nothing if neither matches
+    /// (an unusual skin, say) -- there is no local page left un-openable
+    /// either way, just a composer that isn't pre-focused.
+    func focusTicketComposer() {
+        let js = """
+        (function() {
+            var el = document.getElementById('comment') || document.querySelector('textarea[name="comment"]');
+            if (!el) { return false; }
+            el.scrollIntoView({block: 'center'});
+            el.focus();
+            return true;
+        })();
+        """
+        webView?.evaluateJavaScript(js, completionHandler: nil)
+    }
 }
 
 /// Hosts a `WKWebView` pointed at the in-process Fossil server, presenting
@@ -176,6 +198,18 @@ struct RepoDetailView: View {
     /// any further in-page browsing after that.
     @State private var deepLinkConsumed = false
 
+    /// Set by `consumePendingDeepLink()` when the just-triggered navigation
+    /// is a decision/try-this deep link -- consumed on the NEXT
+    /// `onURLChange` (the one firing once that navigation actually
+    /// finishes), which is the earliest point the composer field could
+    /// exist in the DOM to focus.
+    @State private var pendingComposerFocus = false
+
+    /// Set by `consumePendingDeepLink()` for a merge card opened locally
+    /// only because there was no remote to build a console link from --
+    /// shown once as a banner, then cleared.
+    @State private var pendingApprovalNote: String?
+
     /// Owns the live WKWebView reference; see WebViewController's doc.
     @StateObject private var webController = WebViewController()
 
@@ -184,7 +218,20 @@ struct RepoDetailView: View {
             if let url = baseURL {
                 RepoWebView(baseURL: url,
                             controller: webController,
-                            onURLChange: { currentURL = $0; recoveryAttempted = false; consumePendingDeepLink() },
+                            onURLChange: { url in
+                                currentURL = url
+                                recoveryAttempted = false
+                                // Checked BEFORE consumePendingDeepLink() so
+                                // a focus request set by a navigation this
+                                // same closure invocation just triggered
+                                // isn't acted on until the NEXT invocation,
+                                // once that navigation has actually finished.
+                                if pendingComposerFocus {
+                                    webController.focusTicketComposer()
+                                    pendingComposerFocus = false
+                                }
+                                consumePendingDeepLink()
+                            },
                             onLoadFailure: { message in
                                 Task { await handleLoadFailure(message) }
                             })
@@ -305,6 +352,16 @@ struct RepoDetailView: View {
             Button("Cancel", role: .cancel) { }
         } message: {
             Text("Enter a path on this repo's local server.")
+        }
+        // Ticket 98c06fb7a7: shown once when a merge-card deep link had to
+        // fall back to this local ticket page (no remote configured to
+        // build the console's merge-review link from) -- the Approve
+        // control isn't on this page, so say so rather than leaving the
+        // maintainer to discover that themselves.
+        .alert("Approval Needs the Console", isPresented: .constant(pendingApprovalNote != nil)) {
+            Button("OK") { pendingApprovalNote = nil }
+        } message: {
+            Text(pendingApprovalNote ?? "")
         }
         .alert("Sync", isPresented: .constant(syncMessage != nil)) {
             // The parsed "N sent, M received" summary (parseArtifactCounts)
@@ -480,6 +537,10 @@ struct RepoDetailView: View {
         let relative = destination.path.hasPrefix("/") ? String(destination.path.dropFirst()) : destination.path
         if let url = URL(string: relative, relativeTo: base)?.absoluteURL {
             webController.load(url)
+            pendingComposerFocus = destination.focusComposer
+        }
+        if let note = destination.note {
+            pendingApprovalNote = note
         }
         deepLinkRouter.clear()
     }

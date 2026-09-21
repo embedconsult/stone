@@ -50,6 +50,8 @@
 		52556CB5356072A481342262 /* NotificationManagerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1576379C5888B887C5F45A62 /* NotificationManagerTests.swift */; };
 		8A733E2E0AEDBB77ED87AFA7 /* RequestsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 932119BCC1A12F715DAD9B65 /* RequestsView.swift */; };
 		0C1F75EB5A1BC62460487F19 /* MaintainerRequestStoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F7090437A380669878819A7 /* MaintainerRequestStoreTests.swift */; };
+		B5A0302394794F6AA46AA0C5 /* TicketOpener.swift in Sources */ = {isa = PBXBuildFile; fileRef = BA631275FCDF4AC3BDDC2F7C /* TicketOpener.swift */; };
+		148B29BB5BB74236BE49BD68 /* TicketOpenerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 380F507ED339402BBE65FD94 /* TicketOpenerTests.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -118,6 +120,8 @@
 		1576379C5888B887C5F45A62 /* NotificationManagerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManagerTests.swift; sourceTree = "<group>"; };
 		932119BCC1A12F715DAD9B65 /* RequestsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RequestsView.swift; sourceTree = "<group>"; };
 		2F7090437A380669878819A7 /* MaintainerRequestStoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MaintainerRequestStoreTests.swift; sourceTree = "<group>"; };
+		BA631275FCDF4AC3BDDC2F7C /* TicketOpener.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TicketOpener.swift; sourceTree = "<group>"; };
+		380F507ED339402BBE65FD94 /* TicketOpenerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TicketOpenerTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -244,6 +248,7 @@
 				C5CBC2F3733E6F06A44BC147 /* MaintainerRequestScannerTests.swift */,
 				1576379C5888B887C5F45A62 /* NotificationManagerTests.swift */,
 				2F7090437A380669878819A7 /* MaintainerRequestStoreTests.swift */,
+				380F507ED339402BBE65FD94 /* TicketOpenerTests.swift */,
 			);
 			path = StoneTests;
 			sourceTree = "<group>";
@@ -307,6 +312,7 @@
 				E3D33A87BD6464721FE2A386 /* MaintainerRequestStore.swift */,
 				3F478424E78656147DD03954 /* NotificationManager.swift */,
 				3EBA844DDE5D7699C78EF218 /* DeepLinkRouter.swift */,
+				BA631275FCDF4AC3BDDC2F7C /* TicketOpener.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -442,6 +448,7 @@
 				F5CF596AD2E826E777192657 /* NotificationManager.swift in Sources */,
 				EA75B2F5A71E5BCC15C990A6 /* DeepLinkRouter.swift in Sources */,
 				8A733E2E0AEDBB77ED87AFA7 /* RequestsView.swift in Sources */,
+				B5A0302394794F6AA46AA0C5 /* TicketOpener.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -456,6 +463,7 @@
 				C8398D9753F0C9AF1ABF1D93 /* MaintainerRequestScannerTests.swift in Sources */,
 				52556CB5356072A481342262 /* NotificationManagerTests.swift in Sources */,
 				0C1F75EB5A1BC62460487F19 /* MaintainerRequestStoreTests.swift in Sources */,
+				148B29BB5BB74236BE49BD68 /* TicketOpenerTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
