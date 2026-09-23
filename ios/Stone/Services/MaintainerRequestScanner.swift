@@ -215,18 +215,6 @@ enum MaintainerRequestScanner {
     /// unreadable, no `needs_you` column) -- matches this scanner's
     /// existing "nothing to report" behavior for absent/incompatible repos.
     private static func queryRows(_ fossilPath: String, _ sql: String) -> [[String]] {
-        var outPtr: UnsafeMutablePointer<CChar>?
-        let rc = fossilPath.withCString { pathC in
-            sql.withCString { sqlC in
-                stone_fossil_query(pathC, sqlC, &outPtr)
-            }
-        }
-        defer { if let outPtr { free(outPtr) } }
-        guard rc == 0, let outPtr else { return [] }
-        let text = String(cString: outPtr)
-        guard !text.isEmpty else { return [] }
-        return text.split(separator: "\u{1E}").map {
-            $0.split(separator: "\u{1F}", omittingEmptySubsequences: false).map(String.init)
-        }
+        FossilQuery.rows(fossilPath, sql)
     }
 }

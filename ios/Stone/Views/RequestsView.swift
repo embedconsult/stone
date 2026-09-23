@@ -2,11 +2,13 @@ import Foundation
 import SwiftUI
 
 /// Navigation destinations reachable from outside their owning view's own
-/// row taps -- currently just the Requests screen, pushed either from
-/// RepoListView's bell button or from a coalesced notification tap
-/// (StoneApp, DeepLinkRouter.routeToRequestsScreen).
+/// row taps: the Requests screen (RepoListView's bell, or a coalesced
+/// notification tap), the conversations list, and one conversation (a
+/// list row, or a tapped conversation notification).
 enum AppRoute: Hashable {
     case requests
+    case conversations
+    case conversation(ConversationID)
 }
 
 /// The screen behind the notifications (ticket 4c75227cc7): one row per
