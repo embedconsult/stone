@@ -211,9 +211,24 @@ int stone_fossil_run(int argc, const char *const argv[], char **out_text) {
     vec[0] = strdup("fossil");
     for (int i = 0; i < argc; i++) vec[i + 1] = strdup(argv[i]);
 
+    /* Fossil edits the argv it is given in place: find_option() removes
+     * each option it consumes by shifting the later entries left, so after
+     * e.g. "bundle import B -R R --publish --force" vec[] holds some
+     * pointers twice and others not at all. Freeing vec[] afterwards was a
+     * double free (SIGABRT in stone_fossil_run on the phone, sending a
+     * conversation reply). Free the strings from this untouched copy. */
+    char **owned = (char **)malloc((size_t)full * sizeof(char *));
+    if (owned == NULL) {
+        for (int i = 0; i < full; i++) free(vec[i]);
+        free(vec);
+        return -1;
+    }
+    memcpy(owned, vec, (size_t)full * sizeof(char *));
+
     int rc = invoke_fossil(full, vec, out_text);
 
-    for (int i = 0; i < full; i++) free(vec[i]);
+    for (int i = 0; i < full; i++) free(owned[i]);
+    free(owned);
     free(vec);
     return rc;
 }

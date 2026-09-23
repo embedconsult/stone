@@ -75,7 +75,7 @@ struct ConversationView: View {
         let own = ConversationBook.isOwn(post, login: login)
         let options = own ? [] : PostText.options(post.body ?? "")
         return HStack {
-            if own { Spacer(minLength: 40) }
+            if own { Spacer(minLength: 48) }
             VStack(alignment: own ? .trailing : .leading, spacing: 4) {
                 HStack(spacing: 4) {
                     Text(own ? "You" : post.author).fontWeight(.semibold)
@@ -90,7 +90,10 @@ struct ConversationView: View {
                     .padding(.vertical, 8)
                     .foregroundStyle(own ? Color.white : Color.primary)
                     .tint(own ? Color.white : Color.accentColor)
-                    .background(own ? Color.accentColor : Color(.secondarySystemBackground),
+                    // systemGray5 is Messages' incoming-bubble grey: visible on
+                    // white and black alike (secondarySystemBackground was too
+                    // pale to read as a bubble on a white screen).
+                    .background(own ? Color.accentColor : Color(.systemGray5),
                                 in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                     .contextMenu {
                         Button {
@@ -123,7 +126,7 @@ struct ConversationView: View {
                     }
                 }
             }
-            if !own { Spacer(minLength: 40) }
+            if !own { Spacer(minLength: 48) }
         }
     }
 
