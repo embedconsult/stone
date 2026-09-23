@@ -24,14 +24,14 @@ struct MaintainerRequest: Identifiable, Equatable {
     /// `.tryThis` (nothing reads it otherwise). Carried on every request
     /// (not just try-this ones) so `MaintainerRequestScanner.scan`'s query
     /// shape doesn't have to branch per row.
-    let humanVerify: String? = nil
+    var humanVerify: String? = nil
     /// First line of the most recent ticket comment that isn't one of this
     /// project's own machine-generated `OCX-`-prefixed status blocks (see
     /// this ticket's own history for what those look like) -- used for a
     /// `.decision` notification's body, so it can ask the actual question
     /// rather than just naming its kind. `nil` when there's no such comment,
     /// or for any kind other than `.decision`.
-    let latestCommentSummary: String? = nil
+    var latestCommentSummary: String? = nil
 
     /// Ticket 98c06fb7a7: the console -- not this phone -- decides who needs
     /// to act, and writes that verdict into one synced `needs_you` ticket
