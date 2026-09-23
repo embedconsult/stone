@@ -34,14 +34,13 @@ struct StoneApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ZStack {
-                NavigationStack(path: $path) {
-                    RepoListView()
-                }
-                .environmentObject(store)
-
-                BuildIdentityOverlay()
+            NavigationStack(path: $path) {
+                RepoListView()
             }
+            .environmentObject(store)
+            // An overlay, not a ZStack sibling: it can never change the
+            // layout underneath, so the keyboard still lifts the reply box.
+            .overlay { BuildIdentityOverlay() }
             .task {
                 await FossilEngine.shared.setUser(commitAuthor)
                 if let ca = Bundle.main.path(forResource: "cacert", ofType: "pem") {

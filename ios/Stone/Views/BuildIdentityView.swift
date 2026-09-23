@@ -55,10 +55,11 @@ struct BuildIdentityOverlay: View {
         }
         // Sits in the home-indicator strip, below the safe area, so it never
         // covers content pinned to the bottom -- it used to hide the Send
-        // button of the conversation view's reply box.
+        // button of the conversation view's reply box. Only the container
+        // region is ignored, never the keyboard's.
         .padding(.horizontal, 8)
         .padding(.bottom, 2)
-        .ignoresSafeArea(edges: .bottom)
+        .ignoresSafeArea(.container, edges: .bottom)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
