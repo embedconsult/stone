@@ -72,6 +72,7 @@ struct RepoListView: View {
             switch route {
             case .requests: RequestsView()
             case .conversations: ConversationListView()
+            case .repoConversations(let repoID): ConversationListView(repoID: repoID)
             case .conversation(let id): ConversationView(id: id)
             }
         }

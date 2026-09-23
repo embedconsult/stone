@@ -8,6 +8,8 @@ import SwiftUI
 enum AppRoute: Hashable {
     case requests
     case conversations
+    /// One repo's conversations (the repo screen's speech-bubbles button).
+    case repoConversations(UUID)
     case conversation(ConversationID)
 }
 
