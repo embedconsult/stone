@@ -4,7 +4,7 @@ import SwiftUI
 /// The home screen: lists repositories and offers add (clone / new) + delete.
 struct RepoListView: View {
     @EnvironmentObject private var store: RepoStore
-    @ObservedObject private var requestStore = MaintainerRequestStore.shared
+    @ObservedObject private var conversationStore = ConversationStore.shared
     @State private var showingAdd = false
     @State private var showingSettings = false
     @State private var repoToRename: Repo?
@@ -71,6 +71,8 @@ struct RepoListView: View {
         .navigationDestination(for: AppRoute.self) { route in
             switch route {
             case .requests: RequestsView()
+            case .conversations: ConversationListView()
+            case .conversation(let id): ConversationView(id: id)
             }
         }
         .refreshable {
@@ -85,11 +87,11 @@ struct RepoListView: View {
                 Button { showingSettings = true } label: { Image(systemName: "gearshape") }
             }
             ToolbarItem(placement: .topBarLeading) {
-                NavigationLink(value: AppRoute.requests) {
-                    bellIcon
+                NavigationLink(value: AppRoute.conversations) {
+                    conversationsIcon
                 }
-                .accessibilityIdentifier("requestsBellButton")
-                .accessibilityLabel("Requests (\(requestStore.openRequestCount))")
+                .accessibilityIdentifier("conversationsButton")
+                .accessibilityLabel("Conversations (\(conversationStore.totalUnread) unread)")
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -223,15 +225,14 @@ struct RepoListView: View {
         }
     }
 
-    /// A bell plus the current badge count (ticket 4c75227cc7) --
-    /// `requestStore.openRequestCount` is always "rows currently shown",
-    /// recomputed from the latest scan, never an accumulated total.
+    /// Speech bubbles plus the unread count across every conversation --
+    /// the same number as the app icon badge.
     @ViewBuilder
-    private var bellIcon: some View {
+    private var conversationsIcon: some View {
         ZStack(alignment: .topTrailing) {
-            Image(systemName: "bell")
-            if requestStore.openRequestCount > 0 {
-                Text("\(requestStore.openRequestCount)")
+            Image(systemName: "bubble.left.and.bubble.right")
+            if conversationStore.totalUnread > 0 {
+                Text("\(conversationStore.totalUnread)")
                     .font(.system(size: 10, weight: .bold))
                     .foregroundStyle(.white)
                     .padding(4)

@@ -62,6 +62,11 @@ struct StoneApp: App {
                 else { return }
                 path.append(repo)
             }
+            .onChange(of: deepLinkRouter.pendingConversation) { _, id in
+                guard let id else { return }
+                path.append(AppRoute.conversation(id))
+                deepLinkRouter.clearConversation()
+            }
             .onChange(of: deepLinkRouter.requestsScreenRequested) { _, requested in
                 guard requested else { return }
                 path.append(AppRoute.requests)

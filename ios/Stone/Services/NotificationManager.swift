@@ -90,6 +90,34 @@ final class NotificationManager: NSObject {
         _ = try? await center.add(request)
     }
 
+    /// New posts by someone else in one conversation (ConversationStore's
+    /// after-sync scan). One notification per conversation, replacing any
+    /// earlier one for it, like Messages; tapping it opens the conversation.
+    func post(for repo: Repo, conversation: ConversationSummary, newPosts: [ConversationPost]) async {
+        guard isEnabled, let newest = newPosts.last else { return }
+        let settings = await center.notificationSettings()
+        guard settings.authorizationStatus == .authorized else { return }
+
+        let content = UNMutableNotificationContent()
+        content.title = conversation.title
+        content.subtitle = repo.name
+        let preview = PostText.preview(newest.body ?? "")
+        let more = newPosts.count > 1 ? " (+\(newPosts.count - 1) more)" : ""
+        content.body = "\(newest.author): \(preview)\(more)"
+        content.sound = .default
+        content.threadIdentifier = conversation.id.storageKey
+        content.userInfo = [
+            "repoID": repo.id.uuidString,
+            "conversationKind": conversation.id.kind.rawValue,
+            "conversationKey": conversation.id.key,
+        ]
+        let request = UNNotificationRequest(
+            identifier: "conversation-\(conversation.id.storageKey)",
+            content: content,
+            trigger: nil)
+        _ = try? await center.add(request)
+    }
+
     /// The maintainer's own follow-up complaint: a notification's body used
     /// to just be the kind's display name ("Merge card"/"Decision"/"Try
     /// this") -- never enough to act on without opening the app first. Each
@@ -159,6 +187,14 @@ extension NotificationManager: UNUserNotificationCenterDelegate {
         didReceive response: UNNotificationResponse
     ) async {
         let info = response.notification.request.content.userInfo
+        if let kindString = info["conversationKind"] as? String,
+           let kind = ConversationID.Kind(rawValue: kindString),
+           let key = info["conversationKey"] as? String,
+           let repoIDString = info["repoID"] as? String,
+           let repoID = UUID(uuidString: repoIDString) {
+            DeepLinkRouter.shared.routeToConversation(ConversationID(repoID: repoID, kind: kind, key: key))
+            return
+        }
         if info["screen"] as? String == "requests" {
             DeepLinkRouter.shared.routeToRequestsScreen()
             return

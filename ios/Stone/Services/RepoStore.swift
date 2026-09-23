@@ -225,14 +225,14 @@ final class RepoStore: ObservableObject {
         return output.isEmpty ? line : output + "\n\n" + line
     }
 
-    /// Appends the maintainer-request scan's own timing to `lastSyncLog`,
+    /// Appends the after-sync conversation scan's own timing to `lastSyncLog`,
     /// right after whichever repo's sync-phase timings are already there, so
     /// the "View Log" sheet shows where a whole "Sync All" spent its time,
     /// not just the last repo's own sync/config-pull phases.
     func appendRequestScanTiming(ran: Bool, seconds: TimeInterval) {
         let line = ran
-            ? "[Stone timing] request scan \(String(format: "%.2f", seconds))s"
-            : "[Stone timing] request scan skipped (nothing received)"
+            ? "[Stone timing] conversation scan \(String(format: "%.2f", seconds))s"
+            : "[Stone timing] conversation scan skipped (nothing received)"
         lastSyncLog = lastSyncLog.isEmpty ? line : lastSyncLog + "\n" + line
     }
 

@@ -42,6 +42,18 @@ final class DeepLinkRouter: ObservableObject {
     /// page Fossil would render empty.
     @Published var pendingRemoteURL: URL?
 
+    /// Set by a tapped conversation notification; StoneApp pushes that
+    /// conversation, then clears this.
+    @Published var pendingConversation: ConversationID?
+
+    func routeToConversation(_ id: ConversationID) {
+        pendingConversation = id
+    }
+
+    func clearConversation() {
+        pendingConversation = nil
+    }
+
     func route(repoID: UUID, path: String, focusComposer: Bool = false, note: String? = nil) {
         pending = Destination(repoID: repoID, path: path, focusComposer: focusComposer, note: note)
     }

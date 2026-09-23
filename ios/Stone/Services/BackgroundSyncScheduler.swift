@@ -110,38 +110,41 @@ enum BackgroundSyncScheduler {
         await scanAndNotify(store: store, receivedCounts: store.lastSyncReceivedCounts)
     }
 
-    /// Also called by the foreground loop (RepoListView) after its own
-    /// `syncAll()`, so a decision or try-this made while the app was open
-    /// notifies exactly the same way as one found in the background.
+    /// Also called by the foreground loop (RepoListView) and after a
+    /// one-repo sync (RepoWebView.runSync), so a post that arrives while
+    /// the app is open notifies exactly the same way as one found in the
+    /// background.
     ///
-    /// `receivedCounts` is `store.lastSyncReceivedCounts` after a "Sync
-    /// All", or a single `[repo.id: received]` entry after a one-repo sync
-    /// (`RepoWebView.runSync`) -- either way, it's this round's tally, not
-    /// history. When every entry is zero (or the map is empty), nothing
-    /// that just happened could have changed any repo's ticket table, so
-    /// the whole scan is skipped (ticket d4d02c604f) rather than paying for
-    /// a full sqlite pass over every repo just to reproduce the same
-    /// `visibleRequests` that's already showing.
+    /// Scans every repo's conversations (ConversationStore) and raises one
+    /// local notification per conversation with a post by someone else not
+    /// notified before -- deduplicated by the post's artifact hash. The
+    /// `needs_you` ticket field this used to read is no longer written by
+    /// anything, so it is no longer consulted here.
+    ///
+    /// `receivedCounts` is this round's tally (`store.lastSyncReceivedCounts`
+    /// after a "Sync All", or `[repo.id: received]` after a one-repo sync).
+    /// When nothing was received, no one else can have posted, so the scan
+    /// is skipped (ticket d4d02c604f) and only the badge is refreshed.
     @MainActor
     static func scanAndNotify(store: RepoStore, receivedCounts: [UUID: Int]) async {
-        let requestStore = MaintainerRequestStore.shared
+        let conversations = ConversationStore.shared
         guard receivedCounts.values.contains(where: { $0 > 0 }) else {
             store.appendRequestScanTiming(ran: false, seconds: 0)
-            await NotificationManager.shared.updateBadge(requestStore.openRequestCount)
+            await NotificationManager.shared.updateBadge(conversations.totalUnread)
             return
         }
 
         let scanStartedAt = Date()
-        let outcomes = await requestStore.scanAfterSync(
+        let outcomes = await conversations.refresh(
             repos: store.repos,
-            receivedCounts: receivedCounts,
             fossilPath: { store.fileURL(for: $0).path }
         )
         store.appendRequestScanTiming(ran: true, seconds: Date().timeIntervalSince(scanStartedAt))
         for outcome in outcomes {
-            await NotificationManager.shared.post(for: outcome.repo, newRequests: outcome.newRequests)
+            await NotificationManager.shared.post(for: outcome.repo, conversation: outcome.summary,
+                                                  newPosts: outcome.posts)
         }
-        await NotificationManager.shared.updateBadge(requestStore.openRequestCount)
+        await NotificationManager.shared.updateBadge(conversations.totalUnread)
     }
 }
 
