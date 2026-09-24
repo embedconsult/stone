@@ -38,31 +38,47 @@ struct BuildIdentity {
 /// testing and text selection for just itself.
 struct BuildIdentityOverlay: View {
     private let identity = BuildIdentity()
+    @ObservedObject private var visibility = BuildIdentityVisibility.shared
 
     var body: some View {
         VStack {
             Spacer()
             HStack {
                 Spacer()
-                Text(identity.label)
-                    .font(.caption2.monospaced())
-                    .foregroundStyle(.secondary)
-                    .padding(6)
-                    .background(.thinMaterial, in: Capsule())
-                    .textSelection(.enabled)
-                    .allowsHitTesting(true)
+                if !visibility.isHidden {
+                    Text(identity.label)
+                        .font(.caption2.monospaced())
+                        .foregroundStyle(.secondary)
+                        .padding(6)
+                        .background(.thinMaterial, in: Capsule())
+                        .textSelection(.enabled)
+                        .allowsHitTesting(true)
+                }
             }
         }
-        // Sits in the home-indicator strip, below the safe area, so it never
-        // covers content pinned to the bottom -- it used to hide the Send
-        // button of the conversation view's reply box. Only the container
-        // region is ignored, never the keyboard's.
+        // Pinned to the very bottom of the screen, in the home-indicator
+        // strip: below content pinned to the bottom, and behind the keyboard
+        // when it is up rather than riding on top of it. As an overlay it
+        // cannot move the layout underneath.
         .padding(.horizontal, 8)
         .padding(.bottom, 2)
-        .ignoresSafeArea(.container, edges: .bottom)
+        .ignoresSafeArea(edges: .bottom)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
+}
+
+/// Screens where the build-ID label gets in the way (the conversation view,
+/// whose reply box sits where the label does) hide it while they are shown.
+@MainActor
+final class BuildIdentityVisibility: ObservableObject {
+    static let shared = BuildIdentityVisibility()
+    @Published private var hiders = 0
+
+    var isHidden: Bool { hiders > 0 }
+
+    func hide() { hiders += 1 }
+    func unhide() { hiders = max(0, hiders - 1) }
 }
 
 /// Settings destination with the installed app and build identity.

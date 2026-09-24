@@ -15,7 +15,10 @@ struct ConversationView: View {
     @State private var title = ""
     @State private var posts: [ConversationPost] = []
     @State private var loaded = false
-    @State private var draft = ""
+    /// Held by reference and observed only by the reply box, so each
+    /// keystroke redraws the box alone -- not every bubble above it, whose
+    /// re-measuring made the conversation jump while typing.
+    @State private var draft = ComposerDraft()
     @State private var replyTarget: ConversationPost?
     @State private var sending = false
     @State private var errorText: String?
@@ -47,7 +50,16 @@ struct ConversationView: View {
                 if let last { proxy.scrollTo(last, anchor: .bottom) }
             }
         }
-        .safeAreaInset(edge: .bottom) { composer }
+        .safeAreaInset(edge: .bottom) {
+            ReplyBox(draft: draft, replyTarget: $replyTarget, login: login, sending: sending,
+                     canSend: !posts.isEmpty, focused: $composerFocused) {
+                Task { await send() }
+            }
+        }
+        // The build-ID label would sit on the reply box whenever the
+        // keyboard is up; it has no business on this screen.
+        .onAppear { BuildIdentityVisibility.shared.hide() }
+        .onDisappear { BuildIdentityVisibility.shared.unhide() }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .environment(\.openURL, OpenURLAction { url in
@@ -114,7 +126,7 @@ struct ConversationView: View {
                         ForEach(options, id: \.self) { option in
                             Button {
                                 replyTarget = post
-                                draft = option.replacingOccurrences(of: "**", with: "")
+                                draft.text = option.replacingOccurrences(of: "**", with: "")
                                 composerFocused = true
                             } label: {
                                 Text(Self.inline(option))
@@ -144,49 +156,6 @@ struct ConversationView: View {
             ?? AttributedString(text)
     }
 
-    // MARK: Composer
-
-    private var composer: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if let target = replyTarget {
-                HStack {
-                    Image(systemName: "arrowshape.turn.up.left")
-                    Text("\(ConversationBook.isOwn(target, login: login) ? "You" : target.author): \(PostText.preview(target.body ?? ""))")
-                        .lineLimit(1)
-                    Spacer()
-                    Button {
-                        replyTarget = nil
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                    }
-                    .accessibilityLabel("Reply to the latest post instead")
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            }
-            HStack(alignment: .bottom, spacing: 8) {
-                TextField("Reply", text: $draft, axis: .vertical)
-                    .lineLimit(1...6)
-                    .textFieldStyle(.roundedBorder)
-                    .focused($composerFocused)
-                Button {
-                    Task { await send() }
-                } label: {
-                    if sending {
-                        ProgressView()
-                    } else {
-                        Image(systemName: "arrow.up.circle.fill").font(.title2)
-                    }
-                }
-                .disabled(sending || posts.isEmpty || draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                .accessibilityLabel("Send")
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(.bar)
-    }
-
     // MARK: Loading and sending
 
     private func reload() async {
@@ -208,12 +177,12 @@ struct ConversationView: View {
         defer { sending = false }
         do {
             try await ConversationWriter.reply(in: id, to: replyTarget, latest: latest, login: login,
-                                               body: draft, fossilPath: fossilPath)
+                                               body: draft.text, fossilPath: fossilPath)
         } catch {
             errorText = error.localizedDescription
             return
         }
-        draft = ""
+        draft.text = ""
         replyTarget = nil
         await reload()
         // Push now when there's a network; when there isn't, the reply is
@@ -224,6 +193,60 @@ struct ConversationView: View {
             await BackgroundSyncScheduler.scanAndNotify(store: store, receivedCounts: [repo.id: received])
             await reload()
         }
+    }
+}
+
+final class ComposerDraft: ObservableObject {
+    @Published var text = ""
+}
+
+/// The reply box: what is being answered, the text, and Send.
+private struct ReplyBox: View {
+    @ObservedObject var draft: ComposerDraft
+    @Binding var replyTarget: ConversationPost?
+    let login: String
+    let sending: Bool
+    let canSend: Bool
+    var focused: FocusState<Bool>.Binding
+    let send: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if let target = replyTarget {
+                HStack {
+                    Image(systemName: "arrowshape.turn.up.left")
+                    Text("\(ConversationBook.isOwn(target, login: login) ? "You" : target.author): \(PostText.preview(target.body ?? ""))")
+                        .lineLimit(1)
+                    Spacer()
+                    Button {
+                        replyTarget = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                    }
+                    .accessibilityLabel("Reply to the latest post instead")
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            }
+            HStack(alignment: .bottom, spacing: 8) {
+                TextField("Reply", text: $draft.text, axis: .vertical)
+                    .lineLimit(1...6)
+                    .textFieldStyle(.roundedBorder)
+                    .focused(focused)
+                Button(action: send) {
+                    if sending {
+                        ProgressView()
+                    } else {
+                        Image(systemName: "arrow.up.circle.fill").font(.title2)
+                    }
+                }
+                .disabled(sending || !canSend || draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .accessibilityLabel("Send")
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .background(.bar)
     }
 }
 
