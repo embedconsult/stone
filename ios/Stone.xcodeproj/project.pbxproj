@@ -51,6 +51,8 @@
 		31A5B4C39373EDBD22A2FAB6 /* ConversationListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2596F9A07F7F33665BB0690D /* ConversationListView.swift */; };
 		4ACBDB42123BDAAB4E87553A /* ConversationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD60E3B24788254812E96C23 /* ConversationView.swift */; };
 		24AAE6D8B3D00A99937ADA24 /* ConversationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E30A2CDC03851021FFCF31EE /* ConversationTests.swift */; };
+		7D5625CEBF93664CFA24F861 /* AgentStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 863C2EB53315015898FA4BAA /* AgentStatus.swift */; };
+		BE42D2FDD846C1D8AD5DC4EE /* AgentStatusClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E53C1211B6708CFFB63D93FC /* AgentStatusClient.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -120,6 +122,8 @@
 		2596F9A07F7F33665BB0690D /* ConversationListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationListView.swift; sourceTree = "<group>"; };
 		AD60E3B24788254812E96C23 /* ConversationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationView.swift; sourceTree = "<group>"; };
 		E30A2CDC03851021FFCF31EE /* ConversationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationTests.swift; sourceTree = "<group>"; };
+		863C2EB53315015898FA4BAA /* AgentStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentStatus.swift; sourceTree = "<group>"; };
+		E53C1211B6708CFFB63D93FC /* AgentStatusClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentStatusClient.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -264,6 +268,7 @@
 			children = (
 				C34F67C4EB118D7638B7FDFD /* Repo.swift */,
 				57A922970B0E67838F9BA439 /* Conversation.swift */,
+				863C2EB53315015898FA4BAA /* AgentStatus.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -310,6 +315,7 @@
 				F9F8317241EE40D97031C566 /* ConversationReader.swift */,
 				03A862C7B460A5753A5032B8 /* ConversationWriter.swift */,
 				6704D5B12ED959E0B7A4F2EE /* ConversationStore.swift */,
+				E53C1211B6708CFFB63D93FC /* AgentStatusClient.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -445,6 +451,8 @@
 				EE554882A0A5BB61D1D67A44 /* ConversationStore.swift in Sources */,
 				31A5B4C39373EDBD22A2FAB6 /* ConversationListView.swift in Sources */,
 				4ACBDB42123BDAAB4E87553A /* ConversationView.swift in Sources */,
+				7D5625CEBF93664CFA24F861 /* AgentStatus.swift in Sources */,
+				BE42D2FDD846C1D8AD5DC4EE /* AgentStatusClient.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

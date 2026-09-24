@@ -164,6 +164,27 @@ final class ConversationTests: XCTestCase {
         XCTAssertFalse(ConversationBook.participates(posts: posts, login: "", latestBody: "For: "))
     }
 
+    // MARK: Agent status (docs/ocx-status-endpoint.md)
+
+    func testAgentStatusDecodesAndLabels() {
+        let utc = TimeZone(identifier: "UTC")!
+        let idle = AgentStatus.decode(Data(#"{"login":"opus","state":"idle","since":"2026-09-24T02:47:00Z","last_post":"abc"}"#.utf8))
+        XCTAssertEqual(idle?.state, .idle)
+        XCTAssertEqual(idle?.label(timeZone: utc), "opus idle since 02:47")
+        let working = AgentStatus.decode(Data(#"{"login":"opus","state":"working","since":"2026-09-24T03:00:21.500Z"}"#.utf8))
+        XCTAssertEqual(working?.label(timeZone: utc), "opus is working")
+        let stopped = AgentStatus.decode(Data(#"{"login":"opus","state":"stopped"}"#.utf8))
+        XCTAssertEqual(stopped?.label(timeZone: utc), "opus stopped")
+    }
+
+    /// A server without the endpoint answers with a page, not JSON; an
+    /// unknown state is not guessed at. Both show nothing.
+    func testAgentStatusIgnoresAnythingElse() {
+        XCTAssertNil(AgentStatus.decode(Data("<!DOCTYPE html><html></html>".utf8)))
+        XCTAssertNil(AgentStatus.decode(Data(#"{"login":"opus","state":"thinking"}"#.utf8)))
+        XCTAssertNil(AgentStatus.decode(Data()))
+    }
+
     // MARK: Helpers
 
     private func row(_ rid: Int, root: Int, prev: Int = 0, irt: Int = 0, mtime: Double,

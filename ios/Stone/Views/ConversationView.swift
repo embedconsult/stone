@@ -26,6 +26,9 @@ struct ConversationView: View {
     @State private var sendStatus: String?
     @State private var errorText: String?
     @State private var openedLink: OpenedLink?
+    /// What OCX says the agent on this thread is doing; nil when the server
+    /// doesn't say (no endpoint, offline, a ticket rather than a thread).
+    @State private var agentStatus: AgentStatus?
     @FocusState private var composerFocused: Bool
 
     private var repo: Repo? { store.repos.first { $0.id == id.repoID } }
@@ -66,6 +69,25 @@ struct ConversationView: View {
         .onDisappear { BuildIdentityVisibility.shared.unhide() }
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                VStack(spacing: 1) {
+                    Text(title).font(.headline).lineLimit(1)
+                    if let agentStatus {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(Self.color(for: agentStatus.state))
+                                .frame(width: 7, height: 7)
+                            Text(agentStatus.label())
+                        }
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .accessibilityElement(children: .combine)
+                    }
+                }
+            }
+        }
+        .task(id: id) { await pollAgentStatus() }
         .environment(\.openURL, OpenURLAction { url in
             guard url.scheme == "http" || url.scheme == "https" else { return .systemAction }
             openedLink = OpenedLink(url: url)
@@ -169,6 +191,25 @@ struct ConversationView: View {
         let other = posts.last { !ConversationBook.isOwn($0, login: login) }?.author ?? "a reply"
         let since = last.date.formatted(.dateTime.hour().minute())
         return "Waiting for \(other) since \(since)"
+    }
+
+    private static func color(for state: AgentStatus.State) -> Color {
+        switch state {
+        case .working: return .green
+        case .idle: return .yellow
+        case .stopped: return .gray
+        }
+    }
+
+    /// Every 15 seconds while this conversation is on screen (the task is
+    /// cancelled when it leaves). Threads only: OCX runs agents on forum
+    /// threads, keyed by the thread's first post.
+    private func pollAgentStatus() async {
+        guard id.kind == .thread, let repo else { return }
+        while !Task.isCancelled {
+            agentStatus = await AgentStatusClient.fetch(repo: repo, thread: id.key)
+            try? await Task.sleep(for: .seconds(15))
+        }
     }
 
     // MARK: Loading and sending
