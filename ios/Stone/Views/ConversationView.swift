@@ -41,13 +41,26 @@ struct ConversationView: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 12) {
+                // A plain VStack, not a LazyVStack: lazy rows of very
+                // different heights (a one-liner, a crash log) are
+                // re-estimated on every redraw, which made the conversation
+                // jump and left blank space where earlier posts had been.
+                // Bubbles are Equatable, so a redraw of this screen (the
+                // status poll, a sync) skips every bubble that didn't change.
+                VStack(spacing: 12) {
                     if loaded && posts.isEmpty {
                         ContentUnavailableView("Nothing here yet", systemImage: "bubble.left",
                                                description: Text("This conversation isn't in this phone's clone. Try a sync."))
                     }
                     ForEach(posts) { post in
-                        bubble(post)
+                        BubbleView(post: post, own: ConversationBook.isOwn(post, login: login),
+                                   reply: { replyTarget = post; composerFocused = true },
+                                   choose: { option in
+                                       replyTarget = post
+                                       draft.text = option
+                                       composerFocused = true
+                                   })
+                            .equatable()
                             .id(post.hash)
                     }
                 }
@@ -110,81 +123,6 @@ struct ConversationView: View {
         }
     }
 
-    // MARK: Bubbles
-
-    private func bubble(_ post: ConversationPost) -> some View {
-        let own = ConversationBook.isOwn(post, login: login)
-        let options = own ? [] : PostText.options(post.body ?? "")
-        return HStack {
-            if own { Spacer(minLength: 48) }
-            VStack(alignment: own ? .trailing : .leading, spacing: 4) {
-                HStack(spacing: 4) {
-                    Text(own ? "You" : post.author).fontWeight(.semibold)
-                    Text(post.date, format: .dateTime.month(.abbreviated).day().hour().minute())
-                }
-                .font(.caption)
-                .foregroundStyle(.secondary)
-
-                Text(Self.rendered(post))
-                    .textSelection(.enabled)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .foregroundStyle(own ? Color.white : Color.primary)
-                    .tint(own ? Color.white : Color.accentColor)
-                    // systemGray5 is Messages' incoming-bubble grey: visible on
-                    // white and black alike (secondarySystemBackground was too
-                    // pale to read as a bubble on a white screen).
-                    .background(own ? Color.accentColor : Color(.systemGray5),
-                                in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .contextMenu {
-                        Button {
-                            replyTarget = post
-                            composerFocused = true
-                        } label: {
-                            Label("Reply to this post", systemImage: "arrowshape.turn.up.left")
-                        }
-                        Button {
-                            UIPasteboard.general.string = post.body ?? ""
-                        } label: {
-                            Label("Copy", systemImage: "doc.on.doc")
-                        }
-                    }
-
-                if !options.isEmpty {
-                    VStack(alignment: .leading, spacing: 6) {
-                        ForEach(options, id: \.self) { option in
-                            Button {
-                                replyTarget = post
-                                draft.text = option.replacingOccurrences(of: "**", with: "")
-                                composerFocused = true
-                            } label: {
-                                Text(Self.inline(option))
-                                    .multilineTextAlignment(.leading)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            .buttonStyle(.bordered)
-                        }
-                    }
-                }
-            }
-            if !own { Spacer(minLength: 48) }
-        }
-    }
-
-    /// Markdown for markdown posts (links, emphasis, code; line breaks kept
-    /// as written), plain text for anything else.
-    private static func rendered(_ post: ConversationPost) -> AttributedString {
-        let body = post.body ?? "(couldn't read this post)"
-        let isMarkdown = post.mimetype.isEmpty || post.mimetype.contains("markdown")
-        guard isMarkdown else { return AttributedString(body) }
-        return inline(body)
-    }
-
-    private static func inline(_ text: String) -> AttributedString {
-        (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
-            ?? AttributedString(text)
-    }
-
     /// When your post is the latest, who hasn't answered yet and since when
     /// -- the one activity signal the thread itself carries. Whether that
     /// agent is actually working, idle or stopped is only known to OCX on
@@ -218,8 +156,10 @@ struct ConversationView: View {
             var syncNow = false
             if id.kind == .thread {
                 let previous = agentStatus?.state
-                agentStatus = await AgentStatusClient.fetch(repo: repo, thread: id.key)
-                if previous == .working, let state = agentStatus?.state, state != .working {
+                let status = await AgentStatusClient.fetch(repo: repo, thread: id.key)
+                // Only a change redraws the screen; the poll itself mustn't.
+                if status != agentStatus { agentStatus = status }
+                if previous == .working, let state = status?.state, state != .working {
                     syncNow = true
                 }
             }
@@ -252,14 +192,14 @@ struct ConversationView: View {
     private func reload() async {
         guard let fossilPath else { return }
         if let result = await conversations.posts(for: id, fossilPath: fossilPath) {
-            title = result.title
-            posts = result.posts
+            if title != result.title { title = result.title }
+            if posts != result.posts { posts = result.posts }
             if let last = result.posts.last {
                 conversations.markRead(id, upTo: last.mtime)
                 await NotificationManager.shared.updateBadge(conversations.totalUnread)
             }
         }
-        loaded = true
+        if !loaded { loaded = true }
     }
 
     private func send() async {
@@ -313,6 +253,89 @@ struct ConversationView: View {
             }
             sendStatus = "Saved on this phone; it will go out with the next sync. (\(reason))"
         }
+    }
+}
+
+/// One post as a bubble: the login's own on the right, everyone else's on
+/// the left. Equal when its post and side are, so SwiftUI redraws it (and
+/// re-reads its markdown) only when the post itself changed.
+private struct BubbleView: View, Equatable {
+    let post: ConversationPost
+    let own: Bool
+    let reply: () -> Void
+    let choose: (String) -> Void
+
+    static func == (a: BubbleView, b: BubbleView) -> Bool {
+        a.post == b.post && a.own == b.own
+    }
+
+    var body: some View {
+        let options = own ? [] : PostText.options(post.body ?? "")
+        return HStack {
+            if own { Spacer(minLength: 48) }
+            VStack(alignment: own ? .trailing : .leading, spacing: 4) {
+                HStack(spacing: 4) {
+                    Text(own ? "You" : post.author).fontWeight(.semibold)
+                    Text(post.date, format: .dateTime.month(.abbreviated).day().hour().minute())
+                }
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+                Text(Self.rendered(post))
+                    .textSelection(.enabled)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .foregroundStyle(own ? Color.white : Color.primary)
+                    .tint(own ? Color.white : Color.accentColor)
+                    // systemGray5 is Messages' incoming-bubble grey: visible on
+                    // white and black alike (secondarySystemBackground was too
+                    // pale to read as a bubble on a white screen).
+                    .background(own ? Color.accentColor : Color(.systemGray5),
+                                in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .contextMenu {
+                        Button {
+                            reply()
+                        } label: {
+                            Label("Reply to this post", systemImage: "arrowshape.turn.up.left")
+                        }
+                        Button {
+                            UIPasteboard.general.string = post.body ?? ""
+                        } label: {
+                            Label("Copy", systemImage: "doc.on.doc")
+                        }
+                    }
+
+                if !options.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(options, id: \.self) { option in
+                            Button {
+                                choose(option.replacingOccurrences(of: "**", with: ""))
+                            } label: {
+                                Text(Self.inline(option))
+                                    .multilineTextAlignment(.leading)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+                }
+            }
+            if !own { Spacer(minLength: 48) }
+        }
+    }
+
+    /// Markdown for markdown posts (links, emphasis, code; line breaks kept
+    /// as written), plain text for anything else.
+    private static func rendered(_ post: ConversationPost) -> AttributedString {
+        let body = post.body ?? "(couldn't read this post)"
+        let isMarkdown = post.mimetype.isEmpty || post.mimetype.contains("markdown")
+        guard isMarkdown else { return AttributedString(body) }
+        return inline(body)
+    }
+
+    private static func inline(_ text: String) -> AttributedString {
+        (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
+            ?? AttributedString(text)
     }
 }
 
