@@ -29,7 +29,7 @@ struct ConversationListView: View {
         .overlay { if loading && shown.isEmpty { ProgressView() } }
         .task { await reload() }
         .refreshable {
-            await store.syncAll()
+            await store.syncAll(announce: false)
             await BackgroundSyncScheduler.scanAndNotify(store: store, receivedCounts: store.lastSyncReceivedCounts)
             await reload()
         }

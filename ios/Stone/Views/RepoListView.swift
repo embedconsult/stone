@@ -181,7 +181,7 @@ struct RepoListView: View {
             if skipsLowPower && ProcessInfo.processInfo.isLowPowerModeEnabled { continue }
 
             guard !store.isSyncingAll, store.repos.contains(where: { $0.remoteURL != nil }) else { continue }
-            await store.syncAll()
+            await store.syncAll(announce: false)
             // Same post-sync scan/notify step a background task runs, so a
             // decision or try-this found while the app is open in the
             // foreground surfaces exactly the same way as one found while

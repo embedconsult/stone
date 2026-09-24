@@ -21,6 +21,9 @@ struct ConversationView: View {
     @State private var draft = ComposerDraft()
     @State private var replyTarget: ConversationPost?
     @State private var sending = false
+    /// One line under the reply box saying what happened to the last reply:
+    /// sending, sent, or saved here to go out with a later sync (and why).
+    @State private var sendStatus: String?
     @State private var errorText: String?
     @State private var openedLink: OpenedLink?
     @FocusState private var composerFocused: Bool
@@ -52,7 +55,7 @@ struct ConversationView: View {
         }
         .safeAreaInset(edge: .bottom) {
             ReplyBox(draft: draft, replyTarget: $replyTarget, login: login, sending: sending,
-                     canSend: !posts.isEmpty, focused: $composerFocused) {
+                     status: sendStatus, canSend: !posts.isEmpty, focused: $composerFocused) {
                 Task { await send() }
             }
         }
@@ -185,13 +188,38 @@ struct ConversationView: View {
         draft.text = ""
         replyTarget = nil
         await reload()
-        // Push now when there's a network; when there isn't, the reply is
-        // already safe in the clone and the next sync sends it.
-        guard repo.remoteURL != nil else { return }
-        if let output = try? await store.sync(repo) {
-            let received = RepoStore.parseArtifactCounts(output)?.received ?? 0
-            await BackgroundSyncScheduler.scanAndNotify(store: store, receivedCounts: [repo.id: received])
-            await reload()
+        // Push right away. When that can't happen (no network, a refused
+        // login), the reply is already safe in the clone and any later sync
+        // sends it -- say so rather than failing silently.
+        guard repo.remoteURL != nil else {
+            sendStatus = "Saved on this phone. This repo has no remote to send it to."
+            return
+        }
+        sendStatus = "Sending…"
+        do {
+            let output = try await store.sync(repo)
+            if let reason = RepoStore.detectLocalSQLiteFailure(output) ?? RepoStore.detectAuthFailure(output) {
+                sendStatus = "Saved on this phone; it will go out with the next sync. (\(reason))"
+            } else {
+                sendStatus = "Sent"
+                let received = RepoStore.parseArtifactCounts(output)?.received ?? 0
+                await BackgroundSyncScheduler.scanAndNotify(store: store, receivedCounts: [repo.id: received])
+                await reload()
+                Task {
+                    try? await Task.sleep(for: .seconds(3))
+                    if sendStatus == "Sent" { sendStatus = nil }
+                }
+            }
+        } catch {
+            // A failed sync's error is its whole log; say the one thing
+            // that matters.
+            var reason = "couldn't reach the server"
+            if case .fossil(let log)? = error as? RepoStore.StoreError {
+                reason = RepoStore.detectLocalSQLiteFailure(log) ?? RepoStore.detectAuthFailure(log) ?? reason
+            } else {
+                reason = error.localizedDescription
+            }
+            sendStatus = "Saved on this phone; it will go out with the next sync. (\(reason))"
         }
     }
 }
@@ -206,6 +234,7 @@ private struct ReplyBox: View {
     @Binding var replyTarget: ConversationPost?
     let login: String
     let sending: Bool
+    let status: String?
     let canSend: Bool
     var focused: FocusState<Bool>.Binding
     let send: () -> Void
@@ -242,6 +271,12 @@ private struct ReplyBox: View {
                 }
                 .disabled(sending || !canSend || draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 .accessibilityLabel("Send")
+            }
+            if let status {
+                Text(status)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
             }
         }
         .padding(.horizontal, 12)

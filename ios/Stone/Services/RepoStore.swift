@@ -448,7 +448,12 @@ final class RepoStore: ObservableObject {
     /// in-flight `fossil_main()` call (see invoke_fossil's comment). So the
     /// one safe place to stop is between repos, after the current command has
     /// already returned and released the lock normally -- never mid-command.
-    func syncAll(shouldContinue: () -> Bool = { true }) async {
+    ///
+    /// `announce` sets `syncAllSummary`, which RepoListView shows as an
+    /// alert -- only for a sync the maintainer asked for (the Sync All
+    /// button, pull-to-refresh on the home list). The timed auto-sync loop
+    /// and background tasks pass false, so they never pop anything up.
+    func syncAll(announce: Bool = true, shouldContinue: () -> Bool = { true }) async {
         guard !isSyncingAll else { return }
         isSyncingAll = true
         syncAllSummary = nil
@@ -523,7 +528,9 @@ final class RepoStore: ObservableObject {
         if failed > 0 { parts.append("\(failed) failed") }
         if skipped > 0 { parts.append("\(skipped) skipped (no remote)") }
         if stopped > 0 { parts.append("\(stopped) not reached (background time expired)") }
-        syncAllSummary = parts.joined(separator: ", ")
+        if announce {
+            syncAllSummary = parts.joined(separator: ", ")
+        }
     }
 
     func dismissSyncAllSummary() {

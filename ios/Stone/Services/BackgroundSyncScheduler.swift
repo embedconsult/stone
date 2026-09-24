@@ -106,7 +106,7 @@ enum BackgroundSyncScheduler {
         let store = RepoStore.shared
         guard !store.isSyncingAll, store.repos.contains(where: { $0.remoteURL != nil }) else { return }
 
-        await store.syncAll(shouldContinue: shouldContinue)
+        await store.syncAll(announce: false, shouldContinue: shouldContinue)
         await scanAndNotify(store: store, receivedCounts: store.lastSyncReceivedCounts)
     }
 
