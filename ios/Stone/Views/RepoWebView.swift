@@ -164,7 +164,7 @@ struct RepoDetailView: View {
     @State private var syncMessage: String?
     @State private var showingSyncLog = false
     @State private var showingGpcrEdit = false
-    @State private var showingAgentConsole = false
+    @State private var showingRemoteSite = false
 
     /// Ticket 0bbfd908e6, Option A (the maintainer's pick): a permanent
     /// address bar "might get in the way, but could be useful for debug" --
@@ -181,9 +181,6 @@ struct RepoDetailView: View {
     @ObservedObject private var deepLinkRouter = DeepLinkRouter.shared
 
     @State private var currentURL: URL?
-    @State private var showingReplyComposer = false
-    @State private var replyText = ""
-    @State private var replyError: String?
 
     /// Guards the one-shot automatic self-heal in handleLoadFailure() below
     /// so a genuinely broken remote/repo doesn't retry forever -- reset to
@@ -295,12 +292,12 @@ struct RepoDetailView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    showingAgentConsole = true
+                    showingRemoteSite = true
                 } label: {
-                    Image(systemName: "terminal")
+                    Image(systemName: "globe")
                 }
                 .disabled(repo.remoteURL == nil)
-                .accessibilityLabel("Agent Console")
+                .accessibilityLabel("Remote Site")
             }
             // This repo's conversations, read from its local clone. (This
             // button used to open the agent-session list fed by trunk's
@@ -320,22 +317,13 @@ struct RepoDetailView: View {
                 .disabled(repo.remoteURL == nil)
             }
             ToolbarItem(placement: .topBarTrailing) {
-                HStack {
-                    if forumPostID(from: currentURL) != nil {
-                        Button {
-                            showingReplyComposer = true
-                        } label: {
-                            Image(systemName: "square.and.pencil")
-                        }
-                    }
-                    Button {
-                        Task { await runSync() }
-                    } label: {
-                        if syncing { ProgressView() }
-                        else { Image(systemName: "arrow.triangle.2.circlepath") }
-                    }
-                    .disabled(syncing || repo.remoteURL == nil)
+                Button {
+                    Task { await runSync() }
+                } label: {
+                    if syncing { ProgressView() }
+                    else { Image(systemName: "arrow.triangle.2.circlepath") }
                 }
+                .disabled(syncing || repo.remoteURL == nil)
             }
         }
         .task { await startServer() }
@@ -402,79 +390,15 @@ struct RepoDetailView: View {
                     }
             }
         }
-        .sheet(isPresented: $showingAgentConsole) {
+        .sheet(isPresented: $showingRemoteSite) {
             NavigationStack {
-                AgentConsoleView(repo: repo)
+                RemoteSiteView(repo: repo)
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
-                            Button("Close") { showingAgentConsole = false }
+                            Button("Close") { showingRemoteSite = false }
                         }
                     }
             }
-        }
-        .sheet(isPresented: $showingReplyComposer) {
-            VStack(spacing: 20) {
-                Text("Reply to Thread").font(.headline)
-                TextEditor(text: $replyText)
-                    .frame(height: 200)
-                    .border(Color.gray, width: 1)
-                if let err = replyError {
-                    Text(err).foregroundColor(.red).font(.caption)
-                }
-                HStack {
-                    Button("Cancel") {
-                        showingReplyComposer = false
-                        replyText = ""
-                        replyError = nil
-                    }
-                    Spacer()
-                    Button("Send") {
-                        Task { await sendReply() }
-                    }
-                    .disabled(replyText.isEmpty)
-                }
-            }
-            .padding()
-            .presentationDetents([.medium])
-        }
-    }
-
-    /// Fossil emits both query-style links (`forum?fpid=...`) and the normal
-    /// path-style links (`forum/<post-id>`). The embedded loopback server keeps
-    /// the path shape, so support both rather than hiding the composer on the
-    /// usual forum page.
-    private func forumPostID(from url: URL?) -> String? {
-        guard let url else { return nil }
-        if let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-           let value = components.queryItems?.first(where: { $0.name == "fpid" || $0.name == "name" })?.value,
-           !value.isEmpty {
-            return value
-        }
-
-        let path = url.path.split(separator: "/").map(String.init)
-        guard let route = path.lastIndex(where: { $0 == "forum" || $0 == "forumedit" }),
-              path.indices.contains(route + 1) else { return nil }
-        let value = path[route + 1]
-        return value.isEmpty ? nil : value
-    }
-
-    private func sendReply() async {
-        guard let fpid = forumPostID(from: currentURL),
-              let remoteURL = repo.remoteURL else { return }
-
-        let password = CredentialStore.password(for: repo.id)
-        guard let session = RemoteSession(remoteURL: remoteURL, password: password) else {
-            replyError = "Invalid remote session configuration."
-            return
-        }
-
-        do {
-            try await session.postReply(fpid: fpid, text: replyText)
-            showingReplyComposer = false
-            replyText = ""
-            replyError = nil
-        } catch {
-            replyError = error.localizedDescription
         }
     }
 

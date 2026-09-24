@@ -11,8 +11,8 @@
 # ollama poller already reads anonymously is enough signal for a green
 # build. On failure it extracts the compiler error lines and posts one reply
 # to the trunk-ops thread (fpid 10e283f93f6f08b6b0f4565691909f0043a9b1d5b26
-# 43da9fc18efddb5e605b5), using an ordinary Fossil forum login the same way
-# ios/Stone/Services/RemoteSession.swift's postReply(fpid:) does it:
+# 43da9fc18efddb5e605b5), using an ordinary Fossil forum login and Fossil's
+# own web reply form (the app itself no longer posts this way):
 # POST /login (u/p, no CSRF -- named-user login is anonymous-only there) ->
 # GET /forumedit?fpid=...&reply=1 (scrape the csrf token) -> POST /forume2
 # (csrf, fpid, reply=1 as a mode flag, content, submit=Submit), checking the

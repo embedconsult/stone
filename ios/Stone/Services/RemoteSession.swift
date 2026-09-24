@@ -3,9 +3,10 @@ import Foundation
 /// Authenticated HTTPS client for a repository's *remote* Fossil server.
 ///
 /// Single responsibility: obtain a Fossil login cookie for one remote and carry
-/// it on subsequent requests. This is the shared auth foundation for both the
-/// remote-cached read proxy and the agent-client layer (`/ext/...`, forum
-/// posting, the SSE token mint) — see docs/design/agent-client-scoping.md.
+/// it on subsequent requests. Used by the Remote Site view (to open the
+/// server's pages already logged in) and the GPCR editor (its `/edit` form).
+/// Conversation replies do not go through here: they are artifacts written
+/// to the local clone and pushed by sync (ConversationWriter).
 ///
 /// It is deliberately separate from `FossilEngine`: this is ordinary client
 /// traffic over `URLSession` (system trust store), not the embedded Fossil C
@@ -101,49 +102,6 @@ actor RemoteSession {
         }
     }
 
-    /// Posts a reply to a forum thread. Follows Fossil's CSRF flow:
-    /// GET /forumedit -> scrape csrf -> POST /forume2.
-    func postReply(fpid: String, text: String) async throws {
-        if !loggedIn { try await login() }
-
-        // 1. Get the reply editor page to scrape the CSRF token
-        let editorData = try await get("forumedit", query: [
-            URLQueryItem(name: "fpid", value: fpid),
-            URLQueryItem(name: "reply", value: "1")
-        ])
-        guard let html = String(data: editorData, encoding: .utf8) else { throw RemoteError.badResponse }
-
-        // 2. Scrape the CSRF token
-        guard let csrf = extractCSRF(from: html) else { throw RemoteError.notAuthenticated }
-
-        // Fossil's forume2 endpoint requires all of these fields. In
-        // particular, `reply` is a mode flag, not the reply body.
-        let resultData = try await post("forume2", form: [
-            "csrf": csrf,
-            "fpid": fpid,
-            "reply": "1",
-            "content": text,
-            "submit": "Submit"
-        ])
-
-        // On success Fossil redirects to /forumpost/<uuid> (which URLSession
-        // follows transparently); on silent CSRF/same-origin rejection it
-        // redisplays this same "Enter Reply" form instead, still as HTTP 200.
-        // Status code alone can't tell these apart -- check the body.
-        if let resultHTML = String(data: resultData, encoding: .utf8),
-           resultHTML.contains("Enter Reply:") {
-            throw RemoteError.postNotAccepted
-        }
-    }
-
-    /// Logs in if needed and returns the resulting Fossil session cookie, so
-    /// a caller can bridge it into a *different* cookie jar -- specifically
-    /// WKWebView's, which does not share cookies with the `URLSession` this
-    /// actor logs in with. This is the headless-login-feeding-a-visible-
-    /// WebView bridge named as an open contract in
-    /// docs/design/ollama-codex-client.md (C-A): the human never sees a
-    /// second login page, they just land on the remote's already-
-    /// authenticated page.
     func sessionCookie() async throws -> HTTPCookie {
         if !loggedIn { try await login() }
         guard let cookie = urlSession.configuration.httpCookieStorage?
@@ -152,15 +110,6 @@ actor RemoteSession {
             throw RemoteError.notAuthenticated
         }
         return cookie
-    }
-
-    private func extractCSRF(from html: String) -> String? {
-        let pattern = "name=\"csrf\" value=\"([^\"]*)\""
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: []) else { return nil }
-        let nsRange = NSRange(html.startIndex..<html.endIndex, in: html)
-        guard let match = regex.firstMatch(in: html, options: [], range: nsRange),
-              let range = Range(match.range(at: 1), in: html) else { return nil }
-        return String(html[range])
     }
 
     // MARK: - Login
