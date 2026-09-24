@@ -163,7 +163,6 @@ struct RepoDetailView: View {
     @State private var syncing = false
     @State private var syncMessage: String?
     @State private var showingSyncLog = false
-    @State private var showingGpcrEdit = false
     @State private var showingRemoteSite = false
 
     /// Ticket 0bbfd908e6, Option A (the maintainer's pick): a permanent
@@ -310,14 +309,6 @@ struct RepoDetailView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    showingGpcrEdit = true
-                } label: {
-                    Image(systemName: "mic")
-                }
-                .disabled(repo.remoteURL == nil)
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
                     Task { await runSync() }
                 } label: {
                     if syncing { ProgressView() }
@@ -378,16 +369,6 @@ struct RepoDetailView: View {
                         }
                     }
                 }
-            }
-        }
-        .sheet(isPresented: $showingGpcrEdit) {
-            NavigationStack {
-                GpcrEditView(repo: repo)
-                    .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button("Close") { showingGpcrEdit = false }
-                        }
-                    }
             }
         }
         .sheet(isPresented: $showingRemoteSite) {
