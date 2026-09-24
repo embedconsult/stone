@@ -55,7 +55,8 @@ struct ConversationView: View {
         }
         .safeAreaInset(edge: .bottom) {
             ReplyBox(draft: draft, replyTarget: $replyTarget, login: login, sending: sending,
-                     status: sendStatus, canSend: !posts.isEmpty, focused: $composerFocused) {
+                     status: sendStatus, waiting: waitingLine, canSend: !posts.isEmpty,
+                     focused: $composerFocused) {
                 Task { await send() }
             }
         }
@@ -159,6 +160,17 @@ struct ConversationView: View {
             ?? AttributedString(text)
     }
 
+    /// When your post is the latest, who hasn't answered yet and since when
+    /// -- the one activity signal the thread itself carries. Whether that
+    /// agent is actually working, idle or stopped is only known to OCX on
+    /// the server.
+    private var waitingLine: String? {
+        guard let last = posts.last, ConversationBook.isOwn(last, login: login) else { return nil }
+        let other = posts.last { !ConversationBook.isOwn($0, login: login) }?.author ?? "a reply"
+        let since = last.date.formatted(.dateTime.hour().minute())
+        return "Waiting for \(other) since \(since)"
+    }
+
     // MARK: Loading and sending
 
     private func reload() async {
@@ -235,12 +247,18 @@ private struct ReplyBox: View {
     let login: String
     let sending: Bool
     let status: String?
+    let waiting: String?
     let canSend: Bool
     var focused: FocusState<Bool>.Binding
     let send: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
+            if let waiting, status == nil {
+                Label(waiting, systemImage: "hourglass")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             if let target = replyTarget {
                 HStack {
                     Image(systemName: "arrowshape.turn.up.left")
