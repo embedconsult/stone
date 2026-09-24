@@ -29,6 +29,9 @@ struct ConversationView: View {
     /// What OCX says the agent on this thread is doing; nil when the server
     /// doesn't say (no endpoint, offline, a ticket rather than a thread).
     @State private var agentStatus: AgentStatus?
+    /// True while this screen's own sync (after Send, or the watch loop)
+    /// runs, so the two never overlap.
+    @State private var syncing = false
     @FocusState private var composerFocused: Bool
 
     private var repo: Repo? { store.repos.first { $0.id == id.repoID } }
@@ -87,7 +90,7 @@ struct ConversationView: View {
                 }
             }
         }
-        .task(id: id) { await pollAgentStatus() }
+        .task(id: id) { await watch() }
         .environment(\.openURL, OpenURLAction { url in
             guard url.scheme == "http" || url.scheme == "https" else { return .systemAction }
             openedLink = OpenedLink(url: url)
@@ -201,14 +204,46 @@ struct ConversationView: View {
         }
     }
 
-    /// Every 15 seconds while this conversation is on screen (the task is
-    /// cancelled when it leaves). Threads only: OCX runs agents on forum
-    /// threads, keyed by the thread's first post.
-    private func pollAgentStatus() async {
-        guard id.kind == .thread, let repo else { return }
+    /// While this conversation is on screen (the task is cancelled when it
+    /// leaves): every 15 seconds, ask OCX what the thread's agent is doing
+    /// (threads only), and sync this repo
+    /// - at once when the agent goes from working to idle or stopped -- its
+    ///   answer has just been posted;
+    /// - every 30 seconds while your post is the latest and a reply is due;
+    /// - every 2 minutes otherwise.
+    private func watch() async {
+        guard let repo else { return }
+        var lastSync = Date()
         while !Task.isCancelled {
-            agentStatus = await AgentStatusClient.fetch(repo: repo, thread: id.key)
+            var syncNow = false
+            if id.kind == .thread {
+                let previous = agentStatus?.state
+                agentStatus = await AgentStatusClient.fetch(repo: repo, thread: id.key)
+                if previous == .working, let state = agentStatus?.state, state != .working {
+                    syncNow = true
+                }
+            }
+            let interval: TimeInterval = waitingLine != nil ? 30 : 120
+            if syncNow || Date().timeIntervalSince(lastSync) >= interval {
+                await syncRepo(repo)
+                lastSync = Date()
+            }
             try? await Task.sleep(for: .seconds(15))
+        }
+    }
+
+    /// One quiet sync of this conversation's repo, then the same after-sync
+    /// scan every other sync runs (notifications, unread counts), then
+    /// reload. Failures are silent here: Send reports its own.
+    private func syncRepo(_ repo: Repo) async {
+        guard repo.remoteURL != nil, !syncing, !store.isSyncingAll else { return }
+        syncing = true
+        defer { syncing = false }
+        guard let output = try? await store.sync(repo) else { return }
+        let received = RepoStore.parseArtifactCounts(output)?.received ?? 0
+        if received > 0 {
+            await BackgroundSyncScheduler.scanAndNotify(store: store, receivedCounts: [repo.id: received])
+            await reload()
         }
     }
 
@@ -249,6 +284,10 @@ struct ConversationView: View {
             return
         }
         sendStatus = "Sending…"
+        // Wait out a sync the watch loop may be running, then take the turn.
+        while syncing { try? await Task.sleep(for: .milliseconds(200)) }
+        syncing = true
+        defer { syncing = false }
         do {
             let output = try await store.sync(repo)
             if let reason = RepoStore.detectLocalSQLiteFailure(output) ?? RepoStore.detectAuthFailure(output) {
