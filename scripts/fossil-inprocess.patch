@@ -93,6 +93,18 @@ through cgi_handle_http_request() at all:
                  the first repo synced poisons the cache for the other
                  nine, regardless of each one's own actual schema.
 
+  src/builtin.c  builtin_reset_state()  stone's report (forum 7f84101644)
+                 that a wiki page couldn't be made in the app, "an issue
+                 with running javascript": the JS-delivery queue (struct
+                 builtin) and four function-local once-flags (the
+                 window.fossil bootstrap, the fossil.*.js modules'
+                 emitted flags and their once, the bundle's bundled)
+                 stayed set after the first page, so every later page --
+                 /wikiedit, the forum editor, the timeline graph -- was
+                 served without its scripts. The reset clears the struct
+                 and bumps builtinGeneration; each of those functions
+                 clears its own statics when the generation has moved.
+
 Scope is deliberately minimal: only request- and invocation-scoped statics are
 reset, and only the SQLite global-config init is made idempotent. Other
 process-scoped one-time initialization (SQL function registration, table
@@ -102,10 +114,10 @@ loudly if it no longer applies cleanly.
 
 --- a/src/main.c
 +++ b/src/main.c
-@@ -735,8 +735,26 @@
+@@ -735,9 +735,28 @@
                   sqlite3_libversion());
    }
-
+ 
 -  sqlite3_config(SQLITE_CONFIG_MULTITHREAD);
 -  sqlite3_config(SQLITE_CONFIG_LOG, fossil_sqlite_log, 0);
 +  /* STONE: Make SQLite global configuration idempotent across repeated
@@ -129,8 +141,10 @@ loudly if it no longer applies cleanly.
 +                           ** doc. */
 +  db_reset_delete_on_fail(); /* STONE: see src/db.c. */
 +  ticket_reset_field_cache(); /* STONE: see src/tkt.c. */
++  builtin_reset_state(); /* STONE: see src/builtin.c. */
    g.now = time(0);
    g.httpHeader = empty_blob;
+ #ifdef FOSSIL_ENABLE_JSON
 --- a/src/cgi.c
 +++ b/src/cgi.c
 @@ -801,6 +801,34 @@
@@ -401,3 +415,66 @@ loudly if it no longer applies cleanly.
  }
  
  /*
+--- a/src/builtin.c
++++ b/src/builtin.c
+@@ -246,6 +246,26 @@
+   int eDelivery;       /* Delivery mechanism */
+ } builtin;
+ 
++/*
++** STONE: Reset the JS-delivery state to its initial values.
++**
++** Besides the builtin struct above, four function-local statics remember
++** that a script was already sent: the window.fossil bootstrap's "once", the
++** fossil.*.js modules' "emitted" flags and their "once", and the bundle's
++** "bundled". Fossil normally exits after each request; in the embedded
++** in-process server (repeated fossil_main() calls; see
++** scripts/fossil-inprocess.patch) they would stay set, so every page after
++** the first that used Fossil's JavaScript (the wiki editor, the forum
++** editor, the timeline graph) was served without its scripts. Those
++** functions compare builtinGeneration with the one they last saw and clear
++** their statics when it has moved. Called once per fossil_main().
++*/
++static int builtinGeneration = 0;
++void builtin_reset_state(void){
++  memset(&builtin, 0, sizeof(builtin));
++  builtinGeneration++;
++}
++
+ #if INTERFACE
+ /* Various delivery mechanisms.  The 0 option is the default.
+ ** MAINTENANCE NOTE: Review/update the builtin_set_js_delivery_mode() and
+@@ -629,6 +649,8 @@
+ */
+ void builtin_emit_script_fossil_bootstrap(int addScriptTag){
+   static int once = 0;
++  static int iGen = 0;  /* STONE: see builtin_reset_state() */
++  if( iGen!=builtinGeneration ){ iGen = builtinGeneration; once = 0; }
+   if(0==once++){
+     char * zName;
+     /* Set up the generic/app-agnostic parts of window.fossil
+@@ -748,6 +770,12 @@
+   {"tabs",           0, "dom\0"}
+   };
+   const int nFjs = sizeof(fjs) / sizeof(fjs[0]);
++  static int iGen = 0;  /* STONE: see builtin_reset_state() */
++  if( iGen!=builtinGeneration ){
++    iGen = builtinGeneration;
++    once = 0;
++    for( i = 0; i < nFjs; ++i ) fjs[i].emitted = 0;
++  }
+   if(0==once){
+     ++once;
+     builtin_emit_script_fossil_bootstrap(1);
+@@ -897,8 +925,11 @@
+ */
+ NULL_SENTINEL void builtin_fossil_js_bundle_or( const char * zApi, ... ) {
+   static int bundled = 0;
++  static int iGen = 0;  /* STONE: see builtin_reset_state() */
+   const char *zArg;
+   va_list vargs;
++
++  if( iGen!=builtinGeneration ){ iGen = builtinGeneration; bundled = 0; }
+ 
+   if(JS_BUNDLED == builtin_get_js_delivery_mode()){
+     if(!bundled){
