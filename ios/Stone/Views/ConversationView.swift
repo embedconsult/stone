@@ -33,6 +33,7 @@ struct ConversationView: View {
     /// runs, so the two never overlap.
     @State private var syncing = false
     @FocusState private var composerFocused: Bool
+    @StateObject private var keyboard = KeyboardInset()
 
     private var repo: Repo? { store.repos.first { $0.id == id.repoID } }
     private var login: String { repo.map(ConversationStore.login(for:)) ?? "" }
@@ -78,7 +79,12 @@ struct ConversationView: View {
                      focused: $composerFocused) {
                 Task { await send() }
             }
+            .padding(.bottom, keyboard.height)
         }
+        // The reply box follows the keyboard by its frame (KeyboardInset),
+        // not by SwiftUI's own keyboard avoidance, which now and then
+        // missed a change and left the box under the keyboard.
+        .ignoresSafeArea(.keyboard, edges: .bottom)
         // The build-ID label would sit on the reply box whenever the
         // keyboard is up; it has no business on this screen.
         .onAppear { BuildIdentityVisibility.shared.hide() }
@@ -336,6 +342,49 @@ private struct BubbleView: View, Equatable {
     private static func inline(_ text: String) -> AttributedString {
         (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace)))
             ?? AttributedString(text)
+    }
+}
+
+/// How far the keyboard reaches above the bottom safe area (the
+/// home-indicator strip), from UIKit's keyboard frame notifications. Every
+/// show, hide, resize and undock posts one, so the reply box can sit
+/// exactly on top of the keyboard.
+@MainActor
+final class KeyboardInset: ObservableObject {
+    @Published private(set) var height: CGFloat = 0
+    private var observers: [NSObjectProtocol] = []
+
+    init() {
+        let center = NotificationCenter.default
+        for name in [UIResponder.keyboardWillChangeFrameNotification, UIResponder.keyboardWillHideNotification] {
+            observers.append(center.addObserver(forName: name, object: nil, queue: .main) { [weak self] note in
+                let frame = (note.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue
+                let duration = note.userInfo?[UIResponder.keyboardAnimationDurationUserInfoKey] as? Double ?? 0.25
+                let hiding = note.name == UIResponder.keyboardWillHideNotification
+                MainActor.assumeIsolated { self?.update(frame: hiding ? nil : frame, duration: duration) }
+            })
+        }
+    }
+
+    deinit {
+        observers.forEach(NotificationCenter.default.removeObserver)
+    }
+
+    private func update(frame: CGRect?, duration: Double) {
+        let window = UIApplication.shared.connectedScenes
+            .compactMap { ($0 as? UIWindowScene)?.keyWindow }
+            .first
+        var overlap: CGFloat = 0
+        if let frame, let window {
+            // The frame is in screen coordinates; a floating or undocked
+            // keyboard that doesn't reach the bottom edge covers nothing.
+            let local = window.convert(frame, from: window.screen.coordinateSpace)
+            if local.maxY >= window.bounds.maxY - 1 {
+                overlap = max(0, window.bounds.maxY - local.minY - window.safeAreaInsets.bottom)
+            }
+        }
+        guard overlap != height else { return }
+        withAnimation(.easeOut(duration: duration)) { height = overlap }
     }
 }
 
