@@ -1,8 +1,8 @@
 # WebAssembly in a Fossil page
 
 A minimal check that a repo can serve WebAssembly to a browser, including
-Stone's in-app web view: [index.html](index.html) loads
-[demo.js](demo.js), which fetches `add.wasm` (one function, `add(a, b)`)
+Stone's in-app web view: [index.html](/doc/trunk/demo/wasm/index.html) loads
+[demo.js](/doc/trunk/demo/wasm/demo.js), which fetches `add.wasm` (one function, `add(a, b)`)
 and shows **wasm ok** when it returns 2 + 3 = 5.
 
 ## Files
@@ -39,14 +39,15 @@ WebAssembly allowed is:
 **In Stone** (the phone's own copy of the repo), open this README in the
 repo view, then:
 
-1. Open [the default-csp setting](../../../../setup_settings#iddefault-csp).
+1. Open [the default-csp setting](/setup_settings#iddefault-csp).
    This page is the repo's Admin → Settings; the link jumps to the
    `default-csp` box. The app's built-in server gives you admin rights there.
 2. Replace the box's text with the line above, and press Apply Changes at
    the bottom of the page.
-3. Come back here and open [the demo](index.html).
+3. Come back here and open [the demo](/doc/trunk/demo/wasm/index.html).
 
-These links are relative, so they stay on whichever copy served this page.
+These links start at the repo's root, so they stay on whichever copy served
+this page, however you opened it.
 A link tapped in a Stone conversation goes to the server instead, whose
 policy is separate. The demo says which copy served it ("this phone's own
 copy" or "the server") and, when blocked, prints the policy it ran under.
