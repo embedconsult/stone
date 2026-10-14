@@ -6,9 +6,21 @@
   var result = document.getElementById("result");
   var detail = document.getElementById("detail");
 
+  // Which copy of the repo served this page, and the policy it ran under:
+  // a link tapped in a Stone conversation opens the server's page, not the
+  // phone's copy, and the two can have different default-csp settings.
+  var local = /^(127\.0\.0\.1|localhost|\[::1\])$/.test(location.hostname);
+  var where = "Served by " + (local ? "this phone's own copy of the repo" :
+                              "the server, " + location.host) + ".";
+  var policy = null;
+  document.addEventListener("securitypolicyviolation", function (event) {
+    policy = event.originalPolicy;
+  });
+
   function show(text, why) {
     result.textContent = text;
-    detail.textContent = why || "";
+    detail.textContent = (why ? why + "\n\n" : "") + where +
+      (policy ? "\n\nPolicy in force:\n" + policy : "");
   }
 
   if (typeof WebAssembly !== "object") {
@@ -37,6 +49,8 @@
         why += "\n\nThe repo's security policy blocks WebAssembly. " +
                "Add 'wasm-unsafe-eval' to default-csp (see README.md).";
       }
-      show("wasm blocked", why);
+      // The violation event can arrive just after the error; give it a
+      // moment so the policy shows too.
+      setTimeout(function () { show("wasm blocked", why); }, 100);
     });
 })();

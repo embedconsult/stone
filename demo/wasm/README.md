@@ -38,7 +38,13 @@ If the repo already has a `default-csp` of its own, add
    admin rights there.
 2. Find the `default-csp` box, enter the line above, and press Apply
    Changes.
-3. Open `/doc/trunk/demo/wasm/index.html` in the same repo view.
+3. In the same repo view, long-press the repo's name in the title bar,
+   enter `/doc/trunk/demo/wasm/index.html` under Go to Path, and press Go.
+
+Don't open it from a link in a conversation. Those links lead to the server,
+whose policy is separate, so the page there stays blocked until the server
+changes too. The page says which copy served it ("this phone's own copy" or
+"the server") and, when blocked, prints the policy it ran under.
 
 **On a server** (Fossil's own pages, and Stone's Remote Site view), an admin
 does the same under Admin → Settings, or runs:
