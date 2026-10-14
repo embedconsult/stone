@@ -31,20 +31,25 @@ added, on a single line:
 
 If the repo already has a `default-csp` of its own, add
 `'wasm-unsafe-eval'` to its `script-src` part rather than replacing it.
+This repo (stone) has one, which keeps a `connect-src` part. Its line with
+WebAssembly allowed is:
 
-**In Stone** (the phone's own copy of the repo):
+    default-src 'self' data:; script-src 'self' 'nonce-$nonce' 'wasm-unsafe-eval'; connect-src 'self' https://ollama.openbeagle.org:8443; style-src 'self' 'unsafe-inline'; img-src * data:
 
-1. Open the repo, then Admin → Settings. The app's built-in server gives you
-   admin rights there.
-2. Find the `default-csp` box, enter the line above, and press Apply
-   Changes.
-3. In the same repo view, long-press the repo's name in the title bar,
-   enter `/doc/trunk/demo/wasm/index.html` under Go to Path, and press Go.
+**In Stone** (the phone's own copy of the repo), open this README in the
+repo view, then:
 
-Don't open it from a link in a conversation. Those links lead to the server,
-whose policy is separate, so the page there stays blocked until the server
-changes too. The page says which copy served it ("this phone's own copy" or
-"the server") and, when blocked, prints the policy it ran under.
+1. Open [the default-csp setting](../../../../setup_settings#iddefault-csp).
+   This page is the repo's Admin → Settings; the link jumps to the
+   `default-csp` box. The app's built-in server gives you admin rights there.
+2. Replace the box's text with the line above, and press Apply Changes at
+   the bottom of the page.
+3. Come back here and open [the demo](index.html).
+
+These links are relative, so they stay on whichever copy served this page.
+A link tapped in a Stone conversation goes to the server instead, whose
+policy is separate. The demo says which copy served it ("this phone's own
+copy" or "the server") and, when blocked, prints the policy it ran under.
 
 **On a server** (Fossil's own pages, and Stone's Remote Site view), an admin
 does the same under Admin → Settings, or runs:
