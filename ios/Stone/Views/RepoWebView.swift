@@ -23,6 +23,12 @@ final class WebViewController: ObservableObject {
         webView?.goBack()
     }
 
+    /// Reloads the page on screen, so a sync that brought new content shows
+    /// it here, not only on the next page opened.
+    func reload() {
+        webView?.reload()
+    }
+
     /// Forces a reload to `url` directly, bypassing SwiftUI's state-diffing.
     /// Used for the self-heal recovery in RepoDetailView.handleLoadFailure():
     /// if the restarted server happens to land on the SAME port as before
@@ -493,6 +499,7 @@ struct RepoDetailView: View {
             let output = try await store.sync(repo)
             let received = RepoStore.parseArtifactCounts(output)?.received ?? 0
             await rescanAfterSync(receivedCounts: [repo.id: received])
+            if received > 0 { webController.reload() }
             // Ground truth (ticket f0c612c027): a LOCAL SQLite failure
             // (e.g. this phone's own clone rejecting a post-sync write with
             // SQLITE_AUTH) must be checked BEFORE detectAuthFailure -- its
