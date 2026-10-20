@@ -26,6 +26,13 @@ struct ConversationView: View {
     @State private var sendStatus: String?
     @State private var errorText: String?
     @State private var openedLink: OpenedLink?
+    /// How many of the latest posts are on screen. A long thread renders
+    /// in full only on request, a page at a time, so opening it costs the
+    /// same as opening a short one.
+    @State private var shownCount = Self.pageSize
+    /// A post too long for a bubble, shown whole in a sheet.
+    @State private var wholePost: ConversationPost?
+    private static let pageSize = 100
     /// What OCX says the agent on this thread is doing; nil when the server
     /// doesn't say (no endpoint, offline, a ticket rather than a thread).
     @State private var agentStatus: AgentStatus?
@@ -53,14 +60,21 @@ struct ConversationView: View {
                         ContentUnavailableView("Nothing here yet", systemImage: "bubble.left",
                                                description: Text("This conversation isn't in this phone's clone. Try a sync."))
                     }
-                    ForEach(posts) { post in
+                    if posts.count > shownCount {
+                        Button("Show earlier posts (\(posts.count - shownCount))") {
+                            shownCount += Self.pageSize
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                    ForEach(posts.suffix(shownCount)) { post in
                         BubbleView(post: post, own: ConversationBook.isOwn(post, login: login),
                                    reply: { replyTarget = post; composerFocused = true },
                                    choose: { option in
                                        replyTarget = post
                                        draft.text = option
                                        composerFocused = true
-                                   })
+                                   },
+                                   showWhole: { wholePost = post })
                             .equatable()
                             .id(post.hash)
                     }
@@ -117,6 +131,18 @@ struct ConversationView: View {
         })
         .sheet(item: $openedLink) { link in
             SafariView(url: link.url).ignoresSafeArea()
+        }
+        .sheet(item: $wholePost) { post in
+            NavigationStack {
+                LongTextView(text: post.body ?? "")
+                    .navigationTitle(post.author)
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { wholePost = nil }
+                        }
+                    }
+            }
         }
         .alert("Couldn't send", isPresented: Binding(get: { errorText != nil }, set: { if !$0 { errorText = nil } })) {
             Button("OK") { errorText = nil }
@@ -270,13 +296,21 @@ private struct BubbleView: View, Equatable {
     let own: Bool
     let reply: () -> Void
     let choose: (String) -> Void
+    let showWhole: () -> Void
+
+    /// Longer posts (agents' logs, crash reports) are cut short in the
+    /// bubble: SwiftUI lays out a Text all at once, and a thread of very
+    /// long posts could use enough memory for iOS to close the app.
+    static let bubbleLimit = 4_000
 
     static func == (a: BubbleView, b: BubbleView) -> Bool {
         a.post == b.post && a.own == b.own
     }
 
+    private var isLong: Bool { (post.body?.utf8.count ?? 0) > Self.bubbleLimit }
+
     var body: some View {
-        let options = own ? [] : PostText.options(post.body ?? "")
+        let options = own || isLong ? [] : PostText.options(post.body ?? "")
         return HStack {
             if own { Spacer(minLength: 48) }
             VStack(alignment: own ? .trailing : .leading, spacing: 4) {
@@ -311,6 +345,11 @@ private struct BubbleView: View, Equatable {
                         }
                     }
 
+                if isLong {
+                    Button("Show whole post (\((post.body ?? "").count) characters)", action: showWhole)
+                        .font(.caption)
+                }
+
                 if !options.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
                         ForEach(options, id: \.self) { option in
@@ -333,7 +372,10 @@ private struct BubbleView: View, Equatable {
     /// Markdown for markdown posts (links, emphasis, code; line breaks kept
     /// as written), plain text for anything else.
     private static func rendered(_ post: ConversationPost) -> AttributedString {
-        let body = post.body ?? "(couldn't read this post)"
+        var body = post.body ?? "(couldn't read this post)"
+        if body.utf8.count > bubbleLimit {
+            body = String(body.prefix(bubbleLimit)) + "\n…"
+        }
         let isMarkdown = post.mimetype.isEmpty || post.mimetype.contains("markdown")
         guard isMarkdown else { return AttributedString(body) }
         return inline(body)
@@ -462,6 +504,28 @@ private struct OpenedLink: Identifiable {
 
 /// Links open inside the app, over the conversation, rather than switching
 /// to Safari.
+/// A whole post as plain, selectable text. UITextView lays out only what is
+/// on screen, so even a very long post opens quickly and cheaply.
+private struct LongTextView: UIViewRepresentable {
+    let text: String
+
+    func makeUIView(context: Context) -> UITextView {
+        let view = UITextView()
+        view.isEditable = false
+        view.isSelectable = true
+        view.dataDetectorTypes = .link
+        view.font = .preferredFont(forTextStyle: .body)
+        view.adjustsFontForContentSizeCategory = true
+        view.textContainerInset = UIEdgeInsets(top: 12, left: 8, bottom: 12, right: 8)
+        view.text = text
+        return view
+    }
+
+    func updateUIView(_ view: UITextView, context: Context) {
+        if view.text != text { view.text = text }
+    }
+}
+
 private struct SafariView: UIViewControllerRepresentable {
     let url: URL
 
