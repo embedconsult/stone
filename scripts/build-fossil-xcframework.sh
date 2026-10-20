@@ -55,8 +55,19 @@ if [[ ! -d "${SSL_INC}/openssl" ]]; then
 fi
 
 # --- Flag groups copied verbatim from src/main.mk -----------------------------
+#
+# One deliberate change from main.mk: SQLITE_THREADSAFE=2 (multi-thread), not
+# 0. Upstream Fossil is one process per request, so it can build SQLite
+# without any locking. Stone also reads the clone with stone_fossil_query on
+# other threads while Fossil itself may be running (a sync, a page), and with
+# THREADSAFE=0 SQLite's process-wide state (open-file list, page cache,
+# allocator) has no locks at all: concurrent use crashed the app when opening
+# a conversation. Mode 2 locks that shared state; each connection is still
+# used by one thread at a time (Fossil's behind g_fossil_lock, each query's
+# its own), which is all mode 2 requires. Fossil already asks for this mode
+# with sqlite3_config(SQLITE_CONFIG_MULTITHREAD).
 
-SQLITE_OPTIONS="-DNDEBUG=1 -DSQLITE_DQS=0 -DSQLITE_THREADSAFE=0 \
+SQLITE_OPTIONS="-DNDEBUG=1 -DSQLITE_DQS=0 -DSQLITE_THREADSAFE=2 \
 -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_DEFAULT_WAL_SYNCHRONOUS=1 \
 -DSQLITE_LIKE_DOESNT_MATCH_BLOBS -DSQLITE_OMIT_DECLTYPE -DSQLITE_OMIT_DEPRECATED \
 -DSQLITE_OMIT_PROGRESS_CALLBACK -DSQLITE_OMIT_SHARED_CACHE \

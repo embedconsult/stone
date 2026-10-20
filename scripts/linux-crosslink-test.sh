@@ -54,7 +54,7 @@ mkdir -p "${WORK}/obj" "${WORK}/run"
 
 # --- Flag groups (same as scripts/mac-demo.sh, verbatim from src/main.mk,
 # minus the macOS-only -isysroot bits) -----------------------------------
-SQLITE_OPTIONS="-DNDEBUG=1 -DSQLITE_DQS=0 -DSQLITE_THREADSAFE=0 \
+SQLITE_OPTIONS="-DNDEBUG=1 -DSQLITE_DQS=0 -DSQLITE_THREADSAFE=2 \
 -DSQLITE_DEFAULT_MEMSTATUS=0 -DSQLITE_DEFAULT_WAL_SYNCHRONOUS=1 \
 -DSQLITE_LIKE_DOESNT_MATCH_BLOBS -DSQLITE_OMIT_DECLTYPE -DSQLITE_OMIT_DEPRECATED \
 -DSQLITE_OMIT_PROGRESS_CALLBACK -DSQLITE_OMIT_SHARED_CACHE \
@@ -107,6 +107,8 @@ ${CC} ${COMMON} ${FOSSIL_OPTIONS} -c "${REPO_ROOT}/scripts/linux-ticket-cache-dr
 ${CC} -o "${WORK}/ticket-cache-test" "${OBJ}/ticket-cache-driver.o" "${WORK}/libfossil_linux.a" -lz -ldl -lpthread -lm
 ${CC} ${COMMON} ${FOSSIL_OPTIONS} -c "${REPO_ROOT}/scripts/linux-query-driver.c" -o "${OBJ}/query-driver.o"
 ${CC} -o "${WORK}/query-test" "${OBJ}/query-driver.o" "${WORK}/libfossil_linux.a" -lz -ldl -lpthread -lm
+${CC} ${COMMON} ${FOSSIL_OPTIONS} -c "${REPO_ROOT}/scripts/linux-query-stress-driver.c" -o "${OBJ}/query-stress-driver.o"
+${CC} -o "${WORK}/query-stress-test" "${OBJ}/query-stress-driver.o" "${WORK}/libfossil_linux.a" -lz -ldl -lpthread -lm
 
 echo "Running mechanism-level reproduction..."
 "${WORK}/crosslink-test" "${WORK}/run"
@@ -161,3 +163,8 @@ echo "server helper (pid ${SERVER_PID}) listening on 127.0.0.1:${SERVER_PORT}"
 "${WORK}/crosslink-realsync-test" "${WORK}/run-realsync" "${SERVER_PORT}"
 kill "${SERVER_PID}" 2>/dev/null || true
 trap - EXIT
+
+# Queries on other threads while Fossil runs: crashed with SQLITE_THREADSAFE=0.
+echo "Concurrency: stone_fossil_query on 4 threads alongside Fossil for 5 s..."
+"${WORK}/query-stress-test" "${SERVER_REPO}" 5
+echo "PASS: concurrent queries and Fossil runs, no crash."

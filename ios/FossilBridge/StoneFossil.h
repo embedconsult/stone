@@ -9,10 +9,11 @@
  *   - All entry points run Fossil's own `fossil_main()`, which fully resets
  *     global state on every call (it does `memset(&g,0,sizeof(g))`), so each
  *     invocation is independent.
- *   - Every call into Fossil is serialized behind one internal lock. The
- *     vendored SQLite is built single-threaded (SQLITE_THREADSAFE=0) and
- *     Fossil uses process-global state, so callers must never assume
- *     concurrency. Serialization makes that safe.
+ *   - Every call into Fossil is serialized behind one internal lock, because
+ *     Fossil uses process-global state. stone_fossil_query is not: it opens
+ *     its own read-only connection and may run on any thread, alongside
+ *     Fossil and other queries. That is safe because the vendored SQLite is
+ *     built multi-threaded (SQLITE_THREADSAFE=2); with 0 it crashed.
  */
 
 #ifdef __cplusplus
