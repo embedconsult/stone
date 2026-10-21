@@ -50,6 +50,14 @@ frozen as a contract.
   a client needs a new `ocx` version.
 - Stone will read version 1 and show nothing for anything newer, rather than
   guess.
+- The schema comes with **conformance fixtures**: small repositories, or
+  message sets, each paired with the interpretation `ocx2` gives it. For
+  example: which runs are running or ended and with what outcome, which
+  questions wait on whom, and which actions take effect. `ocx2`'s own tests
+  check them, and so do Stone's. This is how a client gets tested when its
+  code can't be debugged. The Swift in Stone can only be type-checked here,
+  not run, so a fixture failing on Linux is the only early warning of a
+  misreading.
 
 ### R2. Run lifecycle, readable from the clone alone
 
@@ -118,9 +126,13 @@ back to the run messages.
 
 ## Out of scope for now
 
-- Running `ocx2` on the phone (WASM or otherwise). This stays in Milestone 5.
-  With R1–R5, Stone only needs to read and write messages, which it can do in
-  Swift.
+- Running `ocx2` on the phone as WASM. This is on hold, not dropped. Its point
+  would be to put the message logic in code that can be tested and debugged
+  off the phone, which Stone's Swift can't be (maintainer, 2026-10-21).
+  Hardening the message layer comes first. Meanwhile Stone keeps its own
+  reading of the messages thin and checks it against R1's fixtures, and the
+  part that runs on Linux (the C bridge and its SQL) carries as much of it as
+  practical.
 - Push notifications (APNs). Stone raises local notifications after a sync.
 
 ## What Stone will do once this exists
