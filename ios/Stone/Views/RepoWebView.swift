@@ -63,6 +63,29 @@ final class WebViewController: ObservableObject {
     }
 }
 
+extension WKUserScript {
+    /// Lets a long unbroken word in a timeline entry (a branch name, a path,
+    /// a URL) break anywhere. Otherwise Fossil's timeline table widens to fit
+    /// its longest word, every row's text runs off the right edge of the
+    /// phone, and the page reads as cut off (forum e320232451, stone's
+    /// 189da093f3: "i cannot read the timeline"). Added to every page, so it
+    /// holds whatever skin the server or the clone uses.
+    @MainActor static var stoneWrapLongWords: WKUserScript {
+        WKUserScript(
+        source: """
+        (function() {
+          var style = document.createElement('style');
+          style.textContent = '.timelineModernComment, .timelineModernDetail, ' +
+            '.timelineComment, .timelineDetailCell, .timelineCompactCell, ' +
+            '.timelineVerboseCell, .timelineColumnarCell { overflow-wrap: anywhere; }';
+          (document.head || document.documentElement).appendChild(style);
+        })();
+        """,
+        injectionTime: .atDocumentEnd,
+        forMainFrameOnly: true)
+    }
+}
+
 /// Hosts a `WKWebView` pointed at the in-process Fossil server, presenting
 /// Fossil's own HTML UI. This is the whole point of the app's UI strategy:
 /// render Fossil's real pages so there is zero drift from upstream.
@@ -75,6 +98,7 @@ struct RepoWebView: UIViewRepresentable {
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .nonPersistent() // localhost session only
+        config.userContentController.addUserScript(.stoneWrapLongWords)
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.allowsBackForwardNavigationGestures = true
         webView.navigationDelegate = context.coordinator

@@ -98,7 +98,9 @@ private struct RemoteSiteWebView: UIViewRepresentable {
     let url: URL
 
     func makeUIView(context: Context) -> WKWebView {
-        let webView = WKWebView(frame: .zero)
+        let config = WKWebViewConfiguration()
+        config.userContentController.addUserScript(.stoneWrapLongWords)
+        let webView = WKWebView(frame: .zero, configuration: config)
         webView.allowsBackForwardNavigationGestures = true
         webView.load(URLRequest(url: url))
         return webView
