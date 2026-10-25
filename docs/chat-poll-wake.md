@@ -33,22 +33,28 @@ Linux on 2026-10-25.
 
 ## What Stone does
 
-These are `RemoteWake` (ios/Stone/Services/RemoteWake.swift) and
-`RepoListView.runRemoteWakes`.
+These are `RemoteWake` and `ForegroundSync`, both in
+ios/Stone/Services/RemoteWake.swift.
 
 - While the app is in the foreground and Automatic Sync is on (and Low Power
   Mode isn't holding it back), Stone keeps one request waiting per repository
-  with a remote and a saved password.
-- It starts from `name=-1`. That first answer wakes one sync, which is
-  harmless.
-- Every answer holding rows syncs that repository, as Sync does, then raises
-  the same notifications. The next request names the newest row seen.
+  with a remote and a saved password. StoneApp starts this when the app
+  becomes active and stops it when the app goes to the background, whatever
+  screen is showing.
+- It starts from `name=-1`. When that answers at once, the row was already
+  there and wakes nothing. When it waits, the chat table was empty and the
+  row is new, so it wakes a sync.
+- Every later answer holding rows syncs that repository, as Sync does, then
+  raises the same notifications. The next request names the newest row seen.
+- At most one wake sync per repository every 30 seconds. Events in between
+  are taken by the next sync.
 - An `isError` answer logs in again once. A second one means the login lacks
-  `C` or chat is off, and that repository is left to the interval loop until
-  the app's main screen starts again.
+  `C` or chat is off, and that repository is left to the timer until the app
+  next becomes active.
 - A network failure backs off: 15 s more each time, up to 5 minutes. The next
   request then names the same row, so nothing recorded meanwhile is missed.
-- The Automatic Sync interval loop keeps running as the fallback.
+- Automatic Sync's timer keeps running as the fallback, with the same start
+  and stop.
 
 ## What a server needs
 

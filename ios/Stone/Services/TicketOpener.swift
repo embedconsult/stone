@@ -129,7 +129,7 @@ enum TicketOpener {
             ticketUUID: ticketUUID,
             kind: kind,
             hasTicket: { MaintainerRequestScanner.hasTicket(fossilPath: path, uuid: ticketUUID) },
-            sync: { _ = try? await store.sync(repo) }
+            sync: { _ = try? await store.sync(repo, trigger: .notification) }
         )
         switch destination {
         case .local(let repoID, let ticketPath, let focusComposer, let note):

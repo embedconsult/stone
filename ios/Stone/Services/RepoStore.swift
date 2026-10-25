@@ -24,12 +24,24 @@ enum RepoSyncStatus: Equatable {
     case failure(String)
 }
 
+/// What started a sync, shown with its results.
+enum SyncTrigger: String, Equatable {
+    case syncButton = "the repo screen's Sync button"
+    case syncAll = "Sync All"
+    case timer = "Automatic Sync's timer"
+    case wake = "the server, on a new event"
+    case background = "a background task"
+    case conversation = "a conversation"
+    case notification = "opening a notification"
+}
+
 /// A repository's most recent finished sync, whatever started it: Sync All,
 /// the repo screen's Sync, the Automatic Sync timer, a server's wake
 /// (RemoteWake) or a background task. Shown by the repo's status icon, and
 /// in full when the icon is tapped (SyncResultView).
 struct RepoSyncRecord: Equatable {
     let status: RepoSyncStatus
+    let trigger: SyncTrigger
     let finishedAt: Date
     /// Fossil's output for that sync, with Stone's phase timings appended.
     let log: String
@@ -258,23 +270,23 @@ final class RepoStore: ObservableObject {
     /// needed (a missing column), or when a day has passed since the last
     /// refresh -- see `isConfigPullDue` and `indicatesMissingTicketColumn`.
     @discardableResult
-    func sync(_ repo: Repo) async throws -> String {
+    func sync(_ repo: Repo, trigger: SyncTrigger) async throws -> String {
         syncingRepos.insert(repo.id)
         defer { syncingRepos.remove(repo.id) }
         do {
             let output = try await runSync(repo)
-            record(Self.status(forOutput: output), log: output, for: repo.id)
+            record(Self.status(forOutput: output), trigger: trigger, log: output, for: repo.id)
             return output
         } catch {
             var log = error.localizedDescription
             if case .fossil(let message)? = error as? StoreError { log = message }
-            record(Self.status(for: error), log: log, for: repo.id)
+            record(Self.status(for: error), trigger: trigger, log: log, for: repo.id)
             throw error
         }
     }
 
-    private func record(_ status: RepoSyncStatus, log: String, for id: UUID) {
-        syncRecords[id] = RepoSyncRecord(status: status, finishedAt: Date(), log: log)
+    private func record(_ status: RepoSyncStatus, trigger: SyncTrigger, log: String, for id: UUID) {
+        syncRecords[id] = RepoSyncRecord(status: status, trigger: trigger, finishedAt: Date(), log: log)
     }
 
     /// What a sync that ran to the end achieved. Ground truth (ticket
@@ -505,7 +517,7 @@ final class RepoStore: ObservableObject {
     ///
     /// Each repo's result is recorded by `sync(_:)` (`syncRecords`), which
     /// its status icon shows; nothing pops up.
-    func syncAll(shouldContinue: () -> Bool = { true }) async {
+    func syncAll(trigger: SyncTrigger = .syncAll, shouldContinue: () -> Bool = { true }) async {
         guard !isSyncingAll else { return }
         isSyncingAll = true
         resetReceivedTally()
@@ -514,7 +526,7 @@ final class RepoStore: ObservableObject {
         for repo in repos {
             guard shouldContinue() else { break }
             guard repo.remoteURL != nil else { continue }
-            _ = try? await sync(repo)
+            _ = try? await sync(repo, trigger: trigger)
         }
     }
 

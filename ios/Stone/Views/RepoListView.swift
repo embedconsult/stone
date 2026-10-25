@@ -81,12 +81,6 @@ struct RepoListView: View {
             await store.syncAll()
             await BackgroundSyncScheduler.scanAndNotify(store: store, receivedCounts: store.lastSyncReceivedCounts)
         }
-        .task {
-            await withTaskGroup(of: Void.self) { group in
-                group.addTask { await runAutoSyncLoop() }
-                group.addTask { await runRemoteWakes() }
-            }
-        }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button { showingSettings = true } label: { Image(systemName: "gearshape") }
@@ -153,78 +147,6 @@ struct RepoListView: View {
         } message: { _ in
             Text("This permanently deletes the local repository file. This cannot be undone.")
         }
-    }
-
-    /// Foreground periodic "Sync All", per the maintainer's request for a
-    /// programmable sync interval with a Low Power Mode opt-out
-    /// (SettingsView's "Automatic Sync" section). Tied to this view's
-    /// `.task` lifecycle, so it runs for as long as the home screen exists
-    /// -- effectively the whole time the app is open, since this is the
-    /// root screen -- and stops the moment the task is cancelled (app
-    /// backgrounded/torn down). Background execution (ticket 1a55c5d8b8) is
-    /// a separate path -- BackgroundSyncScheduler's BGTaskScheduler tasks --
-    /// that takes over once the app leaves the foreground; `isSyncingAll`
-    /// keeps the two from ever running at the same time. Reads UserDefaults
-    /// directly rather than through `@AppStorage` so every iteration sees
-    /// whatever SettingsView most recently saved, not a value snapshotted
-    /// when this loop started.
-    private func runAutoSyncLoop() async {
-        let defaults = UserDefaults.standard
-        while !Task.isCancelled {
-            let minutes = defaults.object(forKey: SettingsView.autoSyncIntervalKey) as? Int
-                ?? SettingsView.defaultAutoSyncIntervalMinutes
-            try? await Task.sleep(for: .seconds(max(minutes, 1) * 60))
-            guard !Task.isCancelled else { return }
-
-            let enabled = defaults.object(forKey: SettingsView.autoSyncEnabledKey) as? Bool ?? false
-            guard enabled else { continue }
-
-            let skipsLowPower = defaults.object(forKey: SettingsView.autoSyncSkipsLowPowerKey) as? Bool ?? true
-            if skipsLowPower && ProcessInfo.processInfo.isLowPowerModeEnabled { continue }
-
-            guard !store.isSyncingAll, store.repos.contains(where: { $0.remoteURL != nil }) else { continue }
-            await store.syncAll()
-            // Same post-sync scan/notify step a background task runs, so a
-            // decision or try-this found while the app is open in the
-            // foreground surfaces exactly the same way as one found while
-            // backgrounded.
-            await BackgroundSyncScheduler.scanAndNotify(store: store, receivedCounts: store.lastSyncReceivedCounts)
-        }
-    }
-
-    /// While Automatic Sync is on, keeps one `/chat-poll` request waiting per
-    /// repo with a remote and a saved password (RemoteWake), and syncs that
-    /// repo as soon as its server records something new. The interval loop
-    /// above keeps running as the fallback. The set of repos and the
-    /// settings are read again every minute.
-    private func runRemoteWakes() async {
-        let defaults = UserDefaults.standard
-        var following: [UUID: Task<Void, Never>] = [:]
-        defer { following.values.forEach { $0.cancel() } }
-        while !Task.isCancelled {
-            let enabled = defaults.object(forKey: SettingsView.autoSyncEnabledKey) as? Bool ?? false
-            let skipsLowPower = defaults.object(forKey: SettingsView.autoSyncSkipsLowPowerKey) as? Bool ?? true
-            let allowed = enabled && !(skipsLowPower && ProcessInfo.processInfo.isLowPowerModeEnabled)
-            let wanted = allowed ? store.repos.filter { $0.remoteURL != nil } : []
-            let wantedIDs = Set(wanted.map(\.id))
-            for (id, task) in following where !wantedIDs.contains(id) {
-                task.cancel()
-                following[id] = nil
-            }
-            for repo in wanted where following[repo.id] == nil {
-                following[repo.id] = Task { await RemoteWake.follow(repo) { await wakeSync(repo.id) } }
-            }
-            try? await Task.sleep(for: .seconds(60))
-        }
-    }
-
-    /// One repo's sync after its server woke us: skipped while a Sync All
-    /// runs, which covers it.
-    private func wakeSync(_ id: UUID) async {
-        guard !store.isSyncingAll, let repo = store.repos.first(where: { $0.id == id }) else { return }
-        guard let output = try? await store.sync(repo) else { return }
-        let received = RepoStore.parseArtifactCounts(output)?.received ?? 0
-        await BackgroundSyncScheduler.scanAndNotify(store: store, receivedCounts: [repo.id: received])
     }
 
     /// The repo's latest sync, whatever started it: a spinner while one
@@ -346,6 +268,7 @@ struct SyncResultView: View {
                     } icon: {
                         SyncStatusIcon(status: record.status)
                     }
+                    LabeledContent("Started by", value: record.trigger.rawValue)
                     LabeledContent("Finished") {
                         Text("\(record.finishedAt.formatted(date: .omitted, time: .standard)), \(record.finishedAt.formatted(.relative(presentation: .named)))")
                     }

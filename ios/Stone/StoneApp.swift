@@ -85,9 +85,15 @@ struct StoneApp: App {
         // task, so there is always a next attempt pending even the very
         // first time the app backgrounds -- a task that never once ran
         // can't reschedule itself.
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .background {
+        .onChange(of: scenePhase, initial: true) { _, phase in
+            switch phase {
+            case .active:
+                ForegroundSync.shared.start(store: store)
+            case .background:
+                ForegroundSync.shared.stop()
                 BackgroundSyncScheduler.scheduleAll()
+            default:
+                break
             }
         }
     }

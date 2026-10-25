@@ -211,7 +211,7 @@ struct ConversationView: View {
         guard repo.remoteURL != nil, !syncing, !store.isSyncingAll else { return }
         syncing = true
         defer { syncing = false }
-        guard let output = try? await store.sync(repo) else { return }
+        guard let output = try? await store.sync(repo, trigger: .conversation) else { return }
         let received = RepoStore.parseArtifactCounts(output)?.received ?? 0
         if received > 0 {
             await BackgroundSyncScheduler.scanAndNotify(store: store, receivedCounts: [repo.id: received])
@@ -261,7 +261,7 @@ struct ConversationView: View {
         syncing = true
         defer { syncing = false }
         do {
-            let output = try await store.sync(repo)
+            let output = try await store.sync(repo, trigger: .conversation)
             if let reason = RepoStore.detectLocalSQLiteFailure(output) ?? RepoStore.detectAuthFailure(output) {
                 sendStatus = "Saved on this phone; it will go out with the next sync. (\(reason))"
             } else {

@@ -503,7 +503,7 @@ struct RepoDetailView: View {
     /// The result is recorded by RepoStore.sync and shown by the status
     /// icon beside the Sync button; nothing pops up.
     private func runSync() async {
-        guard let output = try? await store.sync(repo) else { return }
+        guard let output = try? await store.sync(repo, trigger: .syncButton) else { return }
         let received = RepoStore.parseArtifactCounts(output)?.received ?? 0
         await rescanAfterSync(receivedCounts: [repo.id: received])
         if received > 0 { webController.reload() }

@@ -6,8 +6,8 @@ import Foundation
 /// and a longer `BGProcessingTask` iOS may grant more generously (e.g.
 /// overnight, or while charging) for a bigger backlog. Both funnel into the
 /// same `runOnce`, so background and foreground share one code path and one
-/// settings gate with `RepoListView.runAutoSyncLoop` (Automatic Sync toggle,
-/// interval, Low Power opt-out) -- see that function's doc for why none of
+/// settings gate with `ForegroundSync` (Automatic Sync toggle,
+/// interval, Low Power opt-out) -- see its doc for why none of
 /// this actually syncs unless Automatic Sync is on.
 enum BackgroundSyncScheduler {
     static let refreshTaskIdentifier = "org.beagleboard.stone.sync-refresh"
@@ -106,7 +106,7 @@ enum BackgroundSyncScheduler {
         let store = RepoStore.shared
         guard !store.isSyncingAll, store.repos.contains(where: { $0.remoteURL != nil }) else { return }
 
-        await store.syncAll(shouldContinue: shouldContinue)
+        await store.syncAll(trigger: .background, shouldContinue: shouldContinue)
         await scanAndNotify(store: store, receivedCounts: store.lastSyncReceivedCounts)
     }
 
