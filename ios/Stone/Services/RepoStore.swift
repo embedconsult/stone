@@ -25,6 +25,22 @@ enum RepoSyncStatus: Equatable {
     case failure(String)
 }
 
+/// The latest sync attempt of one repository, from whichever path ran it
+/// (Sync All, the repo screen's button, a conversation, Send, a server
+/// wake): when it ran, how it ended, and Fossil's full output.
+struct RepoSyncRecord: Equatable {
+    var status: RepoSyncStatus
+    var at: Date
+    var log: String
+
+    /// The home list shows an attempt for this long, then goes blank.
+    static let shownFor: TimeInterval = 15 * 60
+
+    func isRecent(at now: Date = Date()) -> Bool {
+        status == .syncing || now.timeIntervalSince(at) < Self.shownFor
+    }
+}
+
 /// Owns the set of repositories: where their files live, their metadata, and
 /// the high-level operations (create, clone, sync, delete).
 ///
@@ -43,10 +59,11 @@ final class RepoStore: ObservableObject {
     @Published private(set) var repos: [Repo] = []
     @Published var lastSyncLog: String = ""
 
-    /// Per-repo outcome of the most recent "Sync All" run, keyed by repo id.
-    @Published private(set) var syncStatuses: [UUID: RepoSyncStatus] = [:]
+    /// Per-repo latest sync attempt, keyed by repo id. Every sync records
+    /// here (see `sync(_:)`); nothing clears it, the view just stops showing
+    /// an attempt older than `RepoSyncRecord.shownFor`.
+    @Published private(set) var syncRecords: [UUID: RepoSyncRecord] = [:]
     @Published private(set) var isSyncingAll = false
-    @Published private(set) var syncAllSummary: String?
 
     /// Per-repo "Artifacts received" tally from the most recent `syncAll()`
     /// run -- every repo `sync(_:)` touches merges its count in here, and
@@ -247,6 +264,42 @@ final class RepoStore: ObservableObject {
     /// refresh -- see `isConfigPullDue` and `indicatesMissingTicketColumn`.
     @discardableResult
     func sync(_ repo: Repo) async throws -> String {
+        let previousLog = syncRecords[repo.id]?.log ?? ""
+        syncRecords[repo.id] = RepoSyncRecord(status: .syncing, at: Date(), log: previousLog)
+        do {
+            let output = try await performSync(repo)
+            syncRecords[repo.id] = RepoSyncRecord(status: Self.status(ofOutput: output), at: Date(), log: output)
+            return output
+        } catch {
+            var log = error.localizedDescription
+            if case .fossil(let msg)? = error as? StoreError { log = msg }
+            syncRecords[repo.id] = RepoSyncRecord(status: Self.status(ofError: error), at: Date(), log: log)
+            throw error
+        }
+    }
+
+    /// How a finished sync ended, from its output. Ground truth (ticket
+    /// f0c612c027): a LOCAL SQLite failure is checked before a server
+    /// refusal, whose "not authorized" text it would otherwise match.
+    /// Ground truth (ticket 94ea2161f5): a rejected push is checked before
+    /// trusting the sent/received counts.
+    static func status(ofOutput output: String) -> RepoSyncStatus {
+        if let reason = detectLocalSQLiteFailure(output) { return .localFailure(reason) }
+        if let reason = detectAuthFailure(output) { return .authFailed(reason) }
+        let counts = parseArtifactCounts(output) ?? (sent: 0, received: 0)
+        return .success(sent: counts.sent, received: counts.received)
+    }
+
+    /// How a sync that threw ended.
+    static func status(ofError error: Error) -> RepoSyncStatus {
+        if case .fossil(let msg)? = error as? StoreError {
+            if let reason = detectLocalSQLiteFailure(msg) { return .localFailure(reason) }
+            if let reason = detectAuthFailure(msg) { return .authFailed(reason) }
+        }
+        return .failure(error.localizedDescription)
+    }
+
+    private func performSync(_ repo: Repo) async throws -> String {
         guard let remote = repo.remoteURL, !remote.isEmpty else {
             throw StoreError.noRemote
         }
@@ -449,92 +502,19 @@ final class RepoStore: ObservableObject {
     /// one safe place to stop is between repos, after the current command has
     /// already returned and released the lock normally -- never mid-command.
     ///
-    /// `announce` sets `syncAllSummary`, which RepoListView shows as an
-    /// alert -- only for a sync the maintainer asked for (the Sync All
-    /// button, pull-to-refresh on the home list). The timed auto-sync loop
-    /// and background tasks pass false, so they never pop anything up.
-    func syncAll(announce: Bool = true, shouldContinue: () -> Bool = { true }) async {
+    /// Each repo's result lands in `syncRecords`, which the home list's
+    /// status badge shows; nothing pops up.
+    func syncAll(shouldContinue: () -> Bool = { true }) async {
         guard !isSyncingAll else { return }
         isSyncingAll = true
-        syncAllSummary = nil
-        syncStatuses = [:]
         resetReceivedTally()
         defer { isSyncingAll = false }
 
-        var succeeded = 0
-        var authFailed = 0
-        var localFailed = 0
-        var failed = 0
-        var skipped = 0
-        var stopped = 0
-        var totalSent = 0
-        var totalReceived = 0
-
         for repo in repos {
-            guard shouldContinue() else {
-                stopped = repos.count - succeeded - authFailed - failed - skipped
-                break
-            }
-            guard repo.remoteURL != nil else {
-                skipped += 1
-                continue
-            }
-            syncStatuses[repo.id] = .syncing
-            do {
-                let output = try await sync(repo)
-                // Ground truth (ticket f0c612c027): check for a LOCAL
-                // SQLite failure before a server refusal -- a local
-                // authorizer error's own text would otherwise match
-                // detectAuthFailure's "not authorized" check. Ground truth
-                // (ticket 94ea2161f5): check for a rejected push before
-                // trusting the sent/received counts -- see
-                // RepoStore.detectAuthFailure/detectLocalSQLiteFailure and
-                // RepoWebView.runSync's matching checks on the single-repo
-                // path.
-                if let reason = Self.detectLocalSQLiteFailure(output) {
-                    syncStatuses[repo.id] = .localFailure(reason)
-                    localFailed += 1
-                } else if let reason = Self.detectAuthFailure(output) {
-                    syncStatuses[repo.id] = .authFailed(reason)
-                    authFailed += 1
-                } else {
-                    let counts = Self.parseArtifactCounts(output) ?? (sent: 0, received: 0)
-                    syncStatuses[repo.id] = .success(sent: counts.sent, received: counts.received)
-                    totalSent += counts.sent
-                    totalReceived += counts.received
-                    succeeded += 1
-                }
-            } catch {
-                if case .fossil(let msg)? = error as? StoreError, let reason = Self.detectLocalSQLiteFailure(msg) {
-                    syncStatuses[repo.id] = .localFailure(reason)
-                    localFailed += 1
-                } else if case .fossil(let msg)? = error as? StoreError, let reason = Self.detectAuthFailure(msg) {
-                    syncStatuses[repo.id] = .authFailed(reason)
-                    authFailed += 1
-                } else {
-                    syncStatuses[repo.id] = .failure(error.localizedDescription)
-                    failed += 1
-                }
-            }
+            guard shouldContinue() else { break }
+            guard repo.remoteURL != nil else { continue }
+            _ = try? await sync(repo)
         }
-
-        // Report real totals, not just a repo count -- a "synced" repo that
-        // pushed nothing (e.g. the remote identity lacks write capability,
-        // see ticket c4eb202ff0) needs to be visibly distinguishable from one
-        // that actually sent something.
-        var parts = ["\(succeeded) synced (\(totalSent) sent, \(totalReceived) received)"]
-        if authFailed > 0 { parts.append("\(authFailed) rejected by server") }
-        if localFailed > 0 { parts.append("\(localFailed) failed on this phone (not the server)") }
-        if failed > 0 { parts.append("\(failed) failed") }
-        if skipped > 0 { parts.append("\(skipped) skipped (no remote)") }
-        if stopped > 0 { parts.append("\(stopped) not reached (background time expired)") }
-        if announce {
-            syncAllSummary = parts.joined(separator: ", ")
-        }
-    }
-
-    func dismissSyncAllSummary() {
-        syncAllSummary = nil
     }
 
     /// Rename a repository. Only the display label changes; the `.fossil` file

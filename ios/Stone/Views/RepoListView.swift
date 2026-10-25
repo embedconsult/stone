@@ -32,7 +32,7 @@ struct RepoListView: View {
                             }
                         }
                         Spacer()
-                        syncStatusIcon(for: repo)
+                        SyncStatusBadge(repo: repo)
                     }
                     .accessibilityIdentifier("repoRow-\(repo.name)")
                 }
@@ -124,13 +124,6 @@ struct RepoListView: View {
         .sheet(item: $repoToEditRemote) { repo in
             EditRemoteView(repo: repo)
         }
-        .alert("Sync All",
-               isPresented: Binding(get: { store.syncAllSummary != nil },
-                                    set: { if !$0 { store.dismissSyncAllSummary() } })) {
-            Button("OK") { store.dismissSyncAllSummary() }
-        } message: {
-            Text(store.syncAllSummary ?? "")
-        }
         .alert("Rename Repository",
                isPresented: Binding(get: { repoToRename != nil },
                                     set: { if !$0 { repoToRename = nil } })) {
@@ -184,7 +177,7 @@ struct RepoListView: View {
             if skipsLowPower && ProcessInfo.processInfo.isLowPowerModeEnabled { continue }
 
             guard !store.isSyncingAll, store.repos.contains(where: { $0.remoteURL != nil }) else { continue }
-            await store.syncAll(announce: false)
+            await store.syncAll()
             // Same post-sync scan/notify step a background task runs, so a
             // decision or try-this found while the app is open in the
             // foreground surfaces exactly the same way as one found while
@@ -228,42 +221,6 @@ struct RepoListView: View {
         await BackgroundSyncScheduler.scanAndNotify(store: store, receivedCounts: [repo.id: received])
     }
 
-    /// Compact per-row indicator for the most recent "Sync All" outcome.
-    @ViewBuilder
-    private func syncStatusIcon(for repo: Repo) -> some View {
-        switch store.syncStatuses[repo.id] {
-        case .syncing:
-            ProgressView()
-        case .success(let sent, let received):
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
-                .accessibilityLabel("Synced — \(sent) sent, \(received) received")
-        case .authFailed(let reason):
-            // Deliberately distinct from both success and a bare command
-            // failure (ticket 94ea2161f5): a rejected push looks exactly
-            // like success at the exit-code level, so it needs its own
-            // unmistakable icon, not a shade of the checkmark or the
-            // generic error mark.
-            Image(systemName: "key.slash.fill")
-                .foregroundStyle(.orange)
-                .accessibilityLabel("Server refused the push: \(reason)")
-        case .localFailure(let reason):
-            // Ticket f0c612c027: a LOCAL failure inside this phone's own
-            // clone (e.g. a crossed-wires SQLite authorizer error) -- kept
-            // visually distinct from .authFailed so it is never mistaken
-            // for the server refusing anything.
-            Image(systemName: "ladybug.fill")
-                .foregroundStyle(.red)
-                .accessibilityLabel("Sync failed on this phone: \(reason)")
-        case .failure(let message):
-            Image(systemName: "exclamationmark.circle.fill")
-                .foregroundStyle(.red)
-                .accessibilityLabel("Sync failed: \(message)")
-        case .none:
-            EmptyView()
-        }
-    }
-
     /// Speech bubbles plus the unread count across every conversation --
     /// the same number as the app icon badge.
     @ViewBuilder
@@ -278,6 +235,102 @@ struct RepoListView: View {
                     .background(Circle().fill(Color.red))
                     .offset(x: 10, y: -10)
             }
+        }
+    }
+}
+
+/// A repo's latest sync attempt, from any path, as one small icon: a
+/// spinner while it runs, then green (synced), orange key (the server
+/// refused the push), red bug (failed on this phone) or red mark (failed).
+/// Blank when nothing was attempted in the last 15 minutes. Tapping it
+/// shows that attempt's details and Fossil's full output.
+struct SyncStatusBadge: View {
+    let repo: Repo
+    @EnvironmentObject private var store: RepoStore
+    @State private var showingDetails = false
+
+    var body: some View {
+        // Re-checked every 30 seconds, so the icon goes blank on time.
+        TimelineView(.periodic(from: .now, by: 30)) { context in
+            if let record = store.syncRecords[repo.id], record.isRecent(at: context.date) {
+                Button { showingDetails = true } label: { icon(record.status) }
+                    .buttonStyle(.borderless)
+            }
+        }
+        .sheet(isPresented: $showingDetails) {
+            if let record = store.syncRecords[repo.id] {
+                SyncDetailsView(repoName: repo.name, record: record)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func icon(_ status: RepoSyncStatus) -> some View {
+        switch status {
+        case .syncing:
+            ProgressView()
+        case .success(let sent, let received):
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+                .accessibilityLabel("Synced — \(sent) sent, \(received) received")
+        case .authFailed(let reason):
+            // Deliberately distinct from both success and a bare command
+            // failure (ticket 94ea2161f5): a rejected push looks exactly
+            // like success at the exit-code level.
+            Image(systemName: "key.slash.fill")
+                .foregroundStyle(.orange)
+                .accessibilityLabel("Server refused the push: \(reason)")
+        case .localFailure(let reason):
+            // Ticket f0c612c027: a failure inside this phone's own clone,
+            // never to be mistaken for the server refusing anything.
+            Image(systemName: "ladybug.fill")
+                .foregroundStyle(.red)
+                .accessibilityLabel("Sync failed on this phone: \(reason)")
+        case .failure(let message):
+            Image(systemName: "exclamationmark.circle.fill")
+                .foregroundStyle(.red)
+                .accessibilityLabel("Sync failed: \(message)")
+        }
+    }
+}
+
+/// One repo's latest sync attempt: what happened, when, and Fossil's full
+/// output (the round-trips and counts the icon can't show).
+private struct SyncDetailsView: View {
+    let repoName: String
+    let record: RepoSyncRecord
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Text(summary)
+                    LabeledContent("When", value: record.at.formatted(date: .omitted, time: .standard))
+                }
+                Section("Fossil output") {
+                    Text(record.log.isEmpty ? "(no output captured)" : record.log)
+                        .font(.system(.footnote, design: .monospaced))
+                        .textSelection(.enabled)
+                }
+            }
+            .navigationTitle(repoName)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private var summary: String {
+        switch record.status {
+        case .syncing: return "Syncing…"
+        case .success(let sent, let received): return "Synced: \(sent) sent, \(received) received."
+        case .authFailed(let reason): return "The server refused the push: \(reason)."
+        case .localFailure(let reason): return "Sync failed on this phone: \(reason)."
+        case .failure(let message): return "Sync failed: \(message)"
         }
     }
 }
