@@ -102,6 +102,39 @@ actor RemoteSession {
         }
     }
 
+    /// GET that may wait a long time for its answer, such as Fossil's
+    /// `/chat-poll` (RemoteWake), which answers only once something new is
+    /// recorded or its own timeout passes. Sends a same-origin Referer
+    /// (`<base>/<referer>`), which `/chat-poll` requires: without one Fossil
+    /// answers with an error page.
+    func longPoll(_ path: String, query: [URLQueryItem], referer: String,
+                  timeout: TimeInterval) async throws -> Data {
+        if !loggedIn { try await login() }
+        guard var comps = URLComponents(url: url(for: path), resolvingAgainstBaseURL: false) else {
+            throw RemoteError.badResponse
+        }
+        comps.queryItems = query
+        guard let requestURL = comps.url else { throw RemoteError.badResponse }
+        var req = URLRequest(url: requestURL, timeoutInterval: timeout)
+        req.setValue(url(for: referer).absoluteString, forHTTPHeaderField: "Referer")
+        let (data, response) = try await urlSession.data(for: req)
+        guard let http = response as? HTTPURLResponse else { throw RemoteError.badResponse }
+        switch http.statusCode {
+        case 200...299: return data
+        case 401:
+            loggedIn = false
+            throw RemoteError.notAuthenticated
+        default:        throw RemoteError.http(http.statusCode)
+        }
+    }
+
+    /// Makes the next request log in again, for an answer that says the
+    /// cookie is no longer accepted without saying so with a 401 (Fossil's
+    /// `/chat-poll` answers 200 with an error row).
+    func forgetLogin() {
+        loggedIn = false
+    }
+
     func sessionCookie() async throws -> HTTPCookie {
         if !loggedIn { try await login() }
         guard let cookie = urlSession.configuration.httpCookieStorage?

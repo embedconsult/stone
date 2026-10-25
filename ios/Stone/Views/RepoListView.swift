@@ -81,7 +81,10 @@ struct RepoListView: View {
             await BackgroundSyncScheduler.scanAndNotify(store: store, receivedCounts: store.lastSyncReceivedCounts)
         }
         .task {
-            await runAutoSyncLoop()
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask { await runAutoSyncLoop() }
+                group.addTask { await runRemoteWakes() }
+            }
         }
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
@@ -188,6 +191,41 @@ struct RepoListView: View {
             // backgrounded.
             await BackgroundSyncScheduler.scanAndNotify(store: store, receivedCounts: store.lastSyncReceivedCounts)
         }
+    }
+
+    /// While Automatic Sync is on, keeps one `/chat-poll` request waiting per
+    /// repo with a remote and a saved password (RemoteWake), and syncs that
+    /// repo as soon as its server records something new. The interval loop
+    /// above keeps running as the fallback. The set of repos and the
+    /// settings are read again every minute.
+    private func runRemoteWakes() async {
+        let defaults = UserDefaults.standard
+        var following: [UUID: Task<Void, Never>] = [:]
+        defer { following.values.forEach { $0.cancel() } }
+        while !Task.isCancelled {
+            let enabled = defaults.object(forKey: SettingsView.autoSyncEnabledKey) as? Bool ?? false
+            let skipsLowPower = defaults.object(forKey: SettingsView.autoSyncSkipsLowPowerKey) as? Bool ?? true
+            let allowed = enabled && !(skipsLowPower && ProcessInfo.processInfo.isLowPowerModeEnabled)
+            let wanted = allowed ? store.repos.filter { $0.remoteURL != nil } : []
+            let wantedIDs = Set(wanted.map(\.id))
+            for (id, task) in following where !wantedIDs.contains(id) {
+                task.cancel()
+                following[id] = nil
+            }
+            for repo in wanted where following[repo.id] == nil {
+                following[repo.id] = Task { await RemoteWake.follow(repo) { await wakeSync(repo.id) } }
+            }
+            try? await Task.sleep(for: .seconds(60))
+        }
+    }
+
+    /// One repo's sync after its server woke us: skipped while a Sync All
+    /// runs, which covers it.
+    private func wakeSync(_ id: UUID) async {
+        guard !store.isSyncingAll, let repo = store.repos.first(where: { $0.id == id }) else { return }
+        guard let output = try? await store.sync(repo) else { return }
+        let received = RepoStore.parseArtifactCounts(output)?.received ?? 0
+        await BackgroundSyncScheduler.scanAndNotify(store: store, receivedCounts: [repo.id: received])
     }
 
     /// Compact per-row indicator for the most recent "Sync All" outcome.
