@@ -317,6 +317,16 @@ struct RepoDetailView: View {
                 }
                 .accessibilityLabel("Back")
             }
+            // This repo's latest sync, as on the repo list: tap for its
+            // results. Nothing pops up after a sync. On the leading side so
+            // each side holds at most three buttons: as a fourth on the
+            // trailing side it squeezed the repo name in the middle to its
+            // first letter (stone's screenshot of build 1bd5273c68b7).
+            ToolbarItem(placement: .topBarLeading) {
+                if !syncing {
+                    RecentSyncButton(record: store.syncRecords[repo.id]) { showingSyncResult = true }
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     showingRemoteSite = true
@@ -344,13 +354,7 @@ struct RepoDetailView: View {
                 }
                 .disabled(syncing || repo.remoteURL == nil)
             }
-            // This repo's latest sync, as on the repo list: tap for its
-            // results. Nothing pops up after a sync.
-            ToolbarItem(placement: .topBarTrailing) {
-                if !syncing {
-                    RecentSyncButton(record: store.syncRecords[repo.id]) { showingSyncResult = true }
-                }
-            }
+
         }
         .task { await startServer() }
         .alert("Go to Path", isPresented: $showingPathPrompt) {
