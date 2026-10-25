@@ -190,9 +190,7 @@ struct RepoDetailView: View {
 
     @State private var baseURL: URL?
     @State private var errorText: String?
-    @State private var syncing = false
-    @State private var syncMessage: String?
-    @State private var showingSyncLog = false
+    @State private var showingSyncResult = false
     @State private var showingRemoteSite = false
 
     /// Ticket 0bbfd908e6, Option A (the maintainer's pick): a permanent
@@ -346,6 +344,13 @@ struct RepoDetailView: View {
                 }
                 .disabled(syncing || repo.remoteURL == nil)
             }
+            // This repo's latest sync, as on the repo list: tap for its
+            // results. Nothing pops up after a sync.
+            ToolbarItem(placement: .topBarTrailing) {
+                if !syncing {
+                    RecentSyncButton(record: store.syncRecords[repo.id]) { showingSyncResult = true }
+                }
+            }
         }
         .task { await startServer() }
         .alert("Go to Path", isPresented: $showingPathPrompt) {
@@ -368,37 +373,9 @@ struct RepoDetailView: View {
         } message: {
             Text(pendingApprovalNote ?? "")
         }
-        .alert("Sync", isPresented: .constant(syncMessage != nil)) {
-            // The parsed "N sent, M received" summary (parseArtifactCounts)
-            // is a lossy read of Fossil's real sync output -- it can't show
-            // e.g. the Round-trips count, which is exactly the kind of
-            // detail needed to tell "nothing new to send" apart from "sync
-            // gave up partway through negotiating a large push." Until now
-            // that full output (RepoStore.lastSyncLog) was captured but
-            // never shown anywhere -- see ticket 94ea2161f5.
-            Button("View Log") { showingSyncLog = true }
-            Button("OK") { syncMessage = nil }
-        } message: {
-            Text(syncMessage ?? "")
-        }
-        .sheet(isPresented: $showingSyncLog) {
-            NavigationStack {
-                ScrollView {
-                    Text(store.lastSyncLog.isEmpty ? "(no sync output captured)" : store.lastSyncLog)
-                        .font(.system(.footnote, design: .monospaced))
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding()
-                }
-                .navigationTitle("Sync Log")
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button("Close") {
-                            showingSyncLog = false
-                            syncMessage = nil
-                        }
-                    }
-                }
+        .sheet(isPresented: $showingSyncResult) {
+            if let record = store.syncRecords[repo.id] {
+                SyncResultView(repoName: repo.name, record: record)
             }
         }
         .sheet(isPresented: $showingRemoteSite) {
@@ -516,47 +493,15 @@ struct RepoDetailView: View {
         await BackgroundSyncScheduler.scanAndNotify(store: store, receivedCounts: receivedCounts)
     }
 
+    /// Any sync of this repo, from here or elsewhere, shows as the spinner.
+    private var syncing: Bool { store.syncingRepos.contains(repo.id) }
+
+    /// The result is recorded by RepoStore.sync and shown by the status
+    /// icon beside the Sync button; nothing pops up.
     private func runSync() async {
-        syncing = true
-        defer { syncing = false }
-        do {
-            let output = try await store.sync(repo)
-            let received = RepoStore.parseArtifactCounts(output)?.received ?? 0
-            await rescanAfterSync(receivedCounts: [repo.id: received])
-            if received > 0 { webController.reload() }
-            // Ground truth (ticket f0c612c027): a LOCAL SQLite failure
-            // (e.g. this phone's own clone rejecting a post-sync write with
-            // SQLITE_AUTH) must be checked BEFORE detectAuthFailure -- its
-            // "not authorized" text would otherwise be misread as the
-            // server refusing the push. Ground truth (ticket 94ea2161f5): a
-            // stale/rotated remote password let a sync report a plausible
-            // "sent" count while the server actually refused the content --
-            // Fossil's own client can silently disable pushing mid-session
-            // without printing anything. Check for that BEFORE trusting
-            // parseArtifactCounts' numbers, so a rejected push reads as a
-            // loud warning, not as "Sync complete."
-            if let reason = RepoStore.detectLocalSQLiteFailure(output) {
-                syncMessage = "⚠️ Sync failed on this phone: \(reason)."
-            } else if let reason = RepoStore.detectAuthFailure(output) {
-                syncMessage = "⚠️ Server refused the push: \(reason)."
-            } else if let counts = RepoStore.parseArtifactCounts(output) {
-                // A zero exit code only means the round-trip completed --
-                // it does NOT mean anything was actually pushed. Show the
-                // real counts rather than a blanket "Sync complete" so a
-                // genuine no-op (e.g. nothing new to send) is still visible
-                // as such.
-                syncMessage = "Sync complete — \(counts.sent) sent, \(counts.received) received."
-            } else {
-                syncMessage = "Sync complete."
-            }
-        } catch {
-            if case .fossil(let msg)? = error as? RepoStore.StoreError, let reason = RepoStore.detectLocalSQLiteFailure(msg) {
-                syncMessage = "⚠️ Sync failed on this phone: \(reason)."
-            } else if case .fossil(let msg)? = error as? RepoStore.StoreError, let reason = RepoStore.detectAuthFailure(msg) {
-                syncMessage = "⚠️ Server refused the push: \(reason)."
-            } else {
-                syncMessage = error.localizedDescription
-            }
-        }
+        guard let output = try? await store.sync(repo) else { return }
+        let received = RepoStore.parseArtifactCounts(output)?.received ?? 0
+        await rescanAfterSync(receivedCounts: [repo.id: received])
+        if received > 0 { webController.reload() }
     }
 }

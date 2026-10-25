@@ -11,6 +11,7 @@ struct RepoListView: View {
     @State private var renameText = ""
     @State private var repoToDelete: Repo?
     @State private var repoToEditRemote: Repo?
+    @State private var syncResultRepo: Repo?
 
     var body: some View {
         List {
@@ -124,12 +125,10 @@ struct RepoListView: View {
         .sheet(item: $repoToEditRemote) { repo in
             EditRemoteView(repo: repo)
         }
-        .alert("Sync All",
-               isPresented: Binding(get: { store.syncAllSummary != nil },
-                                    set: { if !$0 { store.dismissSyncAllSummary() } })) {
-            Button("OK") { store.dismissSyncAllSummary() }
-        } message: {
-            Text(store.syncAllSummary ?? "")
+        .sheet(item: $syncResultRepo) { repo in
+            if let record = store.syncRecords[repo.id] {
+                SyncResultView(repoName: repo.name, record: record)
+            }
         }
         .alert("Rename Repository",
                isPresented: Binding(get: { repoToRename != nil },
@@ -184,7 +183,7 @@ struct RepoListView: View {
             if skipsLowPower && ProcessInfo.processInfo.isLowPowerModeEnabled { continue }
 
             guard !store.isSyncingAll, store.repos.contains(where: { $0.remoteURL != nil }) else { continue }
-            await store.syncAll(announce: false)
+            await store.syncAll()
             // Same post-sync scan/notify step a background task runs, so a
             // decision or try-this found while the app is open in the
             // foreground surfaces exactly the same way as one found while
@@ -228,39 +227,15 @@ struct RepoListView: View {
         await BackgroundSyncScheduler.scanAndNotify(store: store, receivedCounts: [repo.id: received])
     }
 
-    /// Compact per-row indicator for the most recent "Sync All" outcome.
+    /// The repo's latest sync, whatever started it: a spinner while one
+    /// runs, then its status icon for 15 minutes, blank after that or when
+    /// none was tried. Tapping the icon shows that sync's results.
     @ViewBuilder
     private func syncStatusIcon(for repo: Repo) -> some View {
-        switch store.syncStatuses[repo.id] {
-        case .syncing:
+        if store.syncingRepos.contains(repo.id) {
             ProgressView()
-        case .success(let sent, let received):
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
-                .accessibilityLabel("Synced — \(sent) sent, \(received) received")
-        case .authFailed(let reason):
-            // Deliberately distinct from both success and a bare command
-            // failure (ticket 94ea2161f5): a rejected push looks exactly
-            // like success at the exit-code level, so it needs its own
-            // unmistakable icon, not a shade of the checkmark or the
-            // generic error mark.
-            Image(systemName: "key.slash.fill")
-                .foregroundStyle(.orange)
-                .accessibilityLabel("Server refused the push: \(reason)")
-        case .localFailure(let reason):
-            // Ticket f0c612c027: a LOCAL failure inside this phone's own
-            // clone (e.g. a crossed-wires SQLite authorizer error) -- kept
-            // visually distinct from .authFailed so it is never mistaken
-            // for the server refusing anything.
-            Image(systemName: "ladybug.fill")
-                .foregroundStyle(.red)
-                .accessibilityLabel("Sync failed on this phone: \(reason)")
-        case .failure(let message):
-            Image(systemName: "exclamationmark.circle.fill")
-                .foregroundStyle(.red)
-                .accessibilityLabel("Sync failed: \(message)")
-        case .none:
-            EmptyView()
+        } else {
+            RecentSyncButton(record: store.syncRecords[repo.id]) { syncResultRepo = repo }
         }
     }
 
@@ -277,6 +252,116 @@ struct RepoListView: View {
                     .padding(4)
                     .background(Circle().fill(Color.red))
                     .offset(x: 10, y: -10)
+            }
+        }
+    }
+}
+
+/// A sync's status icon, as a button that opens its results, shown only
+/// while the sync is recent (`shownFor`). Redraws every 30 seconds so it
+/// goes blank on time without anything else changing.
+struct RecentSyncButton: View {
+    static let shownFor: TimeInterval = 15 * 60
+
+    let record: RepoSyncRecord?
+    let action: () -> Void
+
+    var body: some View {
+        TimelineView(.periodic(from: .now, by: 30)) { context in
+            if let record, context.date.timeIntervalSince(record.finishedAt) < Self.shownFor {
+                Button(action: action) {
+                    SyncStatusIcon(status: record.status)
+                }
+                // Borderless, so a tap on the icon opens the results rather
+                // than the row's navigation link.
+                .buttonStyle(.borderless)
+                .accessibilityHint("Shows this sync's results")
+            }
+        }
+    }
+}
+
+/// The icon for one sync's outcome: green check, orange key for a push the
+/// server refused, red ladybug for a failure on this phone, red mark for
+/// any other failure.
+struct SyncStatusIcon: View {
+    let status: RepoSyncStatus
+
+    var body: some View {
+        switch status {
+        case .success:
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+                .accessibilityLabel(status.summary)
+        case .authFailed:
+            // Deliberately distinct from both success and a bare command
+            // failure (ticket 94ea2161f5): a rejected push looks exactly
+            // like success at the exit-code level.
+            Image(systemName: "key.slash.fill")
+                .foregroundStyle(.orange)
+                .accessibilityLabel(status.summary)
+        case .localFailure:
+            // Ticket f0c612c027: a failure inside this phone's own clone,
+            // never to be mistaken for the server refusing anything.
+            Image(systemName: "ladybug.fill")
+                .foregroundStyle(.red)
+                .accessibilityLabel(status.summary)
+        case .failure:
+            Image(systemName: "exclamationmark.circle.fill")
+                .foregroundStyle(.red)
+                .accessibilityLabel(status.summary)
+        }
+    }
+}
+
+extension RepoSyncStatus {
+    /// One line saying what the sync achieved.
+    var summary: String {
+        switch self {
+        case .success(let sent, let received):
+            // Real counts, not a blanket "Sync complete": a sync that sent
+            // nothing must be visible as such.
+            return "Synced — \(sent) sent, \(received) received"
+        case .authFailed(let reason): return "Server refused the push: \(reason)"
+        case .localFailure(let reason): return "Sync failed on this phone: \(reason)"
+        case .failure(let message): return "Sync failed: \(message)"
+        }
+    }
+}
+
+/// One repo's latest sync in full: what it achieved, when, and Fossil's
+/// own output with Stone's phase timings, which the summary can't show
+/// (e.g. the round-trip count; ticket 94ea2161f5).
+struct SyncResultView: View {
+    let repoName: String
+    let record: RepoSyncRecord
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    Label {
+                        Text(record.status.summary)
+                    } icon: {
+                        SyncStatusIcon(status: record.status)
+                    }
+                    LabeledContent("Finished") {
+                        Text("\(record.finishedAt.formatted(date: .omitted, time: .standard)), \(record.finishedAt.formatted(.relative(presentation: .named)))")
+                    }
+                }
+                Section("Fossil output") {
+                    Text(record.log.isEmpty ? "(no output captured)" : record.log)
+                        .font(.system(.footnote, design: .monospaced))
+                        .textSelection(.enabled)
+                }
+            }
+            .navigationTitle(repoName)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Close") { dismiss() }
+                }
             }
         }
     }
