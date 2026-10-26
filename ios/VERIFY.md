@@ -13,4 +13,3 @@ run has passed them (the audited tags on the check-ins record which).
 
 Report: e320232451a750cd3fb527cfb0930f01bd85b50622ca21a97751c8aa3f86f49e
 
-- Timeline's left column is narrow: on the home screen, tap Stone to open it, then tap Timeline in its menu. The times on the left take a narrow column, about as wide as "13:44", and the entries take the rest of the width. If you use the dark skin, check it there too. (f90ae04a14)
