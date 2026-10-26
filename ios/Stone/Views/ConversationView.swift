@@ -1,5 +1,7 @@
+import PhotosUI
 import SafariServices
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// One conversation as a chat: every post in order, oldest at the top, the
 /// signed-in login's own posts on the right and everyone else's on the left.
@@ -74,7 +76,8 @@ struct ConversationView: View {
                                        draft.text = option
                                        composerFocused = true
                                    },
-                                   showWhole: { wholePost = post })
+                                   showWhole: { wholePost = post },
+                                   fossilPath: fossilPath)
                             .equatable()
                             .id(post.hash)
                     }
@@ -90,9 +93,11 @@ struct ConversationView: View {
         .safeAreaInset(edge: .bottom) {
             ReplyBox(draft: draft, replyTarget: $replyTarget, login: login, sending: sending,
                      status: sendStatus, waiting: waitingLine, canSend: !posts.isEmpty,
-                     focused: $composerFocused) {
+                     focused: $composerFocused, send: {
                 Task { await send() }
-            }
+            }, attach: { data, ext, mime in
+                Task { await attachScreenshot(data, ext: ext, mime: mime) }
+            })
             .padding(.bottom, keyboard.height)
         }
         // The reply box follows the keyboard by its frame (KeyboardInset),
@@ -234,6 +239,23 @@ struct ConversationView: View {
         if !loaded { loaded = true }
     }
 
+    /// Attaches a screenshot to the repo's Screenshots wiki page in this
+    /// phone's clone and puts its link in the reply box; it goes out with
+    /// the reply's sync.
+    private func attachScreenshot(_ data: Data, ext: String, mime: String) async {
+        guard let fossilPath else { return }
+        sendStatus = "Attaching the screenshot…"
+        do {
+            let markdown = try await ConversationWriter.attachScreenshot(
+                data, fileExtension: ext, mimeType: mime, login: login, fossilPath: fossilPath)
+            draft.text = draft.text.isEmpty ? markdown : draft.text + "\n\n" + markdown
+            sendStatus = "Screenshot attached. It goes out when you send."
+        } catch {
+            sendStatus = nil
+            errorText = error.localizedDescription
+        }
+    }
+
     private func send() async {
         guard let repo, let fossilPath, let latest = posts.last else { return }
         sending = true
@@ -297,6 +319,8 @@ private struct BubbleView: View, Equatable {
     let reply: () -> Void
     let choose: (String) -> Void
     let showWhole: () -> Void
+    /// The clone the post's attached images are read from.
+    let fossilPath: String?
 
     /// Longer posts (agents' logs, crash reports) are cut short in the
     /// bubble: SwiftUI lays out a Text all at once, and a thread of very
@@ -320,6 +344,10 @@ private struct BubbleView: View, Equatable {
                 }
                 .font(.caption)
                 .foregroundStyle(.secondary)
+
+                ForEach(ConversationWriter.imageHashes(in: post.body ?? ""), id: \.self) { hash in
+                    LocalArtifactImage(hash: hash, fossilPath: fossilPath)
+                }
 
                 Text(Self.rendered(post))
                     .textSelection(.enabled)
@@ -372,7 +400,7 @@ private struct BubbleView: View, Equatable {
     /// Markdown for markdown posts (links, emphasis, code; line breaks kept
     /// as written), plain text for anything else.
     private static func rendered(_ post: ConversationPost) -> AttributedString {
-        var body = post.body ?? "(couldn't read this post)"
+        var body = ConversationWriter.removingImages(from: post.body ?? "(couldn't read this post)")
         if body.utf8.count > bubbleLimit {
             body = String(body.prefix(bubbleLimit)) + "\n…"
         }
@@ -445,6 +473,9 @@ private struct ReplyBox: View {
     let canSend: Bool
     var focused: FocusState<Bool>.Binding
     let send: () -> Void
+    /// Attaches a picked image (its bytes, file extension and MIME type).
+    let attach: (Data, String, String) -> Void
+    @State private var pickedPhoto: PhotosPickerItem?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -470,6 +501,20 @@ private struct ReplyBox: View {
                 .foregroundStyle(.secondary)
             }
             HStack(alignment: .bottom, spacing: 8) {
+                PhotosPicker(selection: $pickedPhoto, matching: .images) {
+                    Image(systemName: "photo").font(.title2)
+                }
+                .disabled(sending)
+                .accessibilityLabel("Attach a screenshot")
+                .onChange(of: pickedPhoto) { _, item in
+                    guard let item else { return }
+                    pickedPhoto = nil
+                    Task {
+                        guard let data = try? await item.loadTransferable(type: Data.self) else { return }
+                        let type = item.supportedContentTypes.first { $0.conforms(to: .image) } ?? .png
+                        attach(data, type.preferredFilenameExtension ?? "png", type.preferredMIMEType ?? "image/png")
+                    }
+                }
                 TextField("Reply", text: $draft.text, axis: .vertical)
                     .lineLimit(1...6)
                     .textFieldStyle(.roundedBorder)
@@ -504,6 +549,54 @@ private struct OpenedLink: Identifiable {
 
 /// Links open inside the app, over the conversation, rather than switching
 /// to Safari.
+/// An image attached in a post, read from this phone's clone (`fossil
+/// artifact HASH FILE`), so it shows offline and needs no login. Before the
+/// sync that brings it, the clone doesn't have it yet, and says so.
+private struct LocalArtifactImage: View {
+    let hash: String
+    let fossilPath: String?
+    @State private var image: UIImage?
+    @State private var missing = false
+
+    private static let cache = NSCache<NSString, UIImage>()
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(maxWidth: 240, maxHeight: 360)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            } else if missing {
+                Label("Image not on this phone yet", systemImage: "photo")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                ProgressView().frame(width: 60, height: 60)
+            }
+        }
+        .task(id: hash) { await load() }
+    }
+
+    private func load() async {
+        if let cached = Self.cache.object(forKey: hash as NSString) {
+            image = cached
+            return
+        }
+        guard let fossilPath else { missing = true; return }
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent("img-\(hash)")
+        defer { try? FileManager.default.removeItem(at: file) }
+        let result = await FossilEngine.shared.run(["artifact", hash, file.path, "-R", fossilPath])
+        guard result.succeeded, let loaded = UIImage(contentsOfFile: file.path) else {
+            missing = true
+            return
+        }
+        Self.cache.setObject(loaded, forKey: hash as NSString)
+        image = loaded
+    }
+}
+
 /// A whole post as plain, selectable text. UITextView lays out only what is
 /// on screen, so even a very long post opens quickly and cheaply.
 private struct LongTextView: UIViewRepresentable {

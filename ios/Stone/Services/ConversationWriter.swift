@@ -63,3 +63,84 @@ enum ConversationWriter {
         guard imported.succeeded else { throw WriteError.fossil(imported.output) }
     }
 }
+
+/// Screenshots for replies: a forum post can't hold an image, so the picture
+/// becomes a Fossil attachment on the repo's "Screenshots" wiki page (created
+/// the first time), and the reply shows it from `../raw/HASH`. All stock
+/// commands on the local clone, so it works offline and the next sync sends
+/// it: `wiki create`, `attachment add`, both with `-U LOGIN` as the author.
+extension ConversationWriter {
+    static let screenshotsPage = "Screenshots"
+
+    /// Attaches `data` and returns the Markdown that shows it, for the reply.
+    static func attachScreenshot(_ data: Data, fileExtension: String, mimeType: String,
+                                 login: String, fossilPath: String) async throws -> String {
+        let engine = FossilEngine.shared
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("shot-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let stamp = Date().formatted(.iso8601.year().month().day().dateSeparator(.omitted)
+            .time(includingFractionalSeconds: false).timeSeparator(.omitted))
+        let name = "screenshot-\(stamp.replacingOccurrences(of: "T", with: "-")).\(fileExtension)"
+        let file = dir.appendingPathComponent(name)
+        try data.write(to: file)
+
+        // -U needs the login in this clone's own user table; a clone made
+        // under another login may not have it. Adding it is local only:
+        // the user table doesn't sync.
+        let hasUser = FossilQuery.rows(fossilPath, "SELECT 1 FROM user WHERE login = \(FossilQuery.quote(login))")
+        if hasUser.isEmpty {
+            let made = await engine.run(["user", "new", login, "", UUID().uuidString, "-R", fossilPath])
+            guard made.succeeded else { throw WriteError.fossil(made.output) }
+        }
+
+        let page = FossilQuery.rows(fossilPath, "SELECT 1 FROM tag WHERE tagname = \(FossilQuery.quote("wiki-" + screenshotsPage))")
+        if page.isEmpty {
+            let text = dir.appendingPathComponent("page.md")
+            try "Screenshots attached to replies from Stone. Each one is linked from the post it was sent with.\n"
+                .write(to: text, atomically: true, encoding: .utf8)
+            let created = await engine.run(["wiki", "create", screenshotsPage, text.path,
+                                             "--mimetype", "text/x-markdown", "-U", login, "-R", fossilPath])
+            guard created.succeeded else { throw WriteError.fossil(created.output) }
+        }
+
+        let attached = await engine.run(["attachment", "add", screenshotsPage, file.path, "-U", login, "-R", fossilPath])
+        guard attached.succeeded else { throw WriteError.fossil(attached.output) }
+
+        let rows = FossilQuery.rows(fossilPath, """
+            SELECT src FROM attachment WHERE target = \(FossilQuery.quote(screenshotsPage))
+            AND filename = \(FossilQuery.quote(name)) ORDER BY mtime DESC LIMIT 1
+            """)
+        guard let hash = rows.first?.first, !hash.isEmpty else {
+            throw WriteError.fossil("the screenshot was attached but couldn't be found again")
+        }
+        // Relative, not "/raw/...": Fossil's markdown doesn't prefix image
+        // sources with the repo's root, and posts and tickets are shown one
+        // level down (/forumpost/HASH, /tktview/HASH), so "../raw/HASH" is
+        // the repo's own /raw on the server and in the app alike.
+        return "![Screenshot](../raw/\(hash)?m=\(mimeType))"
+    }
+
+    /// Hashes of the images a post shows with `![...](../raw/HASH...)` (or
+    /// `/raw/HASH`).
+    static func imageHashes(in body: String) -> [String] {
+        let pattern = #"!\[[^\]]*\]\((?:\.\./|/)raw/([0-9a-f]{40,64})[^)]*\)"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return [] }
+        let range = NSRange(body.startIndex..., in: body)
+        return regex.matches(in: body, range: range).compactMap { match in
+            Range(match.range(at: 1), in: body).map { String(body[$0]) }
+        }
+    }
+
+    /// `body` without its attached images, which the bubble shows as
+    /// pictures instead.
+    static func removingImages(from body: String) -> String {
+        body.replacingOccurrences(of: #"!\[[^\]]*\]\((?:\.\./|/)raw/[0-9a-f]{40,64}[^)]*\)"#, with: "",
+                                  options: .regularExpression)
+            .replacingOccurrences(of: #"\n{3,}"#, with: "\n\n", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
