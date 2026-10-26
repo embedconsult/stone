@@ -6,16 +6,13 @@ an `audited` tag on the build's check-in. It posts a one-line summary to the
 forum thread named on the Report line (the full hash of its first post).
 
 For whoever changes the app: when a change can only be confirmed on the
-phone, add one line here saying what to look at, with the check-in. Remove
-lines once a run has passed them.
+phone, add one line here with the check-in. Say where to go and what to tap,
+starting from the home screen, then what should be seen. Remove lines once a
+run has passed them (the audited tags on the check-ins record which).
 
 Report: e320232451a750cd3fb527cfb0930f01bd85b50622ca21a97751c8aa3f86f49e
 
-- A repo's title bar shows its name in full, with three buttons on each side. (72e3f660ea)
-- No pop-up appears after Sync All, or after the Sync button inside a repo. (7ddd7489a6)
-- Tapping a repo's sync icon on the home list shows that sync's results, and doesn't open the repo. (7ddd7489a6)
-- A repo's sync icon goes blank about 15 minutes after its last sync. (7ddd7489a6)
-- After opening a repo and coming back, every repo still gets its timed sync, and the results say what started each sync. (36b81d3295)
-- The timeline fits the screen: long branch names wrap instead of running off the edge. (344c519975)
-- In a conversation, the reply box stays above the keyboard, including after "Reply to this post". (f805e3d869)
-- Record results on this screen adds an audited tag to the build's check-in and posts a summary on the Report thread.
+- Sync icon goes blank: in Settings, turn Automatic Sync off. On the home screen, tap Sync All (the circling arrows, top right); each repo gets a green check beside its name. Leave the app for 15 minutes, then come back to the home screen: the checks are gone. Turn Automatic Sync back on afterwards. (7ddd7489a6)
+- Timeline fits: on the home screen, tap Stone to open it, then tap Timeline in its menu. Every entry fits the screen's width; long names such as agent/20260921T025205Z-... wrap onto a second line; nothing needs scrolling sideways. (344c519975)
+- Reply box above the keyboard: on the home screen, tap the speech bubbles (top left) and open any conversation. Tap the reply box at the bottom: it sits just above the keyboard. Then close the keyboard, long-press any bubble, and choose Reply to this post: the box is again just above the keyboard. (f805e3d869)
+- Incomplete, not fail: on this screen, leave at least one line Not checked, mark none Fail, and tap Record results. The summary on the Report thread says "incomplete", not "fail". (this change)

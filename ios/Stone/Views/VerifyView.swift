@@ -44,11 +44,18 @@ struct VerifyOutcome: Identifiable, Equatable {
 
 /// The text recorded for a run: the `audited` tag's value and the post.
 enum VerifyReport {
-    /// "pass" only when every automatic check passed and every hand check
-    /// was marked Pass. A hand check left unmarked keeps it a "fail": the
-    /// tag must not claim what nobody looked at.
-    static func verdict(auto: [VerifyOutcome], hand: [VerifyOutcome]) -> Bool {
-        auto.allSatisfy { $0.passed == true } && hand.allSatisfy { $0.passed == true }
+    enum Verdict: String {
+        case pass, fail, incomplete
+    }
+
+    /// "fail" when any line failed; "pass" only when every line passed;
+    /// otherwise "incomplete": nothing failed, but some hand checks were
+    /// left unmarked, and the tag must not claim what nobody looked at.
+    static func verdict(auto: [VerifyOutcome], hand: [VerifyOutcome]) -> Verdict {
+        let all = auto + hand
+        if all.contains(where: { $0.passed == false }) { return .fail }
+        if all.allSatisfy({ $0.passed == true }) { return .pass }
+        return .incomplete
     }
 
     static func summary(auto: [VerifyOutcome], hand: [VerifyOutcome]) -> String {
@@ -152,7 +159,7 @@ struct VerifyView: View {
                     Text(resultText).font(.callout).foregroundStyle(.secondary)
                 }
             } footer: {
-                Text("Adds an audited tag, pass or fail with every line above, to this build's check-in, posts a one-line summary to the thread VERIFY.md names, and syncs.")
+                Text("Adds an audited tag (pass, fail, or incomplete when some lines are left unchecked) with every line above to this build's check-in, posts a one-line summary to the thread VERIFY.md names, and syncs.")
             }
         }
         .navigationTitle("Verify This Build")
@@ -227,7 +234,7 @@ struct VerifyView: View {
     private func record() async {
         recording = true
         defer { recording = false }
-        let passed = VerifyReport.verdict(auto: auto, hand: hand)
+        let verdict = VerifyReport.verdict(auto: auto, hand: hand).rawValue
         let summary = VerifyReport.summary(auto: auto, hand: hand)
         let details = VerifyReport.details(auto: auto, hand: hand)
         let buildLabel = identity.label
@@ -237,7 +244,7 @@ struct VerifyView: View {
         // The tag: on the build's check-in, in the clone that has it.
         if let checkin = identity.fossilCheckin,
            let (repo, path, full) = await clone(containing: checkin) {
-            let value = "\(passed ? "pass" : "fail"): Stone on the phone, build \(buildLabel): \(summary)\n\(details)"
+            let value = "\(verdict): Stone on the phone, build \(buildLabel): \(summary)\n\(details)"
             let result = await FossilEngine.shared.run(["tag", "add", "--user-override", ConversationStore.login(for: repo),
                                                         "audited", full, value, "-R", path])
             done.append(result.succeeded ? "Tagged \(full.prefix(10)) in \(repo.name)." : "Couldn't tag: \(result.output)")
@@ -250,7 +257,7 @@ struct VerifyView: View {
         if let thread = list?.reportThread,
            let (repo, path, full) = await clone(containingThread: thread) {
             let id = ConversationID(repoID: repo.id, kind: .thread, key: full)
-            let body = "Verify This Build, build \(buildLabel): **\(passed ? "pass" : "fail")**, \(summary)."
+            let body = "Verify This Build, build \(buildLabel): **\(verdict)**, \(summary)."
             if let latest = await ConversationStore.shared.posts(for: id, fossilPath: path)?.posts.last {
                 do {
                     try await ConversationWriter.reply(in: id, to: nil, latest: latest,
