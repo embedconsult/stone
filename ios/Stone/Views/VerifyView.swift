@@ -79,6 +79,19 @@ enum VerifyReport {
     }
 }
 
+/// One verification run's state, kept for the app's lifetime: leaving the
+/// screen (to look at a repo, a conversation, Settings) must not lose the
+/// automatic results or the hand marks made so far.
+@MainActor
+final class VerifySession: ObservableObject {
+    static let shared = VerifySession()
+    @Published var auto: [VerifyOutcome] = []
+    @Published var hand: [VerifyOutcome] = []
+    @Published var running = false
+    @Published var recording = false
+    @Published var resultText: String?
+}
+
 /// Verify This Build: runs the automatic checks, takes Pass or Fail on each
 /// hand check from VERIFY.md, then records the run as an `audited` tag on
 /// the build's own check-in (in whichever clone has it) and posts a one-line
@@ -89,11 +102,7 @@ struct VerifyView: View {
     private let identity = BuildIdentity()
     private let list = VerifyList.bundled
 
-    @State private var auto: [VerifyOutcome] = []
-    @State private var hand: [VerifyOutcome] = []
-    @State private var running = false
-    @State private var recording = false
-    @State private var resultText: String?
+    @ObservedObject private var session = VerifySession.shared
 
     var body: some View {
         Form {
@@ -107,10 +116,10 @@ struct VerifyView: View {
             }
 
             Section("Automatic") {
-                if auto.isEmpty && !running {
+                if session.auto.isEmpty && !session.running {
                     Text("Not run yet.").foregroundStyle(.secondary)
                 }
-                ForEach(auto) { outcome in
+                ForEach(session.auto) { outcome in
                     HStack(alignment: .top) {
                         mark(outcome.passed)
                         VStack(alignment: .leading) {
@@ -121,18 +130,18 @@ struct VerifyView: View {
                         }
                     }
                 }
-                Button(running ? "Checking…" : "Run automatic checks") {
+                Button(session.running ? "Checking…" : "Run automatic checks") {
                     Task { await runAutomatic() }
                 }
-                .disabled(running)
+                .disabled(session.running)
             }
 
             Section {
-                if hand.isEmpty {
+                if session.hand.isEmpty {
                     Text(list == nil ? "This build has no VERIFY.md." : "Nothing to check by hand for this build.")
                         .foregroundStyle(.secondary)
                 }
-                ForEach($hand) { $outcome in
+                ForEach($session.hand) { $outcome in
                     VStack(alignment: .leading, spacing: 6) {
                         Text(outcome.name)
                         Picker("Result", selection: $outcome.passed) {
@@ -151,12 +160,12 @@ struct VerifyView: View {
             }
 
             Section {
-                Button(recording ? "Recording…" : "Record results") {
+                Button(session.recording ? "Recording…" : "Record results") {
                     Task { await record() }
                 }
-                .disabled(recording || running || auto.isEmpty)
-                if let resultText {
-                    Text(resultText).font(.callout).foregroundStyle(.secondary)
+                .disabled(session.recording || session.running || session.auto.isEmpty)
+                if let text = session.resultText {
+                    Text(text).font(.callout).foregroundStyle(.secondary)
                 }
             } footer: {
                 Text("Adds an audited tag (pass, fail, or incomplete when some lines are left unchecked) with every line above to this build's check-in, posts a one-line summary to the thread VERIFY.md names, and syncs.")
@@ -165,8 +174,8 @@ struct VerifyView: View {
         .navigationTitle("Verify This Build")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
-            if hand.isEmpty, let list {
-                hand = list.checks.map { VerifyOutcome(name: $0) }
+            if session.hand.isEmpty, let list {
+                session.hand = list.checks.map { VerifyOutcome(name: $0) }
             }
         }
     }
@@ -183,19 +192,19 @@ struct VerifyView: View {
     // MARK: Automatic checks
 
     private func runAutomatic() async {
-        running = true
-        defer { running = false }
-        auto = []
+        session.running = true
+        defer { session.running = false }
+        session.auto = []
 
         let version = await FossilEngine.shared.run(["version"])
-        auto.append(VerifyOutcome(name: "Fossil runs", passed: version.succeeded,
+        session.auto.append(VerifyOutcome(name: "Fossil runs", passed: version.succeeded,
                                   detail: version.output.trimmingCharacters(in: .whitespacesAndNewlines)))
 
         for repo in store.repos {
             let path = store.fileURL(for: repo).path
             let rows = await Task.detached { FossilQuery.rows(path, "SELECT count(*) FROM blob") }.value
             let count = rows.first?.first ?? ""
-            auto.append(VerifyOutcome(name: "\(repo.name) opens", passed: !count.isEmpty,
+            session.auto.append(VerifyOutcome(name: "\(repo.name) opens", passed: !count.isEmpty,
                                       detail: count.isEmpty ? "couldn't read the clone" : "\(count) artifacts"))
         }
 
@@ -220,23 +229,23 @@ struct VerifyView: View {
                 outcome.passed = false
                 outcome.detail = "not a valid address"
             }
-            auto.append(outcome)
+            session.auto.append(outcome)
         }
 
         let settings = await UNUserNotificationCenter.current().notificationSettings()
         let allowed = settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional
-        auto.append(VerifyOutcome(name: "Notifications allowed", passed: allowed,
+        session.auto.append(VerifyOutcome(name: "Notifications allowed", passed: allowed,
                                   detail: allowed ? "" : "turned off in iOS Settings, or never asked"))
     }
 
     // MARK: Recording
 
     private func record() async {
-        recording = true
-        defer { recording = false }
-        let verdict = VerifyReport.verdict(auto: auto, hand: hand).rawValue
-        let summary = VerifyReport.summary(auto: auto, hand: hand)
-        let details = VerifyReport.details(auto: auto, hand: hand)
+        session.recording = true
+        defer { session.recording = false }
+        let verdict = VerifyReport.verdict(auto: session.auto, hand: session.hand).rawValue
+        let summary = VerifyReport.summary(auto: session.auto, hand: session.hand)
+        let details = VerifyReport.details(auto: session.auto, hand: session.hand)
         let buildLabel = identity.label
         var done: [String] = []
         var touched: Set<UUID> = []
@@ -278,7 +287,7 @@ struct VerifyView: View {
                 done.append("\(repo.name) didn't sync; the results will go out with its next sync.")
             }
         }
-        resultText = done.joined(separator: "\n")
+        session.resultText = done.joined(separator: "\n")
     }
 
     /// The clone that has check-in `prefix`, with its full hash.
