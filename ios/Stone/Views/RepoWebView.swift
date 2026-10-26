@@ -68,8 +68,12 @@ extension WKUserScript {
     /// a URL) break anywhere. Otherwise Fossil's timeline table widens to fit
     /// its longest word, every row's text runs off the right edge of the
     /// phone, and the page reads as cut off (forum e320232451, stone's
-    /// 189da093f3: "i cannot read the timeline"). Added to every page, so it
-    /// holds whatever skin the server or the clone uses.
+    /// 189da093f3: "i cannot read the timeline"). And keeps the time and
+    /// graph columns as narrow as their content (width: 1%, the usual way
+    /// to shrink a table column): once the comments could break anywhere,
+    /// the phone gave the time column about half the screen (stone's
+    /// screenshot of build 36f610778c79, in the dark skin). Added to every
+    /// page, so it holds whatever skin the server or the clone uses.
     @MainActor static var stoneWrapLongWords: WKUserScript {
         WKUserScript(
         source: """
@@ -77,7 +81,9 @@ extension WKUserScript {
           var style = document.createElement('style');
           style.textContent = '.timelineModernComment, .timelineModernDetail, ' +
             '.timelineComment, .timelineDetailCell, .timelineCompactCell, ' +
-            '.timelineVerboseCell, .timelineColumnarCell { overflow-wrap: anywhere; }';
+            '.timelineVerboseCell, .timelineColumnarCell { overflow-wrap: anywhere; } ' +
+            'table.timelineTable { width: 100%; } ' +
+            'td.timelineTime, td.timelineGraph { width: 1%; }';
           (document.head || document.documentElement).appendChild(style);
         })();
         """,
@@ -195,7 +201,7 @@ struct RepoDetailView: View {
 
     /// Ticket 0bbfd908e6, Option A (the maintainer's pick): a permanent
     /// address bar "might get in the way, but could be useful for debug" --
-    /// so this is reachable only via a long-press on the nav title, not a
+    /// so this is reachable only via a long-press on the Back button (it was the nav title until the title went), not a
     /// visible control. Lets a repo path like /modreq be reached directly
     /// when Fossil's own rendered pages don't happen to link to it.
     @State private var showingPathPrompt = false
@@ -281,18 +287,6 @@ struct RepoDetailView: View {
         // behavior, rather than overloading one control with both meanings.
         .navigationBarBackButtonHidden(true)
         .toolbar {
-            // Replaces the plain .navigationTitle(repo.name) so a long-press
-            // can be attached to it (ticket 0bbfd908e6, Option A) -- SwiftUI
-            // gives no way to intercept a gesture on the system-rendered
-            // title itself, so this IS the title, styled to match.
-            ToolbarItem(placement: .principal) {
-                Text(repo.name)
-                    .font(.headline)
-                    .onLongPressGesture {
-                        debugPathInput = ""
-                        showingPathPrompt = true
-                    }
-            }
             // Left of Back, per the maintainer's decision: always leave the
             // repo and return to the list, regardless of in-page history --
             // the behavior "<" used to have before Option A changed its
@@ -316,12 +310,22 @@ struct RepoDetailView: View {
                     Image(systemName: "chevron.left")
                 }
                 .accessibilityLabel("Back")
+                // Ticket 0bbfd908e6's hidden debug entry, once a long-press
+                // on the title. The title went: with three buttons on each
+                // side it showed one letter of the repo name (stone, build
+                // 36f610778c79: "title isn't helpful").
+                .contextMenu {
+                    Button {
+                        debugPathInput = ""
+                        showingPathPrompt = true
+                    } label: {
+                        Label("Go to Path", systemImage: "arrow.turn.down.right")
+                    }
+                }
             }
             // This repo's latest sync, as on the repo list: tap for its
             // results. Nothing pops up after a sync. On the leading side so
-            // each side holds at most three buttons: as a fourth on the
-            // trailing side it squeezed the repo name in the middle to its
-            // first letter (stone's screenshot of build 1bd5273c68b7).
+            // each side holds three buttons.
             ToolbarItem(placement: .topBarLeading) {
                 if !syncing {
                     RecentSyncButton(record: store.syncRecords[repo.id]) { showingSyncResult = true }
@@ -396,7 +400,7 @@ struct RepoDetailView: View {
 
     /// Ticket 0bbfd908e6: navigate the local WebView to an arbitrary path
     /// on this repo's own server (e.g. "/modreq") -- reached only via the
-    /// hidden long-press on the nav title, never a visible control.
+    /// hidden long-press menu on the Back button, never a visible control.
     private func goToDebugPath() {
         guard let base = baseURL else { return }
         let trimmed = debugPathInput.trimmingCharacters(in: .whitespacesAndNewlines)
