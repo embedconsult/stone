@@ -50,6 +50,7 @@
 		EE554882A0A5BB61D1D67A44 /* ConversationStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6704D5B12ED959E0B7A4F2EE /* ConversationStore.swift */; };
 		31A5B4C39373EDBD22A2FAB6 /* ConversationListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2596F9A07F7F33665BB0690D /* ConversationListView.swift */; };
 		4ACBDB42123BDAAB4E87553A /* ConversationView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AD60E3B24788254812E96C23 /* ConversationView.swift */; };
+		B25D4C60F2FD88DF1BCA067D /* VerifyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EECCDEAC9C75520B9C09F1D8 /* VerifyView.swift */; };
 		24AAE6D8B3D00A99937ADA24 /* ConversationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E30A2CDC03851021FFCF31EE /* ConversationTests.swift */; };
 		7D5625CEBF93664CFA24F861 /* AgentStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 863C2EB53315015898FA4BAA /* AgentStatus.swift */; };
 		BE42D2FDD846C1D8AD5DC4EE /* AgentStatusClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E53C1211B6708CFFB63D93FC /* AgentStatusClient.swift */; };
@@ -122,6 +123,7 @@
 		6704D5B12ED959E0B7A4F2EE /* ConversationStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationStore.swift; sourceTree = "<group>"; };
 		2596F9A07F7F33665BB0690D /* ConversationListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationListView.swift; sourceTree = "<group>"; };
 		AD60E3B24788254812E96C23 /* ConversationView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationView.swift; sourceTree = "<group>"; };
+		EECCDEAC9C75520B9C09F1D8 /* VerifyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VerifyView.swift; sourceTree = "<group>"; };
 		E30A2CDC03851021FFCF31EE /* ConversationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationTests.swift; sourceTree = "<group>"; };
 		863C2EB53315015898FA4BAA /* AgentStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentStatus.swift; sourceTree = "<group>"; };
 		E53C1211B6708CFFB63D93FC /* AgentStatusClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentStatusClient.swift; sourceTree = "<group>"; };
@@ -288,6 +290,7 @@
 				932119BCC1A12F715DAD9B65 /* RequestsView.swift */,
 				2596F9A07F7F33665BB0690D /* ConversationListView.swift */,
 				AD60E3B24788254812E96C23 /* ConversationView.swift */,
+				EECCDEAC9C75520B9C09F1D8 /* VerifyView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -454,6 +457,7 @@
 				EE554882A0A5BB61D1D67A44 /* ConversationStore.swift in Sources */,
 				31A5B4C39373EDBD22A2FAB6 /* ConversationListView.swift in Sources */,
 				4ACBDB42123BDAAB4E87553A /* ConversationView.swift in Sources */,
+				B25D4C60F2FD88DF1BCA067D /* VerifyView.swift in Sources */,
 				7D5625CEBF93664CFA24F861 /* AgentStatus.swift in Sources */,
 				BE42D2FDD846C1D8AD5DC4EE /* AgentStatusClient.swift in Sources */,
 				7F646F38057EBFAAC465C99C /* RemoteWake.swift in Sources */,

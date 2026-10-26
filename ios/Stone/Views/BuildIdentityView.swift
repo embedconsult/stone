@@ -10,11 +10,18 @@ struct BuildIdentity {
     let commit: String?
     let date: String?
     let isDirty: Bool
+    /// The full Fossil check-in hash the app was built from, when the stamp
+    /// could find it: `fossil info` on a local build, or the
+    /// `FossilOrigin-Name:` line `fossil git export` writes into each git
+    /// commit on Xcode Cloud. The verify screen tags this check-in.
+    let fossilCheckin: String?
 
     init(bundle: Bundle = .main) {
         commit = bundle.object(forInfoDictionaryKey: "BuildCommit") as? String
         date = bundle.object(forInfoDictionaryKey: "BuildDate") as? String
         isDirty = (bundle.object(forInfoDictionaryKey: "BuildDirty") as? String) == "true"
+        let checkin = (bundle.object(forInfoDictionaryKey: "BuildFossilCheckin") as? String) ?? ""
+        fossilCheckin = checkin.isEmpty ? nil : checkin.lowercased()
     }
 
     var label: String { Self.label(commit: commit, isDirty: isDirty) }

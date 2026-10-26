@@ -57,6 +57,34 @@ if [ -z "$BUILD_COMMIT" ]; then
   fi
 fi
 
+# The hand checks for this build (ios/VERIFY.md), copied into the app so
+# its Verify This Build screen lists exactly what this check-in asks for.
+VERIFY_SRC="${SRCROOT}/VERIFY.md"
+VERIFY_DEST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}"
+if [ -f "$VERIFY_SRC" ] && [ -d "$VERIFY_DEST" ]; then
+  cp "$VERIFY_SRC" "$VERIFY_DEST/VERIFY.md" 2>/dev/null \
+    && echo "==> Copied VERIFY.md into the built product"
+fi
+
+# The full Fossil check-in hash, which Verify This Build tags. On Xcode Cloud
+# the checkout is the git mirror; `fossil git export` writes the Fossil hash
+# into each commit message as "FossilOrigin-Name: <hash>". Locally it is the
+# Fossil checkout's own hash.
+FOSSIL_CHECKIN=""
+if [ -n "${CI_COMMIT:-}" ] && command -v git >/dev/null 2>&1; then
+  FOSSIL_CHECKIN="$(git log -1 --format=%B "$CI_COMMIT" 2>/dev/null \
+    | sed -n 's/^FossilOrigin-Name: *\([0-9a-f]\{40,64\}\).*/\1/p' | head -n 1)"
+elif command -v fossil >/dev/null 2>&1 && fossil info >/dev/null 2>&1; then
+  FOSSIL_CHECKIN="$(fossil info 2>/dev/null | awk '/^checkout:/ {print $2}')"
+fi
+if [ -n "$FOSSIL_CHECKIN" ]; then
+  /usr/libexec/PlistBuddy -c "Set :BuildFossilCheckin ${FOSSIL_CHECKIN}" "$INFOPLIST" 2>/dev/null \
+    || /usr/libexec/PlistBuddy -c "Add :BuildFossilCheckin string ${FOSSIL_CHECKIN}" "$INFOPLIST" 2>/dev/null
+  echo "==> Stamped Fossil check-in: ${FOSSIL_CHECKIN}"
+else
+  echo "==> No Fossil check-in found (no FossilOrigin-Name line); Verify This Build can post but not tag"
+fi
+
 [ -n "$BUILD_COMMIT" ] || exit 0
 BUILD_COMMIT="$(printf '%s' "$BUILD_COMMIT" | cut -c1-12)"
 BUILD_DATE="$(date -u '+%Y-%m-%d %H:%M:%S UTC')"

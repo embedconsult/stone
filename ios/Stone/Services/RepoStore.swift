@@ -33,6 +33,7 @@ enum SyncTrigger: String, Equatable {
     case background = "a background task"
     case conversation = "a conversation"
     case notification = "opening a notification"
+    case verify = "Verify This Build"
 }
 
 /// A repository's most recent finished sync, whatever started it: Sync All,

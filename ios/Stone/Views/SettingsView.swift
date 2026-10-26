@@ -69,6 +69,7 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    NavigationLink("Verify This Build", destination: VerifyView())
                     NavigationLink("About", destination: AboutView())
                 }
             }
