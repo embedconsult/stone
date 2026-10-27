@@ -20,6 +20,12 @@ enum ConversationReader {
     }
 
     static func threads(repoID: UUID, fossilPath: String) -> [Loaded] {
+        // Fossil creates the forumpost table with a repo's first forum
+        // post, so a repo that never had one lacks it. Querying it anyway
+        // makes SQLite log "no such table" to the process's stderr, which a
+        // sync running at that moment captures as its own output and then
+        // reads as "failed on this phone" (stone's screenshot 11624ddfb1).
+        guard !FossilQuery.columns(fossilPath, table: "forumpost").isEmpty else { return [] }
         let sql = """
         SELECT f.fpid, f.froot, COALESCE(f.fprev, 0), COALESCE(f.firt, 0), f.fmtime, b.uuid,
                COALESCE(e.user, ''), COALESCE(e.comment, '')
