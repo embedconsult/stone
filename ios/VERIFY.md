@@ -13,4 +13,3 @@ run has passed them (the audited tags on the check-ins record which).
 
 Report: e320232451a750cd3fb527cfb0930f01bd85b50622ca21a97751c8aa3f86f49e
 
-- Screenshot in a reply: on the home screen, tap the speech bubbles (top left) and open this thread. Tap the photo button left of the reply box and pick a screenshot. The box shows "Screenshot attached" and a ![Screenshot](...) line; add a word and Send. Your new bubble shows the picture, and the same post on the website (open it in Safari) shows it too. (79a9936235)
