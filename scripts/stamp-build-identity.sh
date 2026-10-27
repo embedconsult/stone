@@ -57,15 +57,6 @@ if [ -z "$BUILD_COMMIT" ]; then
   fi
 fi
 
-# The hand checks for this build (ios/VERIFY.md), copied into the app so
-# its Verify This Build screen lists exactly what this check-in asks for.
-VERIFY_SRC="${SRCROOT}/VERIFY.md"
-VERIFY_DEST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}"
-if [ -f "$VERIFY_SRC" ] && [ -d "$VERIFY_DEST" ]; then
-  cp "$VERIFY_SRC" "$VERIFY_DEST/VERIFY.md" 2>/dev/null \
-    && echo "==> Copied VERIFY.md into the built product"
-fi
-
 # The full Fossil check-in hash, which Verify This Build tags. On Xcode Cloud
 # the checkout is the git mirror; `fossil git export` writes the Fossil hash
 # into each commit message as "FossilOrigin-Name: <hash>". Locally it is the

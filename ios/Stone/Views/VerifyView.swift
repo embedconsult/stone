@@ -1,10 +1,14 @@
 import SwiftUI
 import UserNotifications
 
-/// The hand checks a build asks for: ios/VERIFY.md at the check-in the app
-/// was built from, copied into the app by scripts/stamp-build-identity.sh.
-/// Lines starting "- " are checks; a "Report:" line names the forum thread
-/// (its first post's full hash) where the summary of a run is posted.
+/// The hand checks, read from the wiki page "Hand checks" in the phone's
+/// copy of the repo the app is built from. It's data, not part of the app:
+/// a wiki edit syncs to the phone and, not being a check-in, starts no build
+/// (stone, 2026-10-27: "that hand check should have been data driven";
+/// three of four builds had changed only the list, then ios/VERIFY.md).
+/// Lines starting "- " are checks, each ending with the check-in it is for,
+/// in parentheses; a "Report:" line names the forum thread (its first
+/// post's full hash) where the summary of a run is posted.
 struct VerifyList: Equatable {
     var reportThread: String?
     var checks: [String]
@@ -25,12 +29,41 @@ struct VerifyList: Equatable {
         return VerifyList(reportThread: report, checks: checks)
     }
 
-    /// The list bundled with this build, or nil when the build has none
-    /// (an Xcode build that didn't run the stamp phase).
-    static var bundled: VerifyList? {
-        guard let url = Bundle.main.url(forResource: "VERIFY", withExtension: "md"),
-              let text = try? String(contentsOf: url, encoding: .utf8) else { return nil }
-        return parse(text)
+    static let page = "Hand checks"
+
+    /// The check-in a line is for: its last parenthesized run of hex digits,
+    /// such as "(79a9936235)".
+    static func checkin(of check: String) -> String? {
+        guard check.hasSuffix(")"), let open = check.lastIndex(of: "(") else { return nil }
+        let inside = check[check.index(after: open)..<check.index(before: check.endIndex)]
+        return inside.count >= 6 && inside.allSatisfy(\.isHexDigit) ? inside.lowercased() : nil
+    }
+
+    /// The checks this build asks for: those whose check-in it includes
+    /// (or that name none Stone can find), less those an `audited` tag in
+    /// the same copy records as passed, so a passed line needs no removal.
+    func pending(build: String?, fossilPath: String) -> [String] {
+        let passed = Set(FossilQuery.rows(fossilPath,
+            "SELECT value FROM tagxref JOIN tag USING(tagid) WHERE tagname = 'sym-audited' AND value IS NOT NULL")
+            .compactMap(\.first)
+            .flatMap { $0.components(separatedBy: "\n") }
+            .filter { $0.hasPrefix("- pass: ") }
+            .map { String($0.dropFirst("- pass: ".count)) })
+        return checks.filter { check in
+            if passed.contains(where: { $0 == check || $0.hasPrefix(check + " (") }) { return false }
+            guard let build, let target = Self.checkin(of: check) else { return true }
+            let known = FossilQuery.rows(fossilPath,
+                "SELECT 1 FROM blob WHERE uuid LIKE \(FossilQuery.quote(target + "%")) LIMIT 1")
+            guard !known.isEmpty else { return true }
+            let included = FossilQuery.rows(fossilPath, """
+                WITH RECURSIVE anc(rid) AS (
+                  SELECT rid FROM blob WHERE uuid LIKE \(FossilQuery.quote(build + "%"))
+                  UNION SELECT plink.pid FROM plink JOIN anc ON plink.cid = anc.rid)
+                SELECT 1 FROM anc JOIN blob USING(rid)
+                WHERE blob.uuid LIKE \(FossilQuery.quote(target + "%")) LIMIT 1
+                """)
+            return !included.isEmpty
+        }
     }
 }
 
@@ -74,7 +107,9 @@ enum VerifyReport {
             let mark = o.passed == true ? "pass" : o.passed == false ? "FAIL" : "not checked"
             return "- \(mark): \(o.name)" + (o.detail.isEmpty ? "" : " (\(o.detail))")
         }
-        let text = (auto.map(line) + hand.map(line)).joined(separator: "\n")
+        // Hand checks first: a later run reads their passes back from this
+        // tag (VerifyList.pending), so the cap must never cut them.
+        let text = (hand.map(line) + auto.map(line)).joined(separator: "\n")
         return text.count > 4_000 ? String(text.prefix(4_000)) + "\n…" : text
     }
 }
@@ -93,14 +128,15 @@ final class VerifySession: ObservableObject {
 }
 
 /// Verify This Build: runs the automatic checks, takes Pass or Fail on each
-/// hand check from VERIFY.md, then records the run as an `audited` tag on
+/// hand check from the "Hand checks" wiki page, then records the run as an `audited` tag on
 /// the build's own check-in (in whichever clone has it) and posts a one-line
-/// summary to the thread VERIFY.md names. Both are plain Fossil artifacts
+/// summary to the thread the page names. Both are plain Fossil artifacts
 /// written to the clone and pushed by the sync that follows.
 struct VerifyView: View {
     @EnvironmentObject private var store: RepoStore
     private let identity = BuildIdentity()
-    private let list = VerifyList.bundled
+    @State private var list: VerifyList?
+    @State private var listSource: String?
 
     @ObservedObject private var session = VerifySession.shared
 
@@ -138,7 +174,9 @@ struct VerifyView: View {
 
             Section {
                 if session.hand.isEmpty {
-                    Text(list == nil ? "This build has no VERIFY.md." : "Nothing to check by hand for this build.")
+                    Text(list == nil
+                         ? "No clone on this phone has a \"\(VerifyList.page)\" wiki page."
+                         : "Nothing to check by hand for this build.")
                         .foregroundStyle(.secondary)
                 }
                 ForEach($session.hand) { $outcome in
@@ -157,6 +195,10 @@ struct VerifyView: View {
                 }
             } header: {
                 Text("By hand")
+            } footer: {
+                if let listSource {
+                    Text("From the \"\(VerifyList.page)\" wiki page in \(listSource), as of its last sync. Lines already passed, or for check-ins this build doesn't include, are left out.")
+                }
             }
 
             Section {
@@ -168,16 +210,12 @@ struct VerifyView: View {
                     Text(text).font(.callout).foregroundStyle(.secondary)
                 }
             } footer: {
-                Text("Adds an audited tag (pass, fail, or incomplete when some lines are left unchecked) with every line above to this build's check-in, posts a one-line summary to the thread VERIFY.md names, and syncs.")
+                Text("Adds an audited tag (pass, fail, or incomplete when some lines are left unchecked) with every line above to this build's check-in, posts a one-line summary to the thread the wiki page names, and syncs.")
             }
         }
         .navigationTitle("Verify This Build")
         .navigationBarTitleDisplayMode(.inline)
-        .onAppear {
-            if session.hand.isEmpty, let list {
-                session.hand = list.checks.map { VerifyOutcome(name: $0) }
-            }
-        }
+        .task { await loadList() }
     }
 
     @ViewBuilder
@@ -186,6 +224,33 @@ struct VerifyView: View {
         case true?: Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
         case false?: Image(systemName: "xmark.circle.fill").foregroundStyle(.red)
         case nil: ProgressView()
+        }
+    }
+
+    // MARK: The hand checks
+
+    /// Reads the wiki page from the clone that has this build's check-in,
+    /// else from the first clone that has the page. Fills the hand checks
+    /// only when the session has none, so marks already made survive.
+    private func loadList() async {
+        let tag = FossilQuery.quote("wiki-" + VerifyList.page)
+        var source: (Repo, String)?
+        if let checkin = identity.fossilCheckin, let (repo, path, _) = await clone(containing: checkin) {
+            source = (repo, path)
+        }
+        if source == nil, let (repo, path, _) = await find("SELECT 'page' FROM tag WHERE tagname = \(tag)") {
+            source = (repo, path)
+        }
+        guard let (repo, path) = source else { return }
+        let page = await FossilEngine.shared.run(["wiki", "export", VerifyList.page, "-R", path])
+        guard page.succeeded else { return }
+        let parsed = VerifyList.parse(page.output)
+        let build = identity.fossilCheckin
+        let pending = await Task.detached { parsed.pending(build: build, fossilPath: path) }.value
+        list = parsed
+        listSource = repo.name
+        if session.hand.isEmpty {
+            session.hand = pending.map { VerifyOutcome(name: $0) }
         }
     }
 
@@ -262,7 +327,7 @@ struct VerifyView: View {
             done.append("Not tagged: no clone on this phone has this build's check-in.")
         }
 
-        // The post: a reply to the latest post of the thread VERIFY.md names.
+        // The post: a reply to the latest post of the thread the page names.
         if let thread = list?.reportThread,
            let (repo, path, full) = await clone(containingThread: thread) {
             let id = ConversationID(repoID: repo.id, kind: .thread, key: full)
@@ -279,7 +344,7 @@ struct VerifyView: View {
                 }
             }
         } else if list?.reportThread != nil {
-            done.append("Not posted: no clone on this phone has the thread VERIFY.md names.")
+            done.append("Not posted: no clone on this phone has the thread the wiki page names.")
         }
 
         for repo in store.repos where touched.contains(repo.id) {
