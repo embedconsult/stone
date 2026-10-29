@@ -6,9 +6,11 @@ import UserNotifications
 /// a wiki edit syncs to the phone and, not being a check-in, starts no build
 /// (stone, 2026-10-27: "that hand check should have been data driven";
 /// three of four builds had changed only the list, then ios/VERIFY.md).
-/// Lines starting "- " are checks, each ending with the check-in it is for,
-/// in parentheses; a "Report:" line names the forum thread (its first
-/// post's full hash) where the summary of a run is posted.
+/// Lines starting "- " that end with the check-in they are for, in
+/// parentheses, are checks; other bullets, such as help text, are not
+/// (opus-stone, 2026-10-27: four help bullets showed as checks). A
+/// "Report:" line names the forum thread (its first post's full hash)
+/// where the summary of a run is posted.
 struct VerifyList: Equatable {
     var reportThread: String?
     var checks: [String]
@@ -23,7 +25,7 @@ struct VerifyList: Equatable {
                 if value.count >= 10, value.allSatisfy(\.isHexDigit) { report = value.lowercased() }
             } else if line.hasPrefix("- ") {
                 let check = line.dropFirst(2).trimmingCharacters(in: .whitespaces)
-                if !check.isEmpty { checks.append(check) }
+                if checkin(of: check) != nil { checks.append(check) }
             }
         }
         return VerifyList(reportThread: report, checks: checks)
@@ -40,7 +42,8 @@ struct VerifyList: Equatable {
     }
 
     /// The checks this build asks for: those whose check-in it includes
-    /// (or that name none Stone can find), less those an `audited` tag in
+    /// (or when Stone can't tell: the check-in, or the build's own, isn't
+    /// in this copy yet), less those an `audited` tag in
     /// the same copy records as passed, so a passed line needs no removal.
     func pending(build: String?, fossilPath: String) -> [String] {
         let passed = Set(FossilQuery.rows(fossilPath,
@@ -49,9 +52,11 @@ struct VerifyList: Equatable {
             .flatMap { $0.components(separatedBy: "\n") }
             .filter { $0.hasPrefix("- pass: ") }
             .map { String($0.dropFirst("- pass: ".count)) })
+        let buildKnown = build.map { !FossilQuery.rows(fossilPath,
+            "SELECT 1 FROM blob WHERE uuid LIKE \(FossilQuery.quote($0 + "%")) LIMIT 1").isEmpty } ?? false
         return checks.filter { check in
             if passed.contains(where: { $0 == check || $0.hasPrefix(check + " (") }) { return false }
-            guard let build, let target = Self.checkin(of: check) else { return true }
+            guard let build, buildKnown, let target = Self.checkin(of: check) else { return true }
             let known = FossilQuery.rows(fossilPath,
                 "SELECT 1 FROM blob WHERE uuid LIKE \(FossilQuery.quote(target + "%")) LIMIT 1")
             guard !known.isEmpty else { return true }
@@ -362,13 +367,20 @@ struct VerifyView: View {
 
     /// The clone that has the forum thread whose first post is `prefix`.
     private func clone(containingThread prefix: String) async -> (Repo, String, String)? {
-        await find("SELECT b.uuid FROM forumpost f JOIN blob b ON b.rid = f.froot WHERE f.fpid = f.froot AND b.uuid LIKE \(FossilQuery.quote(prefix + "%")) LIMIT 1")
+        await find(needing: "forumpost", "SELECT b.uuid FROM forumpost f JOIN blob b ON b.rid = f.froot WHERE f.fpid = f.froot AND b.uuid LIKE \(FossilQuery.quote(prefix + "%")) LIMIT 1")
     }
 
-    private func find(_ sql: String) async -> (Repo, String, String)? {
+    /// The first clone where `sql` finds a row. With `table`, repos without
+    /// that table are skipped: Fossil creates `forumpost` with a repo's first
+    /// forum post, and SQLite's "no such table" on stderr would be read by a
+    /// sync running at the same time as its own failure (see 1259a8b602).
+    private func find(needing table: String? = nil, _ sql: String) async -> (Repo, String, String)? {
         for repo in store.repos {
             let path = store.fileURL(for: repo).path
-            let rows = await Task.detached { FossilQuery.rows(path, sql) }.value
+            let rows = await Task.detached { () -> [[String]] in
+                if let table, FossilQuery.columns(path, table: table).isEmpty { return [] }
+                return FossilQuery.rows(path, sql)
+            }.value
             if let full = rows.first?.first, !full.isEmpty { return (repo, path, full) }
         }
         return nil
