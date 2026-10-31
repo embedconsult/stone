@@ -1,6 +1,6 @@
 /*
  * linux-cards-driver.c -- checks stone_fossil_card() against OCX's shared
- * card examples (scripts/card-examples, from ollama 973aca3f4c), so Stone and
+ * card examples (scripts/card-examples, from ollama 14f6af3b8e), so Stone and
  * OCX give each card the same answer. For each expected/NAME.json in the
  * example directory:
  *

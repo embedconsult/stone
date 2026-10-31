@@ -8,4 +8,4 @@ The forum posts and tickets are reconstructed from Fossil artifacts; check-ins, 
 
 ## In Stone
 
-Copied unchanged from ollama check-in [973aca3f4c](https://ollama.openbeagle.org/ollama/info/973aca3f4c), `spec/cards/examples/`, without the `*.schema.json` files that the ollama repository requires next to each JSON file. `scripts/linux-crosslink-test.sh` builds each example with the generated Fossil and runs `scripts/linux-cards-driver.c` on it, before and after `fossil rebuild`. When OCX changes its examples, copy them again.
+Copied unchanged from ollama check-in [14f6af3b8e](https://ollama.openbeagle.org/ollama/info/14f6af3b8e), `spec/cards/examples/`, without the `*.schema.json` files that the ollama repository requires next to each JSON file. `scripts/linux-crosslink-test.sh` builds each example with the generated Fossil and runs `scripts/linux-cards-driver.c` on it, before and after `fossil rebuild`. When OCX changes its examples, copy them again.

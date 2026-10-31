@@ -1,0 +1,16 @@
+{
+  "name": "recent",
+  "title": "Recent thread",
+  "as_of": "2026-10-29T11:00:00Z",
+  "count": 2,
+  "say": "2 active: Second ask",
+  "items": [
+    {
+      "title": "Second ask",
+      "user": "agent",
+      "time": "2026-10-29T11:00:00Z",
+      "hash": "0152117a33f7e32a7db139afbe6bc77e94c4c972bad4790a629b2d3524947b0a",
+      "project": "Beta"
+    }
+  ]
+}

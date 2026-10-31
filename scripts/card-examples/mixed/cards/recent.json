@@ -1,0 +1,17 @@
+{
+  "title": "Recent thread",
+  "find": {
+    "threads_active_within": 172800
+  },
+  "fields": [
+    "title",
+    "user",
+    "time",
+    "hash",
+    "project"
+  ],
+  "order": "newest",
+  "limit": 1,
+  "say": "{count} active: {titles}",
+  "say_none": "No active threads."
+}
