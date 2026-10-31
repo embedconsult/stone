@@ -47,7 +47,9 @@ if ! command -v swiftc &>/dev/null; then
   exit 1
 fi
 
-SWIFT_VER="$(swiftc --version 2>&1 | head -1)"
+# sed, not head: head closing the pipe early fails it under pipefail, and
+# some toolchains print a libc warning on stderr first.
+SWIFT_VER="$(swiftc --version 2>/dev/null | sed -n 1p)"
 echo "Swift:    ${SWIFT_VER}"
 
 # Default to the sandbox-mounted SDK when no explicit override was given.
