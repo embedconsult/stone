@@ -639,6 +639,7 @@ final class ConsoleBridge: NSObject, ObservableObject, WKScriptMessageHandlerWit
             return await card(name, home, clones, input["for"] as? String, now)
         case "cards":
             var cards: [[String: Any]] = []
+            var asOf: String?
             for home in clones {
                 for name in Self.cardNames(home.path) {
                     let text = await card(name, home, clones, input["for"] as? String, now)
@@ -647,9 +648,12 @@ final class ConsoleBridge: NSObject, ObservableObject, WKScriptMessageHandlerWit
                           found["stopped"] == nil else { continue }
                     cards.append(["project": home.project, "name": name, "title": found["title"] ?? "",
                                   "count": found["count"] ?? 0, "say": found["say"] ?? ""])
+                    if let at = found["as_of"] as? String, at > (asOf ?? "") { asOf = at }
                 }
             }
-            return Self.json(["cards": cards]) ?? Self.stopped("couldn't write the cards")
+            var answer: [String: Any] = ["cards": cards]
+            if let asOf { answer["as_of"] = asOf }
+            return Self.json(answer) ?? Self.stopped("couldn't write the cards")
         case "open":
             guard let project = input["project"] as? String,
                   let hash = input["hash"] as? String, !hash.isEmpty, hash.allSatisfy(\.isHexDigit) else {

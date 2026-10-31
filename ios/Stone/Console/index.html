@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Console</title>
+  <link rel="stylesheet" href="console.css">
+  <script defer src="console.js"></script>
+</head>
+<body>
+  <input type="checkbox" id="m" aria-label="Topics">
+  <header id="top">
+    <label for="m" class="menu" title="Topics">☰</label>
+    <strong>Console</strong>
+  </header>
+  <label for="m" id="shade" aria-hidden="true"></label>
+  <nav id="side" aria-label="Topics">
+    <header><span>Topics</span><label for="m" class="menu" title="Close topics">✕</label></header>
+    <div id="topics"></div>
+  </nav>
+  <main id="chat" aria-live="polite"><div class="col" id="conversation"></div></main>
+  <footer id="composer"><div id="box">
+    <label for="question">Questions come with search (slice 6)</label>
+    <textarea id="question" rows="2" disabled></textarea>
+    <button disabled>Send</button>
+  </div></footer>
+</body>
+</html>
