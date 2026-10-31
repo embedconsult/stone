@@ -1,0 +1,15 @@
+{
+  "title": "Asks with a due date",
+  "find": {
+    "posts_tagged": "asks",
+    "value": "stone"
+  },
+  "fields": [
+    "title",
+    "due"
+  ],
+  "order": "newest",
+  "limit": 10,
+  "say": "{count} asks with a due date",
+  "say_none": "No asks have a due date."
+}
