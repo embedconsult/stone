@@ -115,6 +115,31 @@ void stone_fossil_server_stop(void);
  */
 int stone_fossil_query(const char *repo_path, const char *sql, char **out_text);
 
+/*
+ * Answer one console card: the JSON of a card/NAME wiki page, read across
+ * every clone named, as OCX's `card` tool answers it (ollama, "Console
+ * plan", "Cards: data, not code"; scripts/linux-cards-driver.c checks it
+ * against OCX's shared examples). Like stone_fossil_query, it opens each
+ * repository read-only on its own connection, outside the Fossil lock.
+ *
+ *   repo_paths, repo_count : the .fossil files to read, each item tagged
+ *                            with its repository's project-name.
+ *   name            : the card's name after card/, echoed in the answer.
+ *   definition_json : the page's text.
+ *   viewer          : the login that "$viewer" stands for.
+ *   now             : the clock for time spans, RFC 3339 (UTC "Z").
+ *   out_json        : on success, a malloc()'d JSON object {name, title,
+ *                     as_of, count, say, items}; caller must free() it.
+ *
+ * A missing table or column gives zero items, not an error. Returns 0 on
+ * success, -2 when the definition isn't a card (not exactly one find, or a
+ * key missing or of the wrong type), and -1 when a repository can't be read
+ * or a query fails.
+ */
+int stone_fossil_card(const char *const repo_paths[], int repo_count, const char *name,
+                      const char *definition_json, const char *viewer, const char *now,
+                      char **out_json);
+
 #ifdef __cplusplus
 }
 #endif

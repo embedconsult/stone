@@ -623,3 +623,384 @@ int stone_fossil_query(const char *repo_path, const char *sql, char **out_text) 
     *out_text = buf;
     return 0;
 }
+
+/* ------------------------------------------------------------------ */
+/* Cards (the console's card/NAME definitions)                         */
+/* ------------------------------------------------------------------ */
+/*
+ * The same meaning as OCX's src/ocx/fossil/cards.cr and
+ * src/ocx/commands/cards.cr (ollama check-in 973aca3f4c), checked against
+ * its shared examples by scripts/linux-cards-driver.c. All JSON is read and
+ * written by SQLite's own JSON functions, on an in-memory connection; each
+ * repository is read on its own read-only connection, as in
+ * stone_fossil_query.
+ */
+
+#define CARD_WRITTEN "%Y-%m-%dT%H:%M:%SZ"
+/* The same, inside a sqlite3_mprintf format. */
+#define CARD_WRITTEN_F "%%Y-%%m-%%dT%%H:%%M:%%SZ"
+#define CARD_MAX_KEYS 64
+
+/* The first column of the first row of `sql`, or NULL (no row, a NULL
+ * value, or an error). Free with sqlite3_free. */
+static char *card_scalar(sqlite3 *db, const char *sql) {
+    sqlite3_stmt *stmt = NULL;
+    char *out = NULL;
+    if (sql == NULL || sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK) return NULL;
+    if (sqlite3_step(stmt) == SQLITE_ROW && sqlite3_column_type(stmt, 0) != SQLITE_NULL)
+        out = sqlite3_mprintf("%s", (const char *)sqlite3_column_text(stmt, 0));
+    sqlite3_finalize(stmt);
+    return out;
+}
+
+/* `path` of the definition when its JSON type is `type` ("text",
+ * "integer", "array", "object", or "boolean" for true/false), else NULL.
+ * Objects and arrays come back as JSON text. Free with sqlite3_free. */
+static char *card_def(sqlite3 *w, const char *def, const char *path, const char *type) {
+    sqlite3_stmt *stmt = NULL;
+    char *out = NULL;
+    const char *sql = "SELECT CASE WHEN ?3 = 'boolean' THEN json_type(?1, ?2) IN ('true','false')"
+                      " ELSE json_type(?1, ?2) = ?3 END, json_extract(?1, ?2)";
+    if (sqlite3_prepare_v2(w, sql, -1, &stmt, NULL) != SQLITE_OK) return NULL;
+    sqlite3_bind_text(stmt, 1, def, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 2, path, -1, SQLITE_STATIC);
+    sqlite3_bind_text(stmt, 3, type, -1, SQLITE_STATIC);
+    if (sqlite3_step(stmt) == SQLITE_ROW && sqlite3_column_int(stmt, 0) == 1)
+        out = sqlite3_mprintf("%s", sqlite3_column_type(stmt, 1) == SQLITE_NULL
+                                        ? "" : (const char *)sqlite3_column_text(stmt, 1));
+    sqlite3_finalize(stmt);
+    return out;
+}
+
+static int card_is_word(const char *s) {
+    if (s == NULL || *s == '\0') return 0;
+    for (; *s; s++) if (!((*s >= 'a' && *s <= 'z') || *s == '_')) return 0;
+    return 1;
+}
+
+/* A field name -> SQL expression map, in insertion order. */
+typedef struct {
+    int n;
+    char *key[CARD_MAX_KEYS];
+    char *expr[CARD_MAX_KEYS];
+} card_map;
+
+static void card_map_set(card_map *m, const char *key, char *expr) {
+    for (int i = 0; i < m->n; i++) {
+        if (strcmp(m->key[i], key) == 0) {
+            sqlite3_free(m->expr[i]);
+            m->expr[i] = expr;
+            return;
+        }
+    }
+    if (m->n == CARD_MAX_KEYS) { sqlite3_free(expr); return; }
+    m->key[m->n] = sqlite3_mprintf("%s", key);
+    m->expr[m->n++] = expr;
+}
+
+static const char *card_map_get(const card_map *m, const char *key) {
+    for (int i = 0; i < m->n; i++) if (strcmp(m->key[i], key) == 0) return m->expr[i];
+    return NULL;
+}
+
+static void card_map_free(card_map *m) {
+    for (int i = 0; i < m->n; i++) { sqlite3_free(m->key[i]); sqlite3_free(m->expr[i]); }
+    m->n = 0;
+}
+
+static int card_has(char *const list[], int n, const char *key) {
+    for (int i = 0; i < n; i++) if (strcmp(list[i], key) == 0) return 1;
+    return 0;
+}
+
+/* One repository's matching items as a JSON array (sqlite3_free), "[]" when
+ * it has none or lacks a table or column; its newest dated event goes to
+ * *as_of. NULL when the repository can't be read. */
+static char *card_repo_rows(const char *repo_path, const char *kind, const char *tag,
+                            const char *value, const char *login, sqlite3_int64 seconds,
+                            const char *now, char *const fields[], int nfields, char **as_of) {
+    sqlite3 *db = NULL;
+    if (sqlite3_open_v2(repo_path, &db, SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX, NULL) != SQLITE_OK) {
+        if (db) sqlite3_close(db);
+        return NULL;
+    }
+    char *out = NULL;
+    card_map source = {0};
+    char *columns[CARD_MAX_KEYS];
+    int ncolumns = 0;
+    const char *table = strcmp(kind, "tickets") == 0 ? "ticket"
+                      : strcmp(kind, "checkins_tagged") == 0 ? "event" : "forumpost";
+
+    *as_of = card_scalar(db, "SELECT strftime('" CARD_WRITTEN "', max(mtime)) FROM event WHERE type IN ('ci','f','t')");
+    char *project = card_scalar(db, "SELECT value FROM config WHERE name='project-name'");
+    if (project == NULL) project = sqlite3_mprintf("");
+
+    sqlite3_stmt *stmt = NULL;
+    char *sql = sqlite3_mprintf("SELECT name FROM pragma_table_info(%Q)", table);
+    if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) == SQLITE_OK) {
+        while (sqlite3_step(stmt) == SQLITE_ROW && ncolumns < CARD_MAX_KEYS)
+            columns[ncolumns++] = sqlite3_mprintf("%s", (const char *)sqlite3_column_text(stmt, 0));
+    }
+    sqlite3_finalize(stmt);
+    sqlite3_free(sql);
+
+    int none = ncolumns == 0;
+    if (!none && strcmp(kind, "tickets") == 0) {
+        for (int i = 0; i < nfields && !none; i++) {
+            const char *f = fields[i];
+            if (!card_has(columns, ncolumns, f) && strcmp(f, "time") && strcmp(f, "hash")
+                && strcmp(f, "project") && strcmp(f, "user")) none = 1;
+        }
+    }
+
+    char *base = NULL, *where = NULL;
+    if (!none) {
+        card_map_set(&source, "project", sqlite3_mprintf("%Q", project));
+        if (strcmp(kind, "posts_tagged") == 0 || strcmp(kind, "threads_active_within") == 0) {
+            card_map_set(&source, "title", sqlite3_mprintf("substr(e.comment, instr(e.comment, ':') + 2)"));
+            card_map_set(&source, "user", sqlite3_mprintf("e.user"));
+            card_map_set(&source, "time", sqlite3_mprintf("strftime('" CARD_WRITTEN_F "', f.fmtime)"));
+            card_map_set(&source, "hash", sqlite3_mprintf("b.uuid"));
+            if (strcmp(kind, "posts_tagged") == 0) {
+                base = sqlite3_mprintf("FROM forumpost f JOIN blob b ON b.rid=f.fpid JOIN event e ON e.objid=f.fpid "
+                                       "JOIN tagxref x ON x.rid=f.fpid AND x.tagtype>0 JOIN tag t ON t.tagid=x.tagid ");
+                where = sqlite3_mprintf("t.tagname=%Q AND coalesce(x.value,'')=%Q", tag, value ? value : "");
+                if (login) {
+                    char *more = sqlite3_mprintf("%s AND NOT EXISTS (SELECT 1 FROM forumpost later JOIN event le "
+                        "ON le.objid=later.fpid WHERE later.froot=f.froot AND later.fmtime>f.fmtime AND le.user=%Q)",
+                        where, login);
+                    sqlite3_free(where);
+                    where = more;
+                }
+            } else {
+                base = sqlite3_mprintf("FROM forumpost f JOIN blob b ON b.rid=f.fpid JOIN event e ON e.objid=f.fpid ");
+                where = sqlite3_mprintf("f.fmtime=(SELECT max(n.fmtime) FROM forumpost n WHERE n.froot=f.froot) "
+                    "AND f.fmtime BETWEEN julianday(strftime('" CARD_WRITTEN_F "', %Q, '-%lld seconds')) "
+                    "AND julianday(strftime('" CARD_WRITTEN_F "', %Q))", now, (long long)seconds, now);
+            }
+        } else if (strcmp(kind, "checkins_tagged") == 0) {
+            base = sqlite3_mprintf("FROM event e JOIN blob b ON b.rid=e.objid JOIN tagxref x ON x.rid=e.objid "
+                                   "AND x.tagtype>0 JOIN tag t ON t.tagid=x.tagid ");
+            card_map_set(&source, "title", sqlite3_mprintf("coalesce(e.ecomment,e.comment)"));
+            card_map_set(&source, "user", sqlite3_mprintf("e.user"));
+            card_map_set(&source, "time", sqlite3_mprintf("strftime('" CARD_WRITTEN_F "', e.mtime)"));
+            card_map_set(&source, "hash", sqlite3_mprintf("b.uuid"));
+            where = sqlite3_mprintf("e.type='ci' AND t.tagname=%Q", tag);
+        } else {
+            base = sqlite3_mprintf("FROM ticket k ");
+            card_map_set(&source, "title", sqlite3_mprintf("k.title"));
+            card_map_set(&source, "user", sqlite3_mprintf("''"));
+            card_map_set(&source, "time", sqlite3_mprintf("strftime('" CARD_WRITTEN_F "', k.tkt_mtime)"));
+            card_map_set(&source, "hash", sqlite3_mprintf("k.tkt_uuid"));
+            for (int i = 0; i < ncolumns; i++)
+                if (card_is_word(columns[i])) card_map_set(&source, columns[i], sqlite3_mprintf("k.%s", columns[i]));
+            where = sqlite3_mprintf("k.type=%Q AND k.status NOT IN ('Closed','Fixed','Resolved')", value ? value : "");
+        }
+        for (int i = 0; i < nfields; i++) if (card_map_get(&source, fields[i]) == NULL) none = 1;
+    }
+
+    if (none) {
+        out = sqlite3_mprintf("[]");
+    } else {
+        /* shown: the fields, then project, title, time and hash, each once */
+        static const char *const extra[] = {"project", "title", "time", "hash"};
+        char *shown[CARD_MAX_KEYS + 4];
+        int nshown = 0;
+        for (int i = 0; i < nfields; i++)
+            if (!card_has(shown, nshown, fields[i])) shown[nshown++] = fields[i];
+        for (int i = 0; i < 4; i++)
+            if (!card_has(shown, nshown, extra[i])) shown[nshown++] = (char *)extra[i];
+        sqlite3_str *pairs = sqlite3_str_new(NULL);
+        for (int i = 0; i < nshown; i++)
+            sqlite3_str_appendf(pairs, "%s%Q, coalesce(CAST(%s AS TEXT),'')", i ? "," : "",
+                                shown[i], card_map_get(&source, shown[i]));
+        char *p = sqlite3_str_finish(pairs);
+        char *q = sqlite3_mprintf("SELECT json_group_array(json(item)) FROM "
+                                  "(SELECT json_object(%s) AS item %s WHERE %s)", p, base, where);
+        out = card_scalar(db, q);
+        sqlite3_free(p);
+        sqlite3_free(q);
+    }
+
+    sqlite3_free(base);
+    sqlite3_free(where);
+    sqlite3_free(project);
+    card_map_free(&source);
+    for (int i = 0; i < ncolumns; i++) sqlite3_free(columns[i]);
+    sqlite3_close(db);
+    return out;
+}
+
+/* Run `sql` on w with up to four bound texts (NULL binds NULL). */
+static int card_exec(sqlite3 *w, const char *sql, const char *a, const char *b, const char *c, const char *d) {
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(w, sql, -1, &stmt, NULL) != SQLITE_OK) return -1;
+    const char *args[4] = {a, b, c, d};
+    for (int i = 0; i < 4 && i < sqlite3_bind_parameter_count(stmt); i++)
+        if (args[i]) sqlite3_bind_text(stmt, i + 1, args[i], -1, SQLITE_STATIC);
+    int rc;
+    while ((rc = sqlite3_step(stmt)) == SQLITE_ROW) {}
+    sqlite3_finalize(stmt);
+    return rc == SQLITE_DONE ? 0 : -1;
+}
+
+/* Like card_exec, returning the first column of the first row. */
+static char *card_value(sqlite3 *w, const char *sql, const char *a, const char *b) {
+    sqlite3_stmt *stmt = NULL;
+    char *out = NULL;
+    if (sqlite3_prepare_v2(w, sql, -1, &stmt, NULL) != SQLITE_OK) return NULL;
+    if (a && sqlite3_bind_parameter_count(stmt) >= 1) sqlite3_bind_text(stmt, 1, a, -1, SQLITE_STATIC);
+    if (b && sqlite3_bind_parameter_count(stmt) >= 2) sqlite3_bind_text(stmt, 2, b, -1, SQLITE_STATIC);
+    if (sqlite3_step(stmt) == SQLITE_ROW && sqlite3_column_type(stmt, 0) != SQLITE_NULL)
+        out = sqlite3_mprintf("%s", (const char *)sqlite3_column_text(stmt, 0));
+    sqlite3_finalize(stmt);
+    return out;
+}
+
+int stone_fossil_card(const char *const repo_paths[], int repo_count, const char *name,
+                      const char *definition_json, const char *viewer, const char *now,
+                      char **out_json) {
+    if (repo_paths == NULL || repo_count < 0 || name == NULL || definition_json == NULL
+        || viewer == NULL || now == NULL || out_json == NULL) return -1;
+    *out_json = NULL;
+
+    sqlite3 *w = NULL;
+    if (sqlite3_open_v2(":memory:", &w, SQLITE_OPEN_READWRITE | SQLITE_OPEN_NOMUTEX, NULL) != SQLITE_OK) {
+        if (w) sqlite3_close(w);
+        return -1;
+    }
+    int rc = -2;
+    const char *def = definition_json;
+    char *fields[CARD_MAX_KEYS];
+    int nfields = 0;
+    char *title = card_def(w, def, "$.title", "text");
+    char *fields_json = card_def(w, def, "$.fields", "array");
+    char *order = card_def(w, def, "$.order", "text");
+    char *limit = card_def(w, def, "$.limit", "integer");
+    char *say = card_def(w, def, "$.say", "text");
+    char *say_none = card_def(w, def, "$.say_none", "text");
+    char *posts = card_def(w, def, "$.find.posts_tagged", "text");
+    char *checkins = card_def(w, def, "$.find.checkins_tagged", "text");
+    char *tickets = card_def(w, def, "$.find.tickets", "object");
+    char *ttype = card_def(w, def, "$.find.tickets.type", "text");
+    char *topen = card_def(w, def, "$.find.tickets.open", "boolean");
+    char *within = card_def(w, def, "$.find.threads_active_within", "integer");
+    char *value = card_def(w, def, "$.find.value", "text");
+    char *unanswered = card_def(w, def, "$.find.unanswered_by", "text");
+    char *as_of = NULL, *items = NULL, *sentence = NULL;
+
+    int kinds = (posts != NULL) + (checkins != NULL) + (tickets != NULL) + (within != NULL);
+    if (title == NULL || fields_json == NULL || order == NULL || limit == NULL || say == NULL
+        || say_none == NULL || kinds != 1 || (tickets && (ttype == NULL || topen == NULL)))
+        goto done;
+
+    sqlite3_stmt *stmt = NULL;
+    if (sqlite3_prepare_v2(w, "SELECT value, type FROM json_each(?1)", -1, &stmt, NULL) != SQLITE_OK) goto done;
+    sqlite3_bind_text(stmt, 1, fields_json, -1, SQLITE_STATIC);
+    int bad = 0;
+    while (sqlite3_step(stmt) == SQLITE_ROW) {
+        if (strcmp((const char *)sqlite3_column_text(stmt, 1), "text") != 0 || nfields == CARD_MAX_KEYS) { bad = 1; break; }
+        fields[nfields++] = sqlite3_mprintf("%s", (const char *)sqlite3_column_text(stmt, 0));
+    }
+    sqlite3_finalize(stmt);
+    if (bad) goto done;
+
+    rc = -1;
+    const char *kind = posts ? "posts_tagged" : checkins ? "checkins_tagged" : tickets ? "tickets" : "threads_active_within";
+    const char *find_value = value ? (strcmp(value, "$viewer") == 0 ? viewer : value) : (tickets ? ttype : NULL);
+    const char *login = unanswered ? (strcmp(unanswered, "$viewer") == 0 ? viewer : unanswered) : NULL;
+    sqlite3_int64 seconds = within ? (sqlite3_int64)strtoll(within, NULL, 10) : 0;
+
+    if (card_exec(w, "CREATE TEMP TABLE item(j TEXT)", NULL, NULL, NULL, NULL) != 0) goto done;
+    for (int i = 0; i < repo_count; i++) {
+        char *repo_as_of = NULL;
+        char *rows = card_repo_rows(repo_paths[i], kind, posts ? posts : checkins, find_value, login,
+                                    seconds, now, fields, nfields, &repo_as_of);
+        if (rows == NULL) { sqlite3_free(repo_as_of); goto done; }
+        int ok = card_exec(w, "INSERT INTO item SELECT value FROM json_each(?1)", rows, NULL, NULL, NULL);
+        sqlite3_free(rows);
+        if (repo_as_of && (as_of == NULL || strcmp(repo_as_of, as_of) > 0)) {
+            sqlite3_free(as_of);
+            as_of = repo_as_of;
+        } else {
+            sqlite3_free(repo_as_of);
+        }
+        if (ok != 0) goto done;
+    }
+
+    const char *dir = strcmp(order, "newest") == 0 ? "DESC" : "ASC";
+    char *sel = sqlite3_mprintf("CREATE TEMP TABLE sel AS SELECT j FROM item ORDER BY "
+        "json_extract(j,'$.time') %s, json_extract(j,'$.hash') %s, json_extract(j,'$.project') %s "
+        "LIMIT max(%s, 0)", dir, dir, dir, limit);
+    int ok = card_exec(w, sel, NULL, NULL, NULL, NULL);
+    sqlite3_free(sel);
+    if (ok != 0) goto done;
+    char *count = card_value(w, "SELECT count(*) FROM item", NULL, NULL);
+    items = card_value(w, "SELECT json_group_array(json(x)) FROM (SELECT (SELECT json_group_object(key, value) "
+        "FROM json_each(s.j) WHERE key IN (SELECT value FROM json_each(?1)) OR key = 'project') AS x "
+        "FROM sel s ORDER BY s.rowid)", fields_json, NULL);
+    char *first = card_value(w, "SELECT j FROM sel ORDER BY rowid LIMIT 1", NULL, NULL);
+    if (count == NULL || items == NULL) { sqlite3_free(count); sqlite3_free(first); goto done; }
+
+    if (first == NULL) {
+        sentence = sqlite3_mprintf("%s", say_none);
+    } else {
+        /* {count}, {titles} joined by "; ", and {FIELD} of the first item,
+         * whose own keys win, as OCX merges them; anything else is left. */
+        sqlite3_str *s = sqlite3_str_new(NULL);
+        for (const char *p = say; *p; ) {
+            const char *q = p + 1;
+            if (*p == '{') while ((*q >= 'a' && *q <= 'z') || *q == '_') q++;
+            if (*p == '{' && q > p + 1 && *q == '}') {
+                char *key = sqlite3_mprintf("%.*s", (int)(q - p - 1), p + 1);
+                char *path = sqlite3_mprintf("$.\"%s\"", key);
+                char *v = card_value(w, "SELECT CASE WHEN json_type(?1, ?2) IS NOT NULL "
+                                        "THEN CAST(json_extract(?1, ?2) AS TEXT) END", first, path);
+                if (v == NULL && strcmp(key, "count") == 0) v = sqlite3_mprintf("%s", count);
+                if (v == NULL && strcmp(key, "titles") == 0)
+                    v = card_value(w, "SELECT coalesce(group_concat(t, '; '), '') FROM (SELECT "
+                                      "coalesce(json_extract(j,'$.title'),'') AS t FROM sel ORDER BY rowid)", NULL, NULL);
+                if (v) sqlite3_str_appendall(s, v);
+                else sqlite3_str_append(s, p, (int)(q - p + 1));
+                sqlite3_free(v);
+                sqlite3_free(path);
+                sqlite3_free(key);
+                p = q + 1;
+            } else {
+                sqlite3_str_append(s, p, 1);
+                p++;
+            }
+        }
+        sentence = sqlite3_str_finish(s);
+    }
+
+    sqlite3_stmt *o = NULL;
+    if (sentence && sqlite3_prepare_v2(w, "SELECT json_object('name', ?1, 'title', ?2, 'as_of', ?3, "
+            "'count', CAST(?4 AS INTEGER), 'say', ?5, 'items', json(?6))", -1, &o, NULL) == SQLITE_OK) {
+        sqlite3_bind_text(o, 1, name, -1, SQLITE_STATIC);
+        sqlite3_bind_text(o, 2, title, -1, SQLITE_STATIC);
+        if (as_of) sqlite3_bind_text(o, 3, as_of, -1, SQLITE_STATIC);
+        sqlite3_bind_text(o, 4, count, -1, SQLITE_STATIC);
+        sqlite3_bind_text(o, 5, sentence, -1, SQLITE_STATIC);
+        sqlite3_bind_text(o, 6, items, -1, SQLITE_STATIC);
+        if (sqlite3_step(o) == SQLITE_ROW) {
+            const char *text = (const char *)sqlite3_column_text(o, 0);
+            size_t len = strlen(text) + 1;
+            *out_json = (char *)malloc(len);
+            if (*out_json) { memcpy(*out_json, text, len); rc = 0; }
+        }
+    }
+    sqlite3_finalize(o);
+    sqlite3_free(count);
+    sqlite3_free(first);
+
+done:
+    for (int i = 0; i < nfields; i++) sqlite3_free(fields[i]);
+    sqlite3_free(title); sqlite3_free(fields_json); sqlite3_free(order); sqlite3_free(limit);
+    sqlite3_free(say); sqlite3_free(say_none); sqlite3_free(posts); sqlite3_free(checkins);
+    sqlite3_free(tickets); sqlite3_free(ttype); sqlite3_free(topen); sqlite3_free(within);
+    sqlite3_free(value); sqlite3_free(unanswered); sqlite3_free(as_of); sqlite3_free(items);
+    sqlite3_free(sentence);
+    sqlite3_close(w);
+    return rc;
+}

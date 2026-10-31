@@ -19,6 +19,9 @@
 #     twice more with the correct one.
 #   linux-ticket-cache-driver.c            ticket 11018cb484's stale
 #     per-process ticket-field cache across two repos with different schemas.
+#   linux-cards-driver.c                   stone_fossil_card() -- the
+#     console's cards -- against OCX's shared examples in
+#     scripts/card-examples, before and after `fossil rebuild`.
 #   linux-query-driver.c                   ticket f0c612c027's
 #     stone_fossil_query() -- MaintainerRequestScanner's read path -- against
 #     a real .fossil file, using Fossil's own bundled SQLite exclusively.
@@ -109,6 +112,8 @@ ${CC} ${COMMON} ${FOSSIL_OPTIONS} -c "${REPO_ROOT}/scripts/linux-query-driver.c"
 ${CC} -o "${WORK}/query-test" "${OBJ}/query-driver.o" "${WORK}/libfossil_linux.a" -lz -ldl -lpthread -lm
 ${CC} ${COMMON} ${FOSSIL_OPTIONS} -c "${REPO_ROOT}/scripts/linux-query-stress-driver.c" -o "${OBJ}/query-stress-driver.o"
 ${CC} -o "${WORK}/query-stress-test" "${OBJ}/query-stress-driver.o" "${WORK}/libfossil_linux.a" -lz -ldl -lpthread -lm
+${CC} ${COMMON} ${FOSSIL_OPTIONS} -c "${REPO_ROOT}/scripts/linux-cards-driver.c" -o "${OBJ}/cards-driver.o"
+${CC} -o "${WORK}/cards-test" "${OBJ}/cards-driver.o" "${WORK}/libfossil_linux.a" -lz -ldl -lpthread -lm
 
 echo "Running mechanism-level reproduction..."
 "${WORK}/crosslink-test" "${WORK}/run"
@@ -122,6 +127,23 @@ echo
 echo "Running stone_fossil_query reproduction (ticket f0c612c027)..."
 mkdir -p "${WORK}/run-query"
 "${WORK}/query-test" "${WORK}/run-query"
+
+echo
+echo "Running stone_fossil_card against OCX's card examples..."
+# Each example's build.sh uses `fossil` from PATH: the generated 2.26 CLI,
+# the version the app embeds. Answers must not change after a rebuild.
+# build.sh opens a checkout, which Fossil refuses inside this one, so the
+# examples are built outside it.
+CARDS_RUN="$(mktemp -d "${TMPDIR:-/tmp}/stone-cards-XXXXXX")"
+for example in "${REPO_ROOT}"/scripts/card-examples/*/; do
+  built="${CARDS_RUN}/$(basename "${example}")"
+  mkdir -p "${built}"
+  (export USER=stone PATH="${SRC}:${PATH}"; sh "${example}build.sh" "${built}")
+  "${WORK}/cards-test" "${example}" "${built}"
+  for repo in "${built}"/*.fossil; do "${SRC}/fossil" rebuild -R "${repo}" >/dev/null; done
+  "${WORK}/cards-test" "${example}" "${built}"
+done
+rm -rf "${CARDS_RUN}"
 
 echo
 echo "Running real-command (sync) reproduction..."

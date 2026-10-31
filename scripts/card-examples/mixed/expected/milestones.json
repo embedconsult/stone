@@ -1,0 +1,16 @@
+{
+  "name": "milestones",
+  "title": "Milestones",
+  "as_of": "2026-10-29T11:00:00Z",
+  "count": 1,
+  "say": "1 milestones: Demo",
+  "items": [
+    {
+      "title": "Demo",
+      "due": "2026-11-05",
+      "time": "2026-10-29T09:00:00Z",
+      "hash": "1111111111111111111111111111111111111111",
+      "project": "Beta"
+    }
+  ]
+}
