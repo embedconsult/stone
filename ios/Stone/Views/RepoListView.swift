@@ -12,8 +12,6 @@ struct RepoListView: View {
     @State private var repoToDelete: Repo?
     @State private var repoToEditRemote: Repo?
     @State private var syncResultRepo: Repo?
-    /// The clone holding the console page, if any (ConsoleBridge.consoleClone).
-    @State private var consoleRepo: Repo?
 
     var body: some View {
         List {
@@ -77,15 +75,8 @@ struct RepoListView: View {
             case .conversations: ConversationListView()
             case .repoConversations(let repoID): ConversationListView(repoID: repoID)
             case .conversation(let id): ConversationView(id: id)
-            case .console(let repoID):
-                if let repo = store.repos.first(where: { $0.id == repoID }) { ConsoleView(repo: repo) }
+            case .console: ConsoleView()
             }
-        }
-        // Looked for again when the repos change or a Sync All ends, which
-        // may have brought the page.
-        .task(id: "\(store.repos.map(\.id)) \(store.isSyncingAll)") {
-            let clones = store.repos.map { ($0, store.fileURL(for: $0).path) }
-            consoleRepo = await Task.detached { ConsoleBridge.consoleClone(clones) }.value
         }
         .refreshable {
             await store.syncAll()
@@ -95,13 +86,11 @@ struct RepoListView: View {
             ToolbarItem(placement: .topBarLeading) {
                 Button { showingSettings = true } label: { Image(systemName: "gearshape") }
             }
-            if let console = consoleRepo {
-                ToolbarItem(placement: .topBarLeading) {
-                    NavigationLink(value: AppRoute.console(console.id)) {
-                        Image(systemName: "square.grid.2x2")
-                    }
-                    .accessibilityLabel("Console")
+            ToolbarItem(placement: .topBarLeading) {
+                NavigationLink(value: AppRoute.console) {
+                    Image(systemName: "square.grid.2x2")
                 }
+                .accessibilityLabel("Console")
             }
             ToolbarItem(placement: .topBarLeading) {
                 NavigationLink(value: AppRoute.conversations) {
