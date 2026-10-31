@@ -100,11 +100,17 @@ struct RepoWebView: UIViewRepresentable {
     let controller: WebViewController
     var onURLChange: ((URL) -> Void)?
     var onLoadFailure: ((String) -> Void)?
+    /// Answers the console page's `tool()` calls; see ConsoleBridge.
+    var console: ConsoleBridge?
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.websiteDataStore = .nonPersistent() // localhost session only
         config.userContentController.addUserScript(.stoneWrapLongWords)
+        if let console {
+            console.port = baseURL.port
+            config.userContentController.addScriptMessageHandler(console, contentWorld: .page, name: "ocx")
+        }
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.allowsBackForwardNavigationGestures = true
         webView.navigationDelegate = context.coordinator
@@ -119,6 +125,7 @@ struct RepoWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ webView: WKWebView, context: Context) {
+        console?.port = baseURL.port
         // A self-healed server restart (FossilEngine.startServer(), see
         // ticket a7c72aba15) gets a fresh OS-assigned port -- the comment
         // this replaced ("the port is stable, nothing to refresh") was true
@@ -242,6 +249,9 @@ struct RepoDetailView: View {
     /// Owns the live WKWebView reference; see WebViewController's doc.
     @StateObject private var webController = WebViewController()
 
+    /// The console page's tools, when this clone serves it.
+    @StateObject private var console = ConsoleBridge()
+
     var body: some View {
         Group {
             if let url = baseURL {
@@ -263,8 +273,10 @@ struct RepoDetailView: View {
                             },
                             onLoadFailure: { message in
                                 Task { await handleLoadFailure(message) }
-                            })
+                            },
+                            console: console)
                     .ignoresSafeArea(edges: .bottom)
+                    .onAppear { attachConsole() }
             } else if let errorText {
                 ContentUnavailableView {
                     Label("Couldn't start Fossil", systemImage: "exclamationmark.triangle")
@@ -398,6 +410,22 @@ struct RepoDetailView: View {
         }
     }
 
+    /// Gives the console its clones, and opens a chosen record: in this
+    /// view when it's in this clone, else by pushing that clone's view.
+    private func attachConsole() {
+        console.store = store
+        console.repo = repo
+        console.open = { [repo, webController] target, path in
+            if target.id == repo.id {
+                guard let base = baseURL,
+                      let url = URL(string: String(path.dropFirst()), relativeTo: base)?.absoluteURL else { return }
+                webController.load(url)
+            } else {
+                DeepLinkRouter.shared.route(repoID: target.id, path: path)
+            }
+        }
+    }
+
     /// Ticket 0bbfd908e6: navigate the local WebView to an arbitrary path
     /// on this repo's own server (e.g. "/modreq") -- reached only via the
     /// hidden long-press menu on the Back button, never a visible control.
@@ -512,4 +540,193 @@ struct RepoDetailView: View {
         await rescanAfterSync(receivedCounts: [repo.id: received])
         if received > 0 { webController.reload() }
     }
+}
+
+/// The console, Stone's top-level greeting across every project: the page
+/// the web and Stone share, from the clone that holds it (the ollama one),
+/// shown through the loopback server and answered by ConsoleBridge. The
+/// server serves one clone at a time, so each time this screen appears it
+/// points the server back at the console's clone; a record chosen on the
+/// page pushes its own clone's view (RepoDetailView), as a notification does.
+struct ConsoleView: View {
+    let repo: Repo
+    @EnvironmentObject private var store: RepoStore
+    @StateObject private var webController = WebViewController()
+    @StateObject private var console = ConsoleBridge()
+    @State private var pageURL: URL?
+    @State private var errorText: String?
+
+    var body: some View {
+        Group {
+            if let pageURL {
+                RepoWebView(baseURL: pageURL, controller: webController,
+                            onLoadFailure: { errorText = $0 }, console: console)
+                    .ignoresSafeArea(edges: .bottom)
+            } else if let errorText {
+                ContentUnavailableView("Couldn't open the console", systemImage: "exclamationmark.triangle",
+                                       description: Text(errorText))
+            } else {
+                ProgressView("Opening the console…")
+            }
+        }
+        .navigationTitle("Console")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            console.store = store
+            console.repo = repo
+            console.open = { target, path in DeepLinkRouter.shared.route(repoID: target.id, path: path) }
+            Task { await start() }
+        }
+    }
+
+    private func start() async {
+        let path = store.fileURL(for: repo).path
+        await store.disableLocalauthSetting(at: path)
+        do {
+            let base = try await FossilEngine.shared.startServer(repoPath: path)
+            // Already showing the page on this port: retargeting the server
+            // is all a return to this screen needs.
+            if let pageURL, pageURL.port == base.port { return }
+            pageURL = await ConsoleBridge.pageURL(base)
+        } catch {
+            errorText = error.localizedDescription
+        }
+    }
+}
+
+/// The console page's tools, for the one page the web and Stone share
+/// (ollama `www/console/`; ollama wiki "Console plan", "One page for the web
+/// and Stone"). The page calls `tool(name, input)`, which in Stone is
+/// `webkit.messageHandlers.ocx.postMessage({tool, input})`. It resolves to
+/// the tool's answer as a JSON string, or `{"stopped": WHY}`, and never
+/// rejects. The page sends only the tool's own fields (`name`, `for`, `now`);
+/// Stone adds every clone on the phone as the repositories, and this clone,
+/// which serves the page, as the one holding the card/NAME definitions.
+/// Answers come from the C bridge (`stone_fossil_card`), which Linux checks
+/// against OCX's shared examples; this only routes.
+@MainActor
+final class ConsoleBridge: NSObject, ObservableObject, WKScriptMessageHandlerWithReply {
+    weak var store: RepoStore?
+    var repo: Repo?
+    /// The loopback server's port; messages from any other origin stop.
+    var port: Int?
+    var open: ((Repo, String) -> Void)?
+
+    /// The console page: `/doc/VERSION/www/console/...` on the loopback
+    /// server. Only it may call the tools.
+    nonisolated static func isConsolePage(_ url: URL?) -> Bool {
+        guard let url, url.host == "127.0.0.1" else { return false }
+        let parts = url.path.split(separator: "/", omittingEmptySubsequences: false)
+        return parts.count >= 6 && parts[0].isEmpty && parts[1] == "doc" && !parts[2].isEmpty
+            && parts[3] == "www" && parts[4] == "console"
+    }
+
+    /// The branches the page may be on, in order: trunk once OCX merges
+    /// it, agent-tools until then (ocx2, 2026-10-31).
+    nonisolated static let versions = ["trunk", "agent-tools"]
+
+    /// The clone holding the console: it has the page and card/ pages.
+    nonisolated static func consoleClone(_ clones: [(Repo, String)]) -> Repo? {
+        clones.first { _, path in
+            !FossilQuery.rows(path, "SELECT 1 FROM filename WHERE name = 'www/console/index.html'").isEmpty
+                && !FossilQuery.rows(path, "SELECT 1 FROM tag WHERE tagname GLOB 'wiki-card/*' LIMIT 1").isEmpty
+        }?.0
+    }
+
+    /// The page on the first version whose copy the server finds.
+    nonisolated static func pageURL(_ base: URL) async -> URL {
+        let urls = versions.compactMap { URL(string: "doc/\($0)/www/console/index.html", relativeTo: base)?.absoluteURL }
+        for url in urls {
+            var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalAndRemoteCacheData)
+            request.httpMethod = "HEAD"
+            if let (_, response) = try? await URLSession.shared.data(for: request),
+               (response as? HTTPURLResponse)?.statusCode == 200 { return url }
+        }
+        return urls.last ?? base
+    }
+
+    nonisolated static func stopped(_ why: String) -> String {
+        json(["stopped": why]) ?? "{\"stopped\": \"stopped\"}"
+    }
+
+    nonisolated static func json(_ object: Any) -> String? {
+        guard let data = try? JSONSerialization.data(withJSONObject: object) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    func userContentController(_ userContentController: WKUserContentController,
+                               didReceive message: WKScriptMessage,
+                               replyHandler: @escaping (Any?, String?) -> Void) {
+        let url = message.frameInfo.request.url
+        guard message.frameInfo.isMainFrame, Self.isConsolePage(url), url?.port == port else {
+            replyHandler(Self.stopped("not the console page"), nil)
+            return
+        }
+        guard let body = message.body as? [String: Any], let tool = body["tool"] as? String else {
+            replyHandler(Self.stopped("no tool named"), nil)
+            return
+        }
+        let input = body["input"] as? [String: Any] ?? [:]
+        Task { replyHandler(await answer(tool, input), nil) }
+    }
+
+    private func answer(_ tool: String, _ input: [String: Any]) async -> String {
+        guard let store, let repo else { return Self.stopped("Stone isn't ready") }
+        let definitions = store.fileURL(for: repo).path
+        let clones = store.repos.map { ($0, store.fileURL(for: $0).path) }
+        let login = input["for"] as? String
+            ?? RepoStore.splitRemoteURL(repo.remoteURL ?? "").username.nonEmpty ?? "nobody"
+        let now = input["now"] as? String ?? ISO8601DateFormatter().string(from: Date())
+        switch tool {
+        case "card":
+            guard let name = input["name"] as? String else { return Self.stopped("card needs a name") }
+            return await card(name, clones.map(\.1), definitions, login, now)
+        case "cards":
+            let names = FossilQuery.rows(definitions,
+                "SELECT substr(tagname, 11) FROM tag WHERE tagname GLOB 'wiki-card/*' ORDER BY tagname")
+                .compactMap(\.first)
+            var cards: [[String: Any]] = []
+            for name in names {
+                let text = await card(name, clones.map(\.1), definitions, login, now)
+                guard let data = text.data(using: .utf8),
+                      let found = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+                if found["stopped"] != nil { return text }
+                cards.append(["name": found["name"] ?? name, "title": found["title"] ?? "",
+                              "count": found["count"] ?? 0, "say": found["say"] ?? ""])
+            }
+            return Self.json(["cards": cards]) ?? Self.stopped("couldn't write the cards")
+        case "open":
+            guard let project = input["project"] as? String,
+                  let hash = input["hash"] as? String, !hash.isEmpty, hash.allSatisfy(\.isHexDigit) else {
+                return Self.stopped("open needs a project and a hash")
+            }
+            guard let target = clones.first(where: { _, path in
+                FossilQuery.rows(path, "SELECT value FROM config WHERE name='project-name'").first?.first == project
+            })?.0 else {
+                return Self.stopped("no clone of \(project) on this phone")
+            }
+            open?(target, "/info/\(hash.lowercased())")
+            return "{}"
+        default:
+            return Self.stopped("Stone has no tool \(tool) yet")
+        }
+    }
+
+    /// card/NAME read from the clone serving the page, then answered.
+    private func card(_ name: String, _ repos: [String], _ definitions: String,
+                      _ login: String, _ now: String) async -> String {
+        guard !name.isEmpty, name.allSatisfy({ $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }) else {
+            return Self.stopped("no card named \(name)")
+        }
+        let page = await FossilEngine.shared.run(["wiki", "export", "card/\(name)", "-R", definitions])
+        guard page.succeeded, !page.output.isEmpty else { return Self.stopped("no card/\(name) page") }
+        let answer = await Task.detached {
+            FossilQuery.card(repos, name: name, definition: page.output, viewer: login, now: now)
+        }.value
+        return answer ?? Self.stopped("card/\(name) isn't a card this Stone can answer")
+    }
+}
+
+private extension String {
+    var nonEmpty: String? { isEmpty ? nil : self }
 }
