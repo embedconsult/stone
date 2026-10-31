@@ -71,10 +71,27 @@ FOSSIL_INC="${IOS_DIR}/FossilBridge"
 if [[ -n "${IOS_SDK_PATH:-}" && -d "${IOS_SDK_PATH}/usr/include" ]]; then
   echo "Mode:     full type-check  (iOS SDK at ${IOS_SDK_PATH})"
   echo ""
+  # A Linux toolchain's resource directory holds Linux modules of its own,
+  # CoreFoundation among them, which shadow the SDK's: Foundation's headers
+  # then never see `@class NSError` and fail to import. So point Swift at a
+  # resource directory holding only what a Darwin target needs (shims,
+  # clang, apinotes), and turn on cross-import overlays (PhotosPicker comes
+  # through one), which only a Darwin host enables by default. Found
+  # 2026-10-31 with Swift 6.3.3 (amazonlinux2, under proot) and
+  # iPhoneOS26.5.sdk.
+  TOOLCHAIN_RES="$(cd "$(dirname "$(command -v swiftc)")/../lib/swift" && pwd)"
+  EXTRA=()
+  if [[ -d "${TOOLCHAIN_RES}/linux" ]]; then
+    DARWIN_RES="$(mktemp -d "${TMPDIR:-/tmp}/swift-darwin-res-XXXXXX")"
+    trap 'rm -rf "${DARWIN_RES}"' EXIT
+    for d in shims clang apinotes; do ln -s "${TOOLCHAIN_RES}/${d}" "${DARWIN_RES}/${d}"; done
+    EXTRA=(-resource-dir "${DARWIN_RES}" -I "${DARWIN_RES}/shims" -Xfrontend -enable-cross-import-overlays)
+  fi
   swiftc \
     -typecheck \
     -target arm64-apple-ios17.0 \
     -sdk "${IOS_SDK_PATH}" \
+    "${EXTRA[@]}" \
     -import-objc-header "${BRIDGING_HEADER}" \
     -I "${FOSSIL_INC}" \
     "${SWIFT_SOURCES[@]}"
