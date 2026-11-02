@@ -60,6 +60,16 @@ if [[ -f "${PATCH}" ]]; then
   # STONE marker the patch introduces is an unambiguous signal.
   if grep -q "STONE:" src/cgi.c; then
     echo "In-process serving patch already applied; skipping."
+  elif [[ "$(patch --help 2>&1 || true)" == *BusyBox* ]]; then
+    # BusyBox patch refuses hunks GNU patch and git apply take ("Possibly
+    # reversed hunk"), leaving a half-patched tree. GIT_CEILING_DIRECTORIES:
+    # inside a git work tree, git apply would silently skip these paths.
+    if GIT_CEILING_DIRECTORIES="$(dirname "$(pwd)")" git apply -p1 "${PATCH}"; then
+      echo "Applied in-process serving patch (git apply: BusyBox patch can't)."
+    else
+      echo "ERROR: scripts/fossil-inprocess.patch does not apply cleanly." >&2
+      exit 1
+    fi
   elif patch -p1 --forward <"${PATCH}"; then
     echo "Applied in-process serving patch."
   else

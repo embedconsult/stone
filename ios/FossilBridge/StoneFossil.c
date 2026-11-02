@@ -560,19 +560,26 @@ static int query_buf_append(char **bufp, size_t *lenp, size_t *capp,
     return 0;
 }
 
-int stone_fossil_query(const char *repo_path, const char *sql, char **out_text) {
-    if (repo_path == NULL || sql == NULL || out_text == NULL) return -1;
-    *out_text = NULL;
+/* Provided by the patched Fossil core (src/main.c; scripts/fossil-inprocess.patch):
+ * set on a thread whose SQLite errors must not go through Fossil's logger. */
+extern __thread int stoneLogMuted;
 
+/* How long a read waits for a sync's write to finish before giving up. A
+ * write's COMMIT holds the file exclusively, briefly; with no wait, a read
+ * landing in it failed at once and read as "nothing here". */
+#define STONE_QUERY_BUSY_MS 2000
+
+static int query_read(const char *repo_path, const char *sql, char **out_text) {
     sqlite3 *db = NULL;
     /* Read-only + no-mutex, same reasoning as the caller this replaces: this
-     * must never block on, or contend with, a write lock the embedded
-     * Fossil engine or an in-flight sync might be holding. */
+     * takes no write lock of its own, and waits a bounded time for one the
+     * embedded Fossil engine or an in-flight sync is holding. */
     int flags = SQLITE_OPEN_READONLY | SQLITE_OPEN_NOMUTEX;
     if (sqlite3_open_v2(repo_path, &db, flags, NULL) != SQLITE_OK || db == NULL) {
         if (db) sqlite3_close(db);
         return -1;
     }
+    sqlite3_busy_timeout(db, STONE_QUERY_BUSY_MS);
 
     sqlite3_stmt *stmt = NULL;
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) != SQLITE_OK || stmt == NULL) {
@@ -622,4 +629,17 @@ int stone_fossil_query(const char *repo_path, const char *sql, char **out_text) 
 
     *out_text = buf;
     return 0;
+}
+
+int stone_fossil_query(const char *repo_path, const char *sql, char **out_text) {
+    if (repo_path == NULL || sql == NULL || out_text == NULL) return -1;
+    *out_text = NULL;
+    /* SQLite's log callback is process-wide: this read's errors would go into
+     * a concurrent sync's output, from this thread, and read as the sync
+     * failing (SQLITE_BUSY "in PRAGMA table_info(ticketchng)", "SQL: COMMIT"
+     * on the phone, 2026-11-02). They come back to the caller as -1 instead. */
+    stoneLogMuted = 1;
+    int rc = query_read(repo_path, sql, out_text);
+    stoneLogMuted = 0;
+    return rc;
 }
