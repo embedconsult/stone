@@ -30,7 +30,7 @@ enum FossilQuery {
     /// over `repos`; nil when the definition isn't a card or a repository
     /// can't be read. The meaning is all in the bridge, which Linux checks
     /// against OCX's shared examples (scripts/linux-cards-driver.c).
-    static func card(_ repos: [String], name: String, definition: String,
+    static func card(_ repos: [String], project: String, name: String, definition: String,
                      viewer: String, now: String) -> String? {
         guard !repos.isEmpty else { return nil }
         let cStrings: [UnsafeMutablePointer<CChar>?] = repos.map { strdup($0) }
@@ -38,7 +38,7 @@ enum FossilQuery {
         var outPtr: UnsafeMutablePointer<CChar>?
         let rc = cStrings.withUnsafeBufferPointer { buf -> Int32 in
             let base = UnsafeRawPointer(buf.baseAddress!).assumingMemoryBound(to: UnsafePointer<CChar>?.self)
-            return stone_fossil_card(base, Int32(repos.count), name, definition, viewer, now, &outPtr)
+            return stone_fossil_card(base, Int32(repos.count), project, name, definition, viewer, now, &outPtr)
         }
         defer { if let outPtr { free(outPtr) } }
         guard rc == 0, let outPtr else { return nil }

@@ -1,11 +1,12 @@
 /*
  * linux-cards-driver.c -- checks stone_fossil_card() against OCX's shared
- * card examples (scripts/card-examples, from ollama d1fe484f2d), so Stone and
- * OCX give each card the same answer. For each expected/NAME.json in the
- * example directory:
+ * card examples (scripts/card-examples, from ollama trunk), so Stone and
+ * OCX give each card the same answer. For each expected/PROJECT.NAME.json in
+ * the example directory:
  *
- *   1. read the definition from the wiki page card/NAME in a.fossil, through
- *      the embedded Fossil (`wiki export`), as the phone reads it;
+ *   1. read the definition from the wiki page card/NAME in the repository
+ *      whose project-name is PROJECT, through the embedded Fossil
+ *      (`wiki export`), as the phone reads it;
  *   2. answer it from every .fossil in the built directory, for login stone,
  *      at the time in now.txt;
  *   3. compare the answer with the expected JSON, parsed: every key, value
@@ -24,6 +25,25 @@
 #include <string.h>
 
 static int failures = 0;
+
+/* The repository whose project-name is `project`, or NULL. */
+static const char *repo_of(const char *project, const char *const repos[], int nrepos) {
+    for (int i = 0; i < nrepos; i++) {
+        sqlite3 *r = NULL;
+        sqlite3_stmt *st = NULL;
+        int found = 0;
+        if (sqlite3_open_v2(repos[i], &r, SQLITE_OPEN_READONLY, NULL) == SQLITE_OK
+            && sqlite3_prepare_v2(r, "SELECT 1 FROM config WHERE name='project-name' AND value=?1",
+                                  -1, &st, NULL) == SQLITE_OK) {
+            sqlite3_bind_text(st, 1, project, -1, SQLITE_STATIC);
+            found = sqlite3_step(st) == SQLITE_ROW;
+        }
+        sqlite3_finalize(st);
+        sqlite3_close(r);
+        if (found) return repos[i];
+    }
+    return NULL;
+}
 
 static char *read_file(const char *path) {
     FILE *f = fopen(path, "rb");
@@ -97,8 +117,6 @@ int main(int argc, char **argv) {
         sprintf(p, "%s/%s", argv[2], repos[i]);
         repo_paths[i] = p;
     }
-    char definitions[4096];
-    snprintf(definitions, sizeof definitions, "%s/a.fossil", argv[2]);
     snprintf(path, sizeof path, "%s/expected", argv[1]);
     int ncards = list(path, ".json", names, 64);
     if (ncards == 0 || nrepos == 0) { fprintf(stderr, "nothing to check\n"); return 2; }
@@ -107,14 +125,28 @@ int main(int argc, char **argv) {
     sqlite3_open(":memory:", &db);
 
     for (int i = 0; i < ncards; i++) {
-        char name[256];
-        snprintf(name, sizeof name, "%.*s", (int)(strlen(names[i]) - 5), names[i]);
+        /* PROJECT.NAME.json, as OCX's spec names them */
+        char project[256], name[256];
+        const char *dot = strchr(names[i], '.');
+        if (dot == NULL || strlen(dot) <= 5) {
+            printf("FAIL %s: not PROJECT.NAME.json\n", names[i]);
+            failures++;
+            continue;
+        }
+        snprintf(project, sizeof project, "%.*s", (int)(dot - names[i]), names[i]);
+        snprintf(name, sizeof name, "%.*s", (int)(strlen(dot + 1) - 5), dot + 1);
+        const char *definitions = repo_of(project, repo_paths, nrepos);
+        if (definitions == NULL) {
+            printf("FAIL %s: no repository with project-name %s\n", names[i], project);
+            failures++;
+            continue;
+        }
         char page[300];
         snprintf(page, sizeof page, "card/%s", name);
         const char *args[] = {"wiki", "export", page, "-R", definitions};
         char *definition = NULL;
         if (stone_fossil_run(5, args, &definition) != 0 || definition == NULL) {
-            printf("FAIL %s: couldn't read %s\n", name, page);
+            printf("FAIL %s: couldn't read %s\n", names[i], page);
             failures++;
             free(definition);
             continue;
@@ -122,17 +154,17 @@ int main(int argc, char **argv) {
         snprintf(path, sizeof path, "%s/expected/%s", argv[1], names[i]);
         char *expected = read_file(path);
         char *answer = NULL;
-        int rc = stone_fossil_card(repo_paths, nrepos, name, definition, "stone", now, &answer);
+        int rc = stone_fossil_card(repo_paths, nrepos, project, name, definition, "stone", now, &answer);
         if (rc != 0 || answer == NULL || expected == NULL) {
-            printf("FAIL %s: stone_fossil_card returned %d\n", name, rc);
+            printf("FAIL %s: stone_fossil_card returned %d\n", names[i], rc);
             failures++;
         } else {
             int n = differences(db, answer, expected, "got") + differences(db, expected, answer, "expected");
             if (n) {
-                printf("FAIL %s: %d differences\n    answer: %s\n", name, n, answer);
+                printf("FAIL %s: %d differences\n    answer: %s\n", names[i], n, answer);
                 failures++;
             } else {
-                printf("ok %s: %s\n", name, answer);
+                printf("ok %s: %s\n", names[i], answer);
             }
         }
         free(answer);
@@ -148,7 +180,7 @@ int main(int argc, char **argv) {
     };
     for (int i = 0; i < 2; i++) {
         char *answer = NULL;
-        int rc = stone_fossil_card(repo_paths, nrepos, "bad", refused[i], "stone", now, &answer);
+        int rc = stone_fossil_card(repo_paths, nrepos, "Alpha", "bad", refused[i], "stone", now, &answer);
         if (rc != -2) {
             printf("FAIL refused %d: returned %d\n", i, rc);
             failures++;

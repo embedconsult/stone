@@ -685,8 +685,9 @@ final class ConsoleBridge: NSObject, ObservableObject, WKScriptMessageHandlerWit
         let remoteLogin = RepoStore.splitRemoteURL(home.repo.remoteURL ?? "").username
         let viewer = login ?? (remoteLogin.isEmpty ? "nobody" : remoteLogin)
         let repos = clones.map(\.path)
+        let project = home.project
         let answer = await Task.detached {
-            FossilQuery.card(repos, name: name, definition: page.output, viewer: viewer, now: now)
+            FossilQuery.card(repos, project: project, name: name, definition: page.output, viewer: viewer, now: now)
         }.value
         return answer ?? Self.stopped("card/\(name) isn't a card this Stone can answer")
     }

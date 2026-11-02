@@ -1,5 +1,7 @@
 #!/bin/sh
 set -eu
+# Fossil names a new repository's user from USER, which a root shell may leave unset
+export USER=agent
 out=$1
 source_dir=${0%/*}
 
@@ -91,5 +93,8 @@ for card in "$source_dir"/cards/*.json; do
   case $card in *.schema.json) continue ;; esac
   name=${card##*/}
   name=${name%.json}
-  fossil wiki create "card/$name" "$card" -R "$out/a.fossil" --mimetype plain >/dev/null
+  case $name in needs|milestones) project=b ;; *) project=a ;; esac
+  fossil wiki create "card/$name" "$card" -R "$out/$project.fossil" --mimetype plain >/dev/null
 done
+
+fossil wiki create card/active "$source_dir/cards/beta/active.json" -R "$out/b.fossil" --mimetype plain >/dev/null

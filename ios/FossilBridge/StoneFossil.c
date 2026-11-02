@@ -857,11 +857,11 @@ static char *card_value(sqlite3 *w, const char *sql, const char *a, const char *
     return out;
 }
 
-int stone_fossil_card(const char *const repo_paths[], int repo_count, const char *name,
-                      const char *definition_json, const char *viewer, const char *now,
-                      char **out_json) {
-    if (repo_paths == NULL || repo_count < 0 || name == NULL || definition_json == NULL
-        || viewer == NULL || now == NULL || out_json == NULL) return -1;
+int stone_fossil_card(const char *const repo_paths[], int repo_count, const char *project,
+                      const char *name, const char *definition_json, const char *viewer,
+                      const char *now, char **out_json) {
+    if (repo_paths == NULL || repo_count < 0 || project == NULL || name == NULL
+        || definition_json == NULL || viewer == NULL || now == NULL || out_json == NULL) return -1;
     *out_json = NULL;
 
     sqlite3 *w = NULL;
@@ -975,7 +975,7 @@ int stone_fossil_card(const char *const repo_paths[], int repo_count, const char
     }
 
     sqlite3_stmt *o = NULL;
-    if (sentence && sqlite3_prepare_v2(w, "SELECT json_object('name', ?1, 'title', ?2, 'as_of', ?3, "
+    if (sentence && sqlite3_prepare_v2(w, "SELECT json_object('project', ?7, 'name', ?1, 'title', ?2, 'as_of', ?3, "
             "'count', CAST(?4 AS INTEGER), 'say', ?5, 'items', json(?6))", -1, &o, NULL) == SQLITE_OK) {
         sqlite3_bind_text(o, 1, name, -1, SQLITE_STATIC);
         sqlite3_bind_text(o, 2, title, -1, SQLITE_STATIC);
@@ -983,6 +983,7 @@ int stone_fossil_card(const char *const repo_paths[], int repo_count, const char
         sqlite3_bind_text(o, 4, count, -1, SQLITE_STATIC);
         sqlite3_bind_text(o, 5, sentence, -1, SQLITE_STATIC);
         sqlite3_bind_text(o, 6, items, -1, SQLITE_STATIC);
+        sqlite3_bind_text(o, 7, project, -1, SQLITE_STATIC);
         if (sqlite3_step(o) == SQLITE_ROW) {
             const char *text = (const char *)sqlite3_column_text(o, 0);
             size_t len = strlen(text) + 1;
