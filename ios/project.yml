@@ -30,6 +30,13 @@ targets:
     platform: iOS
     sources:
       - path: Stone
+        excludes:
+          - "Console"
+      # The console page (ConsoleView), copied whole as one folder, so a
+      # file added to it needs no project change.
+      - path: Stone/Console
+        type: folder
+        buildPhase: resources
       - path: FossilBridge
         # Only the public header is needed by Swift; the .c is already compiled
         # into FossilCore.xcframework. Exclude the .c to avoid double-building.

@@ -1,0 +1,20 @@
+{
+  "title": "Milestones",
+  "find": {
+    "tickets": {
+      "type": "milestone",
+      "open": true
+    }
+  },
+  "fields": [
+    "title",
+    "due",
+    "time",
+    "hash",
+    "project"
+  ],
+  "order": "oldest",
+  "limit": 10,
+  "say": "{count} milestones: {titles}",
+  "say_none": "No milestones."
+}

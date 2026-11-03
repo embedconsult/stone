@@ -14,6 +14,7 @@ struct ConversationView: View {
 
     @EnvironmentObject private var store: RepoStore
     @ObservedObject private var conversations = ConversationStore.shared
+    @ObservedObject private var progress = RunProgress.shared
     @State private var title = ""
     @State private var posts: [ConversationPost] = []
     @State private var loaded = false
@@ -165,6 +166,11 @@ struct ConversationView: View {
     /// agent is actually working, idle or stopped is only known to OCX on
     /// the server.
     private var waitingLine: String? {
+        // A run on this thread is working: its newest progress line, live
+        // from the server's chat, until the thread's next post.
+        if let line = progress.newest(among: posts.map(\.hash), after: posts.last?.date ?? .distantPast) {
+            return "Working: \(line.text)"
+        }
         guard let last = posts.last, ConversationBook.isOwn(last, login: login) else { return nil }
         let other = posts.last { !ConversationBook.isOwn($0, login: login) }?.author ?? "a reply"
         let since = last.date.formatted(.dateTime.hour().minute())

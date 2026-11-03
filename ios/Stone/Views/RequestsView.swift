@@ -11,6 +11,8 @@ enum AppRoute: Hashable {
     /// One repo's conversations (the repo screen's speech-bubbles button).
     case repoConversations(UUID)
     case conversation(ConversationID)
+    /// The console (ConsoleView).
+    case console
 }
 
 /// The screen behind the notifications (ticket 4c75227cc7): one row per

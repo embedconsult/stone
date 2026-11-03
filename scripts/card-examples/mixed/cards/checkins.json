@@ -1,0 +1,17 @@
+{
+  "title": "Check-ins",
+  "find": {
+    "checkins_tagged": "milestone"
+  },
+  "fields": [
+    "title",
+    "user",
+    "time",
+    "hash",
+    "project"
+  ],
+  "order": "oldest",
+  "limit": 10,
+  "say": "{count} check-ins: {titles}",
+  "say_none": "No check-ins."
+}

@@ -197,3 +197,31 @@ final class ConversationTests: XCTestCase {
         ConversationPost(hash: hash, author: author, mtime: mtime, body: nil, mimetype: "", inReplyTo: nil)
     }
 }
+
+/// A run's progress lines in chat (ocx2, 2026-10-31): "[run HASH10] TEXT".
+final class RunProgressLineTests: XCTestCase {
+    func testParsesALine() {
+        let line = RunProgressLine.parse("[run 69aad19e93] Read RepoWebView.swift", mtime: "2026-10-31T12:00:00Z")
+        XCTAssertEqual(line?.run, "69aad19e93")
+        XCTAssertEqual(line?.text, "Read RepoWebView.swift")
+        XCTAssertEqual(line?.date, ISO8601DateFormatter().date(from: "2026-10-31T12:00:00Z"))
+    }
+
+    func testRefusesOtherChat() {
+        for text in ["hello", "[run 69aad19e9] short hash", "[run 69AAD19E93] upper", "[run 69aad19e93]no space",
+                     "[run 69aad19e93] ", "[swk-ai 69aad19e93] other bracket"] {
+            XCTAssertNil(RunProgressLine.parse(text, mtime: "2026-10-31T12:00:00Z"), text)
+        }
+    }
+
+    func testProgressRowsDoNotCountAsNews() throws {
+        let json = """
+        {"msgs":[{"msgid":7,"mtime":"2026-10-31T12:00:00Z","xfrom":"stone-node","xmsg":"[run 69aad19e93] Read a file"},
+                 {"msgid":8,"mtime":"2026-10-31T12:00:02Z","xfrom":"TIMELINE","xmsg":"Forum post"}]}
+        """
+        let answer = try XCTUnwrap(ChatPollAnswer.parse(Data(json.utf8)))
+        XCTAssertEqual(answer.lastID, 8)
+        XCTAssertEqual(answer.rows, 1)
+        XCTAssertEqual(answer.progress.map(\.run), ["69aad19e93"])
+    }
+}

@@ -1,0 +1,19 @@
+{
+  "title": "Needs you",
+  "find": {
+    "posts_tagged": "asks",
+    "value": "$viewer",
+    "unanswered_by": "$viewer"
+  },
+  "fields": [
+    "title",
+    "user",
+    "time",
+    "hash",
+    "project"
+  ],
+  "order": "newest",
+  "limit": 10,
+  "say": "{count} need you: {titles}",
+  "say_none": "Nothing needs you."
+}
