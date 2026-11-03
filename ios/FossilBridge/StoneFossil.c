@@ -744,6 +744,8 @@ static char *card_repo_rows(const char *repo_path, const char *kind, const char 
         if (db) sqlite3_close(db);
         return NULL;
     }
+    /* Wait out a sync's COMMIT, as query_read does. */
+    sqlite3_busy_timeout(db, STONE_QUERY_BUSY_MS);
     char *out = NULL;
     card_map source = {0};
     char *columns[CARD_MAX_KEYS];
@@ -757,12 +759,23 @@ static char *card_repo_rows(const char *repo_path, const char *kind, const char 
 
     sqlite3_stmt *stmt = NULL;
     char *sql = sqlite3_mprintf("SELECT name FROM pragma_table_info(%Q)", table);
+    /* A missing table has no rows here; a locked file is an error, and must
+     * not read as "no items". */
+    int step = SQLITE_ERROR;
     if (sqlite3_prepare_v2(db, sql, -1, &stmt, NULL) == SQLITE_OK) {
-        while (sqlite3_step(stmt) == SQLITE_ROW && ncolumns < CARD_MAX_KEYS)
+        while ((step = sqlite3_step(stmt)) == SQLITE_ROW && ncolumns < CARD_MAX_KEYS)
             columns[ncolumns++] = sqlite3_mprintf("%s", (const char *)sqlite3_column_text(stmt, 0));
     }
     sqlite3_finalize(stmt);
     sqlite3_free(sql);
+    if (step != SQLITE_DONE && step != SQLITE_ROW) {
+        sqlite3_free(project);
+        for (int i = 0; i < ncolumns; i++) sqlite3_free(columns[i]);
+        sqlite3_close(db);
+        sqlite3_free(*as_of);
+        *as_of = NULL;
+        return NULL;
+    }
 
     int none = ncolumns == 0;
     if (!none && strcmp(kind, "tickets") == 0) {
@@ -877,9 +890,24 @@ static char *card_value(sqlite3 *w, const char *sql, const char *a, const char *
     return out;
 }
 
+static int card_answer(const char *const repo_paths[], int repo_count, const char *project,
+                       const char *name, const char *definition_json, const char *viewer,
+                       const char *now, char **out_json);
+
 int stone_fossil_card(const char *const repo_paths[], int repo_count, const char *project,
                       const char *name, const char *definition_json, const char *viewer,
                       const char *now, char **out_json) {
+    /* As in stone_fossil_query: a card's read errors go to its caller, never
+     * through Fossil's logger into a concurrent sync's output. */
+    stoneLogMuted = 1;
+    int rc = card_answer(repo_paths, repo_count, project, name, definition_json, viewer, now, out_json);
+    stoneLogMuted = 0;
+    return rc;
+}
+
+static int card_answer(const char *const repo_paths[], int repo_count, const char *project,
+                       const char *name, const char *definition_json, const char *viewer,
+                       const char *now, char **out_json) {
     if (repo_paths == NULL || repo_count < 0 || project == NULL || name == NULL
         || definition_json == NULL || viewer == NULL || now == NULL || out_json == NULL) return -1;
     *out_json = NULL;
