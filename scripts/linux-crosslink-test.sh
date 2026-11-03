@@ -196,7 +196,7 @@ echo "PASS: concurrent queries and Fossil runs, no crash."
 
 # Queries while Fossil writes: a read landing in a COMMIT failed at once, and its
 # error went into the writing command's output, where it read as a failed sync.
-echo "Concurrency: stone_fossil_query on 4 threads alongside Fossil writing for 5 s..."
+echo "Concurrency: stone_fossil_query and stone_fossil_card on 4 threads alongside Fossil writing for 5 s..."
 cp "${SERVER_REPO}" "${WORK}/query-lock.fossil"
 "${WORK}/query-lock-test" "${WORK}/query-lock.fossil" 5
 echo "PASS: reads wait out a write, and no read's error reaches the writer's output."
