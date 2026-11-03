@@ -114,7 +114,26 @@ loudly if it no longer applies cleanly.
 
 --- a/src/main.c
 +++ b/src/main.c
-@@ -735,9 +735,28 @@
+@@ -604,10 +604,18 @@
+   return zCode;
+ }
+ 
++/* STONE: SQLite's log callback is process-wide, but this logger writes to the
++** running command's output and walks its statements. Stone sets this on a
++** thread running a read of its own (stone_fossil_query), whose failure goes to
++** its caller: otherwise it lands in a concurrent sync's output, from the wrong
++** thread, and reads as that sync failing. */
++__thread int stoneLogMuted = 0;
++
+ /* Error logs from SQLite */
+ static void fossil_sqlite_log(void *notUsed, int iCode, const char *zErrmsg){
+   sqlite3_stmt *p;
+   Blob msg;
++  if( stoneLogMuted ) return; /* STONE: see above */
+ #ifdef __APPLE__
+   /* Disable the file alias warning on apple products because Time Machine
+   ** creates lots of aliases and the warnings alarm people. */
+@@ -735,9 +743,28 @@
                   sqlite3_libversion());
    }
  

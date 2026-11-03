@@ -109,6 +109,8 @@ ${CC} ${COMMON} ${FOSSIL_OPTIONS} -c "${REPO_ROOT}/scripts/linux-query-driver.c"
 ${CC} -o "${WORK}/query-test" "${OBJ}/query-driver.o" "${WORK}/libfossil_linux.a" -lz -ldl -lpthread -lm
 ${CC} ${COMMON} ${FOSSIL_OPTIONS} -c "${REPO_ROOT}/scripts/linux-query-stress-driver.c" -o "${OBJ}/query-stress-driver.o"
 ${CC} -o "${WORK}/query-stress-test" "${OBJ}/query-stress-driver.o" "${WORK}/libfossil_linux.a" -lz -ldl -lpthread -lm
+${CC} ${COMMON} ${FOSSIL_OPTIONS} -c "${REPO_ROOT}/scripts/linux-query-lock-driver.c" -o "${OBJ}/query-lock-driver.o"
+${CC} -o "${WORK}/query-lock-test" "${OBJ}/query-lock-driver.o" "${WORK}/libfossil_linux.a" -lz -ldl -lpthread -lm
 
 echo "Running mechanism-level reproduction..."
 "${WORK}/crosslink-test" "${WORK}/run"
@@ -168,3 +170,10 @@ trap - EXIT
 echo "Concurrency: stone_fossil_query on 4 threads alongside Fossil for 5 s..."
 "${WORK}/query-stress-test" "${SERVER_REPO}" 5
 echo "PASS: concurrent queries and Fossil runs, no crash."
+
+# Queries while Fossil writes: a read landing in a COMMIT failed at once, and its
+# error went into the writing command's output, where it read as a failed sync.
+echo "Concurrency: stone_fossil_query on 4 threads alongside Fossil writing for 5 s..."
+cp "${SERVER_REPO}" "${WORK}/query-lock.fossil"
+"${WORK}/query-lock-test" "${WORK}/query-lock.fossil" 5
+echo "PASS: reads wait out a write, and no read's error reaches the writer's output."
