@@ -51,6 +51,7 @@ struct ConversationView: View {
     /// True while this screen's own sync (after Send, or the watch loop)
     /// runs, so the two never overlap.
     @State private var syncing = false
+    @ObservedObject private var network = NetworkStatus.shared
     @FocusState private var composerFocused: Bool
     @StateObject private var keyboard = KeyboardInset()
 
@@ -128,6 +129,9 @@ struct ConversationView: View {
             ToolbarItem(placement: .principal) {
                 VStack(spacing: 1) {
                     Text(title).font(.headline).lineLimit(1)
+                    if !network.online {
+                        OfflineLabel().font(.caption2).foregroundStyle(.secondary)
+                    }
                     if let agentStatus {
                         HStack(spacing: 4) {
                             Circle()
@@ -315,6 +319,9 @@ struct ConversationView: View {
                 reason = error.localizedDescription
             }
             sendStatus = "Saved on this phone; it will go out with the next sync. (\(reason))"
+            if case .offline? = error as? RepoStore.StoreError {
+                sendStatus = "Offline. Saved on this phone; it goes out when the network returns."
+            }
         }
     }
 }

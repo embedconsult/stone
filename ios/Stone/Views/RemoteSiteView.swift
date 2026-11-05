@@ -102,6 +102,7 @@ private struct RemoteSiteWebView: UIViewRepresentable {
         config.userContentController.addUserScript(.stoneWrapLongWords)
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.allowsBackForwardNavigationGestures = true
+        webView.uiDelegate = NewTabsInPlace.shared
         webView.load(URLRequest(url: url))
         return webView
     }

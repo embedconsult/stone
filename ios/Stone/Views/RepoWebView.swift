@@ -92,6 +92,25 @@ extension WKUserScript {
     }
 }
 
+/// Opens a link meant for a new tab or window (`target="_blank"`) in the
+/// same web view. A WKWebView without a UI delegate drops such a tap, and
+/// ocx-console's page opens every link that way, so none of its links
+/// opened in Stone (maintainer, ocx-console forum afe440cb03, Nov 5:
+/// "stone still offers unclickable links"). The same view keeps the login
+/// cookie, and a swipe goes back. Held here because `uiDelegate` is weak.
+@MainActor
+final class NewTabsInPlace: NSObject, WKUIDelegate {
+    static let shared = NewTabsInPlace()
+
+    func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
+                 for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
+        if navigationAction.targetFrame == nil {
+            webView.load(navigationAction.request)
+        }
+        return nil
+    }
+}
+
 /// Hosts a `WKWebView` pointed at the in-process Fossil server, presenting
 /// Fossil's own HTML UI. This is the whole point of the app's UI strategy:
 /// render Fossil's real pages so there is zero drift from upstream.
@@ -108,6 +127,7 @@ struct RepoWebView: UIViewRepresentable {
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.allowsBackForwardNavigationGestures = true
         webView.navigationDelegate = context.coordinator
+        webView.uiDelegate = NewTabsInPlace.shared
         // Lets StoneUITests wait for this specific WKWebView (not just any
         // web view that happens to be on screen, e.g. from a sheet) via
         // app.webViews["repoWebView"] as the "a page actually rendered"
@@ -212,6 +232,7 @@ struct RepoDetailView: View {
     /// the request's path (e.g. "/tktview/<uuid>") and clears it so a later
     /// unrelated visit to this repo doesn't replay a stale deep link.
     @ObservedObject private var deepLinkRouter = DeepLinkRouter.shared
+    @ObservedObject private var network = NetworkStatus.shared
 
     @State private var currentURL: URL?
 
@@ -353,10 +374,11 @@ struct RepoDetailView: View {
                 Button {
                     Task { await runSync() }
                 } label: {
-                    if syncing { ProgressView() }
+                    if !network.online { OfflineLabel() }
+                    else if syncing { ProgressView() }
                     else { Image(systemName: "arrow.triangle.2.circlepath") }
                 }
-                .disabled(syncing || repo.remoteURL == nil)
+                .disabled(!network.online || syncing || repo.remoteURL == nil)
             }
 
         }

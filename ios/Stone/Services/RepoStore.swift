@@ -32,6 +32,7 @@ enum SyncTrigger: String, Equatable {
     case wake = "the server, on a new event"
     case background = "a background task"
     case conversation = "a conversation"
+    case networkReturned = "the network coming back"
     case notification = "opening a notification"
     case verify = "Verify This Build"
 }
@@ -271,7 +272,11 @@ final class RepoStore: ObservableObject {
     /// needed (a missing column), or when a day has passed since the last
     /// refresh -- see `isConfigPullDue` and `indicatesMissingTicketColumn`.
     @discardableResult
+    ///
+    /// With no network path it doesn't start: it throws `.offline` and
+    /// records nothing, so no spinner shows and the last real result stays.
     func sync(_ repo: Repo, trigger: SyncTrigger) async throws -> String {
+        guard NetworkStatus.shared.online else { throw StoreError.offline }
         syncingRepos.insert(repo.id)
         defer { syncingRepos.remove(repo.id) }
         do {
@@ -519,7 +524,7 @@ final class RepoStore: ObservableObject {
     /// Each repo's result is recorded by `sync(_:)` (`syncRecords`), which
     /// its status icon shows; nothing pops up.
     func syncAll(trigger: SyncTrigger = .syncAll, shouldContinue: () -> Bool = { true }) async {
-        guard !isSyncingAll else { return }
+        guard !isSyncingAll, NetworkStatus.shared.online else { return }
         isSyncingAll = true
         resetReceivedTally()
         defer { isSyncingAll = false }
@@ -563,11 +568,13 @@ final class RepoStore: ObservableObject {
         case fossil(String)
         case noRemote
         case passwordNeedsUsername
+        case offline
 
         var errorDescription: String? {
             switch self {
             case .fossil(let msg): return msg.isEmpty ? "Fossil command failed." : msg
             case .noRemote: return "This repository has no remote configured."
+            case .offline: return "This phone is offline."
             case .passwordNeedsUsername:
                 return "A password needs a username in the remote URL first — e.g. https://user@host/repo, not just https://host/repo."
             }
