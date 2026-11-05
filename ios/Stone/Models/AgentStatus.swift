@@ -1,49 +1,74 @@
 import Foundation
 
-/// Whether the agent answering a thread is working, idle or stopped, as OCX
-/// reports it at `<repo>/ext/ocx/status?thread=<root>` (the contract is in
-/// docs/ocx-status-endpoint.md). Only OCX on the server knows this; the
-/// synced thread itself can't tell a busy agent from a stopped one.
-struct AgentStatus: Decodable, Equatable {
-    enum State: String, Decodable {
+/// What the OCX session answering a forum thread is doing, read from the
+/// thread's own posts, so it works offline and needs nothing from the
+/// server. A session's thread starts with its `run`; OCX's node answers it
+/// with `started` and, at the end, `ended` (protocol 2, sections 2.3 and
+/// 2.12; protocol 1's `kind` messages too). Between those, the turn is the
+/// session's while the latest post is someone else's, and yours once the
+/// session has answered.
+///
+/// Not confirmed by the server's receipts (protocol 2, 2.2): a `started` or
+/// `ended` counts when its post's author is the node the run was sent to.
+/// That replaced `GET ext/ocx/status`, which went with the old daemon
+/// (maintainer, ocx-console forum d77471efb6, Nov 5).
+struct AgentStatus: Equatable {
+    enum State: Equatable {
+        /// The run is sent; its node hasn't started it.
+        case waiting
+        /// Started, and the latest post isn't the session's: its turn.
         case working
-        case idle
-        case stopped
+        /// Started, and the session posted last: your turn.
+        case yourTurn
+        /// The node reported the run over; how, when it said.
+        case ended(outcome: String?)
     }
 
-    let login: String
     let state: State
-    /// When the agent entered `state`, ISO 8601 (UTC). Optional: a status
-    /// without it still shows, just without a time.
-    let since: String?
+    /// The session's own login (`started`'s `process_user`, or `user` in
+    /// protocol 1); nil before it starts.
+    let login: String?
+    /// When the state began: the run, `started`, the latest post or `ended`.
+    let since: Date
 
-    /// The line under the conversation title: "opus is working", "opus idle
-    /// since 22:47", "opus stopped at 21:10".
-    func label(timeZone: TimeZone = .current) -> String {
-        let time = sinceDate.map { date -> String in
-            let formatter = DateFormatter()
-            formatter.locale = Locale(identifier: "en_US_POSIX")
-            formatter.timeZone = timeZone
-            formatter.dateFormat = "HH:mm"
-            return formatter.string(from: date)
-        }
+    /// The line under the conversation title.
+    func label() -> String {
+        let who = login ?? "The session"
+        let formatter = DateFormatter()
+        formatter.dateStyle = .none
+        formatter.timeStyle = .short
+        let time = formatter.string(from: since)
         switch state {
-        case .working: return "\(login) is working"
-        case .idle: return time.map { "\(login) idle since \($0)" } ?? "\(login) is idle"
-        case .stopped: return time.map { "\(login) stopped at \($0)" } ?? "\(login) stopped"
+        case .waiting: return "Waiting to start, since \(time)"
+        case .working: return "\(who) is working, since \(time)"
+        case .yourTurn: return "Your turn, since \(time)"
+        case .ended(let outcome): return "Ended at \(time)" + (outcome.map { ": \($0)" } ?? "")
         }
     }
 
-    var sinceDate: Date? {
-        guard let since else { return nil }
-        let withFraction = ISO8601DateFormatter()
-        withFraction.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return withFraction.date(from: since) ?? ISO8601DateFormatter().date(from: since)
-    }
-
-    /// Decodes a status response; nil for anything else (a 404 page, HTML,
-    /// an unknown state), so an absent or older endpoint shows nothing.
-    static func decode(_ data: Data) -> AgentStatus? {
-        try? JSONDecoder().decode(AgentStatus.self, from: data)
+    /// The status of the session `posts` belong to (bodies read), or nil
+    /// when the thread doesn't start with a run.
+    static func read(_ posts: [ConversationPost]) -> AgentStatus? {
+        guard let first = posts.first, let run = OCXMessage(first.body ?? ""), run.kind == "run",
+              let node = run.to else { return nil }
+        var started: (post: ConversationPost, login: String?)?
+        var ended: (post: ConversationPost, outcome: String?)?
+        for post in posts.dropFirst() where post.author == node {
+            guard let message = OCXMessage(post.body ?? ""), message.re == first.hash else { continue }
+            switch message.kind {
+            case "started": started = (post, message.login)
+            case "ended": ended = (post, message.outcome)
+            default: break
+            }
+        }
+        if let ended {
+            return AgentStatus(state: .ended(outcome: ended.outcome), login: started?.login, since: ended.post.date)
+        }
+        guard let started else { return AgentStatus(state: .waiting, login: nil, since: first.date) }
+        let latest = posts.last ?? started.post
+        if let login = started.login, latest.author.caseInsensitiveCompare(login) == .orderedSame {
+            return AgentStatus(state: .yourTurn, login: login, since: latest.date)
+        }
+        return AgentStatus(state: .working, login: started.login, since: latest.date)
     }
 }

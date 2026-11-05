@@ -416,6 +416,8 @@ enum ConversationBook {
         guard !login.isEmpty else { return false }
         if posts.contains(where: { isOwn($0, login: login) }) { return true }
         guard let latestBody else { return false }
+        if let question = OCXMessage(latestBody), question.kind == "question", let asked = question.to,
+           asked.caseInsensitiveCompare(login) == .orderedSame { return true }
         return PostText.forLogins(latestBody).contains { $0.caseInsensitiveCompare(login) == .orderedSame }
     }
 }

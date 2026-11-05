@@ -19,7 +19,7 @@ features to come back. Asked for by the maintainer, 2026-10-21, on run
 
 | Feature | Before (ollama-codex daemon) | Now |
 |---|---|---|
-| Agent working / idle / stopped dot | `GET /ext/ocx/status?thread=` ([ocx-status-endpoint.md](ocx-status-endpoint.md)), inferred from the launcher's `run` file and `launch.log` | Daemon gone. The endpoint answers 403, so no dot. |
+| Agent working / idle / stopped dot | `GET /ext/ocx/status?thread=`, inferred from the launcher's `run` file and `launch.log` | Read from the thread itself (`ios/Stone/Models/AgentStatus.swift`): waiting to start, working, your turn, or ended, from the run's `started` and `ended` and who posted last. The session's steps come live from the repository's chat. |
 | "Needs you" notifications | `needs_you` ticket field (`decision`, `merge`, `try-this`), written by the console and synced | The field isn't written anymore. Stone notifies on *any* post by someone else. |
 | Decision prompts | Ticket comment and `design_input=confirm` | `ocx2 post --for` writes a text "question shape". Stone only spots its `For:` line. |
 | Merge approval | `/ext/chat?merge_review=<uuid>`, opened in Safari | Nothing. |
