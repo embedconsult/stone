@@ -50,11 +50,11 @@ struct AgentStatus: Equatable {
     /// when the thread doesn't start with a run.
     static func read(_ posts: [ConversationPost]) -> AgentStatus? {
         guard let first = posts.first, let run = OCXMessage(first.body ?? ""), run.kind == "run",
-              let node = run.node else { return nil }
+              let node = run.to else { return nil }
         var started: (post: ConversationPost, login: String?)?
         var ended: (post: ConversationPost, outcome: String?)?
         for post in posts.dropFirst() where post.author == node {
-            guard let message = OCXMessage(post.body ?? ""), message.run == first.hash else { continue }
+            guard let message = OCXMessage(post.body ?? ""), message.re == first.hash else { continue }
             switch message.kind {
             case "started": started = (post, message.login)
             case "ended": ended = (post, message.outcome)
@@ -70,48 +70,5 @@ struct AgentStatus: Equatable {
             return AgentStatus(state: .yourTurn, login: login, since: latest.date)
         }
         return AgentStatus(state: .working, login: started.login, since: latest.date)
-    }
-}
-
-/// An OCX message: a post that is one fenced JSON block holding `"ocx"`,
-/// in either protocol's shape. Only what AgentStatus reads.
-struct OCXMessage: Equatable {
-    /// run, started, ended, stop, ...
-    let kind: String
-    /// For a run: the node it is sent to.
-    let node: String?
-    /// For a report: the run it answers.
-    let run: String?
-    /// For `started`: the session's login.
-    let login: String?
-    /// For `ended`: how the run ended.
-    let outcome: String?
-
-    init?(_ body: String) {
-        let text = body.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard text.hasPrefix("```"), text.hasSuffix("```"),
-              let open = text.firstIndex(of: "\n") else { return nil }
-        let inner = text[open..<text.index(text.endIndex, offsetBy: -3)]
-        guard let data = inner.data(using: .utf8),
-              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              json["ocx"] != nil else { return nil }
-
-        if let kind = json["kind"] as? String {
-            // Protocol 1: {"ocx":1,"kind":...,"node":...,"run":...}
-            self.kind = kind
-            node = json["node"] as? String
-            run = json["run"] as? String
-            login = (json["values"] as? [String: Any])?["user"] as? String
-            outcome = json["outcome"] as? String
-            return
-        }
-        // Protocol 2: {"ocx":2,"to"|"re":...,KIND:{...}}
-        guard let kind = ["run", "started", "ended", "stop"].first(where: { json[$0] is [String: Any] }),
-              let content = json[kind] as? [String: Any] else { return nil }
-        self.kind = kind
-        node = json["to"] as? String
-        run = json["re"] as? String
-        login = (content["values"] as? [String: Any])?["process_user"] as? String
-        outcome = content["outcome"] as? String
     }
 }

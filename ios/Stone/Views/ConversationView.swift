@@ -40,6 +40,9 @@ struct ConversationView: View {
     /// posts on each reload; nil for a ticket, or a thread that isn't a
     /// session's.
     @State private var agentStatus: AgentStatus?
+    /// Questions in this thread that have a decision, by hash: their
+    /// choices are no longer offered.
+    @State private var decided: Set<String> = []
     /// The session's steps in this turn, while it is working.
     private var steps: [ChatLine] {
         guard let status = agentStatus, status.state == .working, let login = status.login else { return [] }
@@ -84,6 +87,7 @@ struct ConversationView: View {
                                        composerFocused = true
                                    },
                                    showWhole: { wholePost = post },
+                                   decided: decided.contains(post.hash),
                                    fossilPath: fossilPath)
                             .equatable()
                             .id(post.hash)
@@ -226,6 +230,8 @@ struct ConversationView: View {
             if posts != result.posts { posts = result.posts }
             let status = id.kind == .thread ? AgentStatus.read(result.posts) : nil
             if agentStatus != status { agentStatus = status }
+            let decisions = OCXMessage.decided(in: result.posts)
+            if decided != decisions { decided = decisions }
             if let last = result.posts.last {
                 conversations.markRead(id, upTo: last.mtime)
                 await NotificationManager.shared.updateBadge(conversations.totalUnread)
@@ -255,9 +261,17 @@ struct ConversationView: View {
         guard let repo, let fossilPath, let latest = posts.last else { return }
         sending = true
         defer { sending = false }
+        var body = draft.text
+        // A reply to an OCX question is a decision on it: the option's
+        // words, or your own, in the question's own message shape.
+        if let target = replyTarget,
+           let question = OCXMessage(target.body ?? ""), question.kind == "question" {
+            let note = body.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !note.isEmpty { body = question.decision(on: target.hash, note: note) }
+        }
         do {
             try await ConversationWriter.reply(in: id, to: replyTarget, latest: latest, login: login,
-                                               body: draft.text, fossilPath: fossilPath)
+                                               body: body, fossilPath: fossilPath)
         } catch {
             errorText = error.localizedDescription
             return
@@ -314,6 +328,8 @@ private struct BubbleView: View, Equatable {
     let reply: () -> Void
     let choose: (String) -> Void
     let showWhole: () -> Void
+    /// For an OCX question: a decision on it is in the thread.
+    let decided: Bool
     /// The clone the post's attached images are read from.
     let fossilPath: String?
 
@@ -323,13 +339,18 @@ private struct BubbleView: View, Equatable {
     static let bubbleLimit = 4_000
 
     static func == (a: BubbleView, b: BubbleView) -> Bool {
-        a.post == b.post && a.own == b.own
+        a.post == b.post && a.own == b.own && a.decided == b.decided
     }
 
     private var isLong: Bool { (post.body?.utf8.count ?? 0) > Self.bubbleLimit }
 
     var body: some View {
-        let options = own || isLong ? [] : PostText.options(post.body ?? "")
+        let message = OCXMessage(post.body ?? "")
+        // An OCX question's options, the first its asker's recommendation,
+        // until it is decided; else an older question's Options: list.
+        let options = message.map { $0.kind == "question" && !own && !decided ? $0.options : [] }
+            ?? (own || isLong ? [] : PostText.options(post.body ?? ""))
+        let recommended = message?.kind == "question" ? options.first : nil
         return HStack {
             if own { Spacer(minLength: 48) }
             VStack(alignment: own ? .trailing : .leading, spacing: 4) {
@@ -344,7 +365,7 @@ private struct BubbleView: View, Equatable {
                     LocalArtifactImage(hash: hash, fossilPath: fossilPath)
                 }
 
-                Text(Self.rendered(post))
+                Text(Self.rendered(post, said: message?.said))
                     .textSelection(.enabled)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
@@ -379,7 +400,7 @@ private struct BubbleView: View, Equatable {
                             Button {
                                 choose(option.replacingOccurrences(of: "**", with: ""))
                             } label: {
-                                Text(Self.inline(option))
+                                Text(Self.inline(option == recommended ? option + " *(recommended)*" : option))
                                     .multilineTextAlignment(.leading)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
@@ -394,8 +415,9 @@ private struct BubbleView: View, Equatable {
 
     /// Markdown for markdown posts (links, emphasis, code; line breaks kept
     /// as written), plain text for anything else.
-    private static func rendered(_ post: ConversationPost) -> AttributedString {
-        var body = ConversationWriter.removingImages(from: post.body ?? "(couldn't read this post)")
+    /// `said`: an OCX message's words in place of the post (OCXMessage.said).
+    private static func rendered(_ post: ConversationPost, said: String? = nil) -> AttributedString {
+        var body = ConversationWriter.removingImages(from: said ?? post.body ?? "(couldn't read this post)")
         if body.utf8.count > bubbleLimit {
             body = String(body.prefix(bubbleLimit)) + "\n…"
         }
@@ -482,8 +504,13 @@ private struct ReplyBox: View {
             if let target = replyTarget {
                 HStack {
                     Image(systemName: "arrowshape.turn.up.left")
-                    Text("\(ConversationBook.isOwn(target, login: login) ? "You" : target.author): \(PostText.preview(target.body ?? ""))")
-                        .lineLimit(1)
+                    if let question = OCXMessage(target.body ?? ""), question.kind == "question" {
+                        Text("Your decision: \(question.question ?? PostText.preview(target.body ?? ""))")
+                            .lineLimit(1)
+                    } else {
+                        Text("\(ConversationBook.isOwn(target, login: login) ? "You" : target.author): \(PostText.preview(target.body ?? ""))")
+                            .lineLimit(1)
+                    }
                     Spacer()
                     Button {
                         replyTarget = nil

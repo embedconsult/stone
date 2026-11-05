@@ -236,7 +236,69 @@ final class AgentStatusTests: XCTestCase {
     func testOtherShapesAreNotMessages() {
         XCTAssertNil(OCXMessage(message(#"{"ocx":2,"re":"abc","run":"abc"}"#)))
         XCTAssertNil(OCXMessage("```json\n{\"run\":{}}\n```"))
-        XCTAssertNil(OCXMessage("Some text\n```json\n{\"ocx\":2,\"run\":{}}\n```"))
+        XCTAssertNil(OCXMessage("A block that isn't last:\n```json\n{\"ocx\":2,\"run\":{}}\n```\nThen words."))
+    }
+
+    /// A question as `ocx2 post --for --options --stakes` writes it (ocx-console
+    /// forum 7186524c37): words for people, then the message.
+    private let questionPost = """
+    **Question for ec2-user:** Should it start with this console?
+
+    1. Yes, this console first *(recommended)*
+    2. Not until I'm back
+
+    ```json
+    {
+      "ocx": 2,
+      "to": "ec2-user",
+      "question": {
+        "question": "Should it start with this console?",
+        "options": ["Yes, this console first", "Not until I'm back"],
+        "stakes": "Which program you can next update"
+      }
+    }
+    ```
+    """
+
+    func testReadsAQuestion() throws {
+        let question = try XCTUnwrap(OCXMessage(questionPost))
+        XCTAssertEqual(question.kind, "question")
+        XCTAssertEqual(question.to, "ec2-user")
+        XCTAssertEqual(question.options.first, "Yes, this console first")
+        XCTAssertEqual(question.said, "**Question for ec2-user:** Should it start with this console?\n\n1. Yes, this console first *(recommended)*\n2. Not until I'm back")
+    }
+
+    /// A decision is written in its question's shape, and read back as one.
+    func testDecisionRoundTrips() throws {
+        let question = try XCTUnwrap(OCXMessage(questionPost))
+        let body = question.decision(on: run, note: "Yes, this console first")
+        XCTAssertTrue(body.hasPrefix("**Decision:** Yes, this console first\n\n```json\n"))
+        let decision = try XCTUnwrap(OCXMessage(body))
+        XCTAssertEqual(decision.kind, "decision")
+        XCTAssertEqual(decision.version, 2)
+        XCTAssertEqual(decision.re, run)
+        XCTAssertEqual(decision.note, "Yes, this console first")
+        let posts = [post(run, "run-194d2a3d", 1, questionPost), post("d", "stone", 2, body)]
+        XCTAssertEqual(OCXMessage.decided(in: posts), [run])
+
+        let old = try XCTUnwrap(OCXMessage(message(#"{"ocx":1,"kind":"question","for":"stone","question":"Merge?","options":["Yes","No"]}"#)))
+        let oldDecision = try XCTUnwrap(OCXMessage(old.decision(on: run, note: "Yes")))
+        XCTAssertEqual(oldDecision.version, 1)
+        XCTAssertEqual(oldDecision.re, run)
+        // An early decision was a `response`.
+        XCTAssertEqual(OCXMessage(message(#"{"ocx":1,"kind":"response","question":"abc","note":"No"}"#))?.kind, "decision")
+    }
+
+    func testBlockOnlyPostsSayALine() {
+        XCTAssertEqual(OCXMessage(started().body ?? "")?.said, "*The session started.*")
+        XCTAssertEqual(OCXMessage(runPost.body ?? "")?.said, "Fix it")
+    }
+
+    func testAQuestionForYouIsYours() {
+        XCTAssertTrue(ConversationBook.participates(posts: [post("q", "run-194d2a3d", 1, questionPost)],
+                                                    login: "ec2-user", latestBody: questionPost))
+        XCTAssertFalse(ConversationBook.participates(posts: [post("q", "run-194d2a3d", 1, questionPost)],
+                                                     login: "stone", latestBody: questionPost))
     }
 
     func testChatPollKeepsEveryLineWithItsSender() throws {

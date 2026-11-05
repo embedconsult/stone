@@ -54,6 +54,7 @@
 		B25D4C60F2FD88DF1BCA067D /* VerifyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EECCDEAC9C75520B9C09F1D8 /* VerifyView.swift */; };
 		24AAE6D8B3D00A99937ADA24 /* ConversationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E30A2CDC03851021FFCF31EE /* ConversationTests.swift */; };
 		7D5625CEBF93664CFA24F861 /* AgentStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 863C2EB53315015898FA4BAA /* AgentStatus.swift */; };
+		0C1D2E3F405162738495A6B7 /* OCXMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6071829304A5B /* OCXMessage.swift */; };
 		7F646F38057EBFAAC465C99C /* RemoteWake.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10ED8B296808DBA385D91DCC /* RemoteWake.swift */; };
 /* End PBXBuildFile section */
 
@@ -127,6 +128,7 @@
 		EECCDEAC9C75520B9C09F1D8 /* VerifyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VerifyView.swift; sourceTree = "<group>"; };
 		E30A2CDC03851021FFCF31EE /* ConversationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConversationTests.swift; sourceTree = "<group>"; };
 		863C2EB53315015898FA4BAA /* AgentStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentStatus.swift; sourceTree = "<group>"; };
+		A1B2C3D4E5F6071829304A5B /* OCXMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCXMessage.swift; sourceTree = "<group>"; };
 		10ED8B296808DBA385D91DCC /* RemoteWake.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteWake.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -275,6 +277,7 @@
 				C34F67C4EB118D7638B7FDFD /* Repo.swift */,
 				57A922970B0E67838F9BA439 /* Conversation.swift */,
 				863C2EB53315015898FA4BAA /* AgentStatus.swift */,
+				A1B2C3D4E5F6071829304A5B /* OCXMessage.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -460,6 +463,7 @@
 				4ACBDB42123BDAAB4E87553A /* ConversationView.swift in Sources */,
 				B25D4C60F2FD88DF1BCA067D /* VerifyView.swift in Sources */,
 				7D5625CEBF93664CFA24F861 /* AgentStatus.swift in Sources */,
+				0C1D2E3F405162738495A6B7 /* OCXMessage.swift in Sources */,
 				7F646F38057EBFAAC465C99C /* RemoteWake.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
