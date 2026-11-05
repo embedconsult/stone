@@ -312,4 +312,28 @@ final class AgentStatusTests: XCTestCase {
         XCTAssertEqual(answer.lines.map(\.login), ["run-fb38bc18", "TIMELINE"])
         XCTAssertEqual(answer.lines.first?.text, "Reading src/main.cr")
     }
+
+    /// History and live lines merge by msgid, and each turn gets the
+    /// session's lines between its post and the next.
+    @MainActor
+    func testStepsMergeByIDAndSplitByTurn() throws {
+        let json = """
+        {"msgs":[{"msgid":7,"mtime":"2026-11-05T12:00:00Z","xfrom":"run-fb38bc18","xmsg":"Reading src/main.cr"},
+                 {"msgid":8,"mtime":"2026-11-05T12:05:00Z","xfrom":"run-fb38bc18","xmsg":"Editing src/main.cr"},
+                 {"msgid":9,"mtime":"2026-11-05T12:06:00Z","xfrom":"TIMELINE","xmsg":"Forum post"}]}
+        """
+        let answer = try XCTUnwrap(ChatPollAnswer.parse(Data(json.utf8)))
+        XCTAssertEqual(answer.lines.map(\.id), [7, 8, 9])
+        let steps = SessionSteps()
+        let repo = UUID()
+        steps.record(answer.lines, repo: repo)
+        steps.record(Array(answer.lines.suffix(2)), repo: repo)
+        XCTAssertEqual(steps.lines[repo]?.count, 3)
+        let noon = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-11-05T11:59:00Z"))
+        let split = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-11-05T12:01:00Z"))
+        XCTAssertEqual(steps.steps(repo: repo, login: "RUN-fb38bc18", after: noon, before: split).map(\.text),
+                       ["Reading src/main.cr"])
+        XCTAssertEqual(steps.steps(repo: repo, login: "run-fb38bc18", after: split, before: .distantFuture).map(\.text),
+                       ["Editing src/main.cr"])
+    }
 }

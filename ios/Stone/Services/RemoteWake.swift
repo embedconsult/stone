@@ -28,7 +28,9 @@ struct ChatPollAnswer: Equatable {
         let lines = msgs.compactMap { msg -> ChatLine? in
             guard let login = msg["xfrom"] as? String, let text = msg["xmsg"] as? String,
                   let mtime = msg["mtime"] as? String else { return nil }
-            return ChatLine.parse(login: login, text: text, mtime: mtime)
+            var line = ChatLine.parse(login: login, text: text, mtime: mtime)
+            line?.id = msg["msgid"] as? Int
+            return line
         }
         return ChatPollAnswer(lastID: ids.max(), rows: msgs.count, isError: false, lines: lines)
     }
@@ -36,13 +38,15 @@ struct ChatPollAnswer: Equatable {
 
 /// One line of a repository's chat. A session's steps are lines it sends
 /// there while it works, one per tool it uses (ocx-console's tools/steps:
-/// "Reading src/main.cr", "Editing ..."). Chat isn't synced or kept, so they
-/// are seen only live, through /chat-poll, while RemoteWake follows the
-/// repository.
+/// "Reading src/main.cr", "Editing ..."). Chat isn't synced, so they are
+/// read from the server: its recent history when a conversation opens
+/// (SessionSteps.load), then live while RemoteWake follows the repository.
 struct ChatLine: Equatable {
     let login: String
     let text: String
     let date: Date
+    /// The server's msgid, when known.
+    var id: Int?
 
     /// `text` is the message as sent (chat-poll's `raw`); `mtime` is
     /// chat-poll's "YYYY-MM-DDTHH:MM:SSZ".
@@ -53,31 +57,54 @@ struct ChatLine: Equatable {
     }
 }
 
-/// The recent chat lines of each repository seen this app session, for the
-/// conversation whose session sent them (ConversationView's steps).
+/// Each repository's chat lines, for the conversation whose session sent
+/// them: each turn's steps show in line, under the post that started it.
+/// Filled from the server's recent history when a conversation opens
+/// (`load`), and live while RemoteWake follows the repository.
 @MainActor
 final class SessionSteps: ObservableObject {
     static let shared = SessionSteps()
 
+    /// Internal for tests; the app uses `shared`.
+    init() {}
+
     @Published private(set) var lines: [UUID: [ChatLine]] = [:]
 
-    /// A line older than this says nothing about now.
-    static let fresh: TimeInterval = 600
-    /// Kept per repository; a turn shows its newest few.
-    static let kept = 200
+    /// How much history `load` asks for, and how many lines are kept per
+    /// repository.
+    static let kept = 300
 
     func record(_ new: [ChatLine], repo: UUID) {
-        let now = Date()
-        lines[repo] = Array(((lines[repo] ?? []) + new)
-            .filter { now.timeIntervalSince($0.date) < Self.fresh }
-            .suffix(Self.kept))
+        var merged = lines[repo] ?? []
+        let known = Set(merged.compactMap(\.id))
+        merged += new.filter { line in line.id.map { !known.contains($0) } ?? true }
+        merged.sort { $0.date < $1.date }
+        let kept = Array(merged.suffix(Self.kept))
+        if kept != lines[repo] { lines[repo] = kept }
     }
 
-    /// The fresh lines `login` sent to `repo`'s chat after `after` (the
-    /// thread's newest post, which ends a turn), oldest first.
-    func steps(repo: UUID, login: String, after: Date) -> [ChatLine] {
+    /// Reads `repo`'s newest chat lines from its server (Fossil's
+    /// `/chat-poll?name=-N`, answered at once), so steps from before the
+    /// app opened show too. Quietly does nothing offline or without a
+    /// saved password: the posts don't depend on it.
+    func load(_ repo: Repo) async {
+        guard NetworkStatus.shared.online, let remote = repo.remoteURL,
+              let password = CredentialStore.password(for: repo.id),
+              let session = RemoteSession(remoteURL: remote, password: password),
+              let data = try? await session.longPoll(
+                  "chat-poll",
+                  query: [URLQueryItem(name: "name", value: String(-Self.kept)),
+                          URLQueryItem(name: "raw", value: "1")],
+                  referer: "chat", timeout: 20),
+              let answer = ChatPollAnswer.parse(data), !answer.isError else { return }
+        record(answer.lines, repo: repo.id)
+    }
+
+    /// The lines `login` sent to `repo`'s chat after `after` and before
+    /// `before`: one turn's steps, oldest first.
+    func steps(repo: UUID, login: String, after: Date, before: Date) -> [ChatLine] {
         (lines[repo] ?? []).filter { line in
-            line.date > after && Date().timeIntervalSince(line.date) < Self.fresh
+            line.date > after && line.date < before
                 && line.login.caseInsensitiveCompare(login) == .orderedSame
         }
     }

@@ -70,9 +70,12 @@ final class ConversationStore: ObservableObject {
                 if firstScan && lastRead[key] == nil {
                     lastRead[key] = latest.mtime
                 }
+                let status = conversation.id.kind == .thread
+                    ? await Self.status(conversation.posts, fossilPath: path) : nil
                 let summary = ConversationSummary(
                     id: conversation.id, title: conversation.title, latest: latest,
-                    unread: ConversationBook.unread(conversation.posts, login: login, lastRead: lastRead[key] ?? 0))
+                    unread: ConversationBook.unread(conversation.posts, login: login, lastRead: lastRead[key] ?? 0),
+                    status: status)
                 all.append(summary)
 
                 let fresh = ConversationBook.newForNotification(conversation.posts, login: login,
@@ -123,6 +126,21 @@ final class ConversationStore: ObservableObject {
 
     /// The conversations `login` takes part in, latest post body read (the
     /// list shows it, and a `For:` line in it is one way to take part).
+    /// A thread's session status, reading only the bodies it needs: the
+    /// first post (is it a run, and to which node?), then the node's posts.
+    /// Bodies are cached by hash, so each is read once.
+    private static func status(_ posts: [ConversationPost], fossilPath: String) async -> AgentStatus? {
+        guard let first = posts.first,
+              let head = await ConversationReader.fillBodies([first], fossilPath: fossilPath).first,
+              let run = OCXMessage(head.body ?? ""), run.kind == "run", let node = run.to else { return nil }
+        var filled = posts
+        filled[0] = head
+        let fromNode = filled.indices.filter { filled[$0].author == node && filled[$0].body == nil }
+        let read = await ConversationReader.fillBodies(fromNode.map { filled[$0] }, fossilPath: fossilPath)
+        for (index, post) in zip(fromNode, read) { filled[index] = post }
+        return AgentStatus.read(filled)
+    }
+
     private static func participating(repoID: UUID, fossilPath: String, login: String) async -> [ConversationReader.Loaded] {
         let (loaded, ticketsTouched) = await Task.detached(priority: .utility) {
             (ConversationReader.all(repoID: repoID, fossilPath: fossilPath),

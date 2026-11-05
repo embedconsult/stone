@@ -69,6 +69,11 @@ struct ConversationListView: View {
                 HStack(spacing: 4) {
                     Image(systemName: summary.id.kind == .thread ? "text.bubble" : "ticket")
                     Text(repo?.name ?? "")
+                    if let status = summary.status {
+                        Text("·")
+                        Circle().fill(status.color).frame(width: 7, height: 7)
+                        Text(status.shortLabel)
+                    }
                     if summary.unread > 0 {
                         Text("· \(summary.unread) unread")
                             .foregroundStyle(Color.accentColor)
