@@ -109,6 +109,25 @@ final class NewTabsInPlace: NSObject, WKUIDelegate {
         }
         return nil
     }
+
+    /// A long press on a link to another site adds Open in Browser to
+    /// WebKit's own menu (maintainer, Verify of build 4ff57bc6dca4: "Opening
+    /// in an external browser would be nice"). Not for the phone's own
+    /// Fossil server, which no other app can reach.
+    func webView(_ webView: WKWebView, contextMenuConfigurationFor elementInfo: WKContextMenuElementInfo,
+                 completionHandler: @escaping (UIContextMenuConfiguration?) -> Void) {
+        guard let url = elementInfo.linkURL, url.scheme == "http" || url.scheme == "https",
+              let host = url.host, !["127.0.0.1", "localhost", "::1"].contains(host) else {
+            completionHandler(nil)
+            return
+        }
+        completionHandler(UIContextMenuConfiguration(identifier: nil, previewProvider: nil) { suggested in
+            let browser = UIAction(title: "Open in Browser", image: UIImage(systemName: "safari")) { _ in
+                UIApplication.shared.open(url)
+            }
+            return UIMenu(children: [browser] + suggested)
+        })
+    }
 }
 
 /// Hosts a `WKWebView` pointed at the in-process Fossil server, presenting
