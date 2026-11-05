@@ -19,6 +19,8 @@
 #     twice more with the correct one.
 #   linux-ticket-cache-driver.c            ticket 11018cb484's stale
 #     per-process ticket-field cache across two repos with different schemas.
+#   linux-mainmenu-driver.c                each repository's pages show
+#                                          its own main menu.
 #   linux-cards-driver.c                   stone_fossil_card() -- the
 #     console's cards -- against OCX's shared examples in
 #     scripts/card-examples, before and after `fossil rebuild`.
@@ -115,6 +117,8 @@ ${CC} -o "${WORK}/query-stress-test" "${OBJ}/query-stress-driver.o" "${WORK}/lib
 ${CC} ${COMMON} ${FOSSIL_OPTIONS} -c "${REPO_ROOT}/scripts/linux-query-lock-driver.c" -o "${OBJ}/query-lock-driver.o"
 ${CC} -o "${WORK}/query-lock-test" "${OBJ}/query-lock-driver.o" "${WORK}/libfossil_linux.a" -lz -ldl -lpthread -lm
 
+${CC} ${COMMON} ${FOSSIL_OPTIONS} -c "${REPO_ROOT}/scripts/linux-mainmenu-driver.c" -o "${OBJ}/mainmenu-driver.o"
+${CC} -o "${WORK}/mainmenu-test" "${OBJ}/mainmenu-driver.o" "${WORK}/libfossil_linux.a" -lz -ldl -lpthread -lm
 ${CC} ${COMMON} ${FOSSIL_OPTIONS} -c "${REPO_ROOT}/scripts/linux-cards-driver.c" -o "${OBJ}/cards-driver.o"
 ${CC} -o "${WORK}/cards-test" "${OBJ}/cards-driver.o" "${WORK}/libfossil_linux.a" -lz -ldl -lpthread -lm
 
@@ -130,6 +134,11 @@ echo
 echo "Running stone_fossil_query reproduction (ticket f0c612c027)..."
 mkdir -p "${WORK}/run-query"
 "${WORK}/query-test" "${WORK}/run-query"
+
+echo
+echo "Running main-menu check (forum 405152d5b2): each repository its own menu..."
+mkdir -p "${WORK}/run-mainmenu"
+"${WORK}/mainmenu-test" "${WORK}/run-mainmenu"
 
 echo
 echo "Running stone_fossil_card against OCX's card examples..."

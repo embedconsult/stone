@@ -265,12 +265,10 @@ loudly if it no longer applies cleanly.
  */
 --- a/src/style.c
 +++ b/src/style.c
-@@ -386,6 +386,30 @@
- ** is NULL then use g.zPath.
- */
+@@ -388,6 +388,36 @@
  static char *local_zCurrentPage = 0;
-+
-+/*
+ 
+ /*
 +** STONE: Reset request-scoped page-rendering state to its initial values.
 +**
 +** These statics accumulate per request (submenu buttons/controls, the
@@ -281,6 +279,8 @@ loudly if it no longer applies cleanly.
 +** overflow their fixed arrays (tripping an assert) and stale pointers leak into
 +** later pages. Called from the HTTP request entry point.
 +*/
++static const char *stoneMainMenu = 0; /* STONE: was style_get_mainmenu()'s
++                                       ** function-local cache; see below */
 +void style_reset_state(void){
 +  nSubmenu = 0;
 +  nSubmenuCtrl = 0;
@@ -292,10 +292,33 @@ loudly if it no longer applies cleanly.
 +  blob_reset(&blobOnLoad);
 +  fossil_free(local_zCurrentPage);
 +  local_zCurrentPage = 0;
++  /* The main menu was read once per process and kept, so in the app every
++  ** page in every repository showed the menu of the first page drawn
++  ** (stone, forum 405152d5b2: a clone's own mainmenu was ignored). */
++  stoneMainMenu = 0;
 +}
-
- /*
++
++/*
  ** Set the desired $current_page to something other than g.zPath
+ */
+ void style_set_current_page(const char *zFormat, ...){
+@@ -717,7 +747,7 @@
+ ** first of those which is defined.
+ */
+ const char *style_get_mainmenu(){
+-  static const char *zMenu = 0;
++#define zMenu stoneMainMenu  /* STONE: see style_reset_state() */
+   if(!zMenu){
+     if(g.zMainMenuFile){
+       Blob b = empty_blob;
+@@ -728,6 +758,7 @@
+     }
+   }
+   return zMenu;
++#undef zMenu
+ }
+ 
+ /*
 --- a/src/manifest.c
 +++ b/src/manifest.c
 @@ -432,6 +432,31 @@
