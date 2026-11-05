@@ -355,8 +355,11 @@ private struct BubbleView: View, Equatable {
                     LocalArtifactImage(hash: hash, fossilPath: fossilPath)
                 }
 
+                // Not .textSelection(.enabled): on iOS a selectable Text likely
+                // takes the tap, and its links didn't open (stone, forum 82fbe873c7,
+                // Nov 4). Select Text in the context menu opens the post in a
+                // selectable view instead.
                 Text(Self.rendered(post))
-                    .textSelection(.enabled)
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                     .foregroundStyle(own ? Color.white : Color.primary)
@@ -376,6 +379,11 @@ private struct BubbleView: View, Equatable {
                             UIPasteboard.general.string = post.body ?? ""
                         } label: {
                             Label("Copy", systemImage: "doc.on.doc")
+                        }
+                        Button {
+                            showWhole()
+                        } label: {
+                            Label("Select Text", systemImage: "selection.pin.in.out")
                         }
                     }
 
