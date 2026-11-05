@@ -164,27 +164,6 @@ final class ConversationTests: XCTestCase {
         XCTAssertFalse(ConversationBook.participates(posts: posts, login: "", latestBody: "For: "))
     }
 
-    // MARK: Agent status (docs/ocx-status-endpoint.md)
-
-    func testAgentStatusDecodesAndLabels() {
-        let utc = TimeZone(identifier: "UTC")!
-        let idle = AgentStatus.decode(Data(#"{"login":"opus","state":"idle","since":"2026-09-24T02:47:00Z","last_post":"abc"}"#.utf8))
-        XCTAssertEqual(idle?.state, .idle)
-        XCTAssertEqual(idle?.label(timeZone: utc), "opus idle since 02:47")
-        let working = AgentStatus.decode(Data(#"{"login":"opus","state":"working","since":"2026-09-24T03:00:21.500Z"}"#.utf8))
-        XCTAssertEqual(working?.label(timeZone: utc), "opus is working")
-        let stopped = AgentStatus.decode(Data(#"{"login":"opus","state":"stopped"}"#.utf8))
-        XCTAssertEqual(stopped?.label(timeZone: utc), "opus stopped")
-    }
-
-    /// A server without the endpoint answers with a page, not JSON; an
-    /// unknown state is not guessed at. Both show nothing.
-    func testAgentStatusIgnoresAnythingElse() {
-        XCTAssertNil(AgentStatus.decode(Data("<!DOCTYPE html><html></html>".utf8)))
-        XCTAssertNil(AgentStatus.decode(Data(#"{"login":"opus","state":"thinking"}"#.utf8)))
-        XCTAssertNil(AgentStatus.decode(Data()))
-    }
-
     // MARK: Helpers
 
     private func row(_ rid: Int, root: Int, prev: Int = 0, irt: Int = 0, mtime: Double,
@@ -198,30 +177,77 @@ final class ConversationTests: XCTestCase {
     }
 }
 
-/// A run's progress lines in chat (ocx2, 2026-10-31): "[run HASH10] TEXT".
-final class RunProgressLineTests: XCTestCase {
-    func testParsesALine() {
-        let line = RunProgressLine.parse("[run 69aad19e93] Read RepoWebView.swift", mtime: "2026-10-31T12:00:00Z")
-        XCTAssertEqual(line?.run, "69aad19e93")
-        XCTAssertEqual(line?.text, "Read RepoWebView.swift")
-        XCTAssertEqual(line?.date, ISO8601DateFormatter().date(from: "2026-10-31T12:00:00Z"))
+/// A session's status, read from its thread (AgentStatus.read), in both
+/// protocols' shapes, and its steps from chat.
+final class AgentStatusTests: XCTestCase {
+    private let run = "6fe3e69bd7897f7f5d685a347bbf5e393938d994aa3950e1ebd9ca5b801e396e"
+
+    private func message(_ json: String) -> String { "```json\n\(json)\n```" }
+
+    private func post(_ hash: String, _ author: String, _ mtime: Double, _ body: String) -> ConversationPost {
+        ConversationPost(hash: hash, author: author, mtime: mtime, body: body, mimetype: "text/x-markdown", inReplyTo: nil)
     }
 
-    func testRefusesOtherChat() {
-        for text in ["hello", "[run 69aad19e9] short hash", "[run 69AAD19E93] upper", "[run 69aad19e93]no space",
-                     "[run 69aad19e93] ", "[swk-ai 69aad19e93] other bracket"] {
-            XCTAssertNil(RunProgressLine.parse(text, mtime: "2026-10-31T12:00:00Z"), text)
-        }
+    private var runPost: ConversationPost {
+        post(run, "ec2-user", 1, message(#"{"ocx":2,"to":"x86-1","run":{"objective":"Fix it"}}"#))
     }
 
-    func testProgressRowsDoNotCountAsNews() throws {
+    private func started(by author: String = "x86-1", re: String? = nil) -> ConversationPost {
+        post("s", author, 2, message(#"{"ocx":2,"re":"\#(re ?? run)","started":{"values":{"process_user":"run-fb38bc18"}}}"#))
+    }
+
+    func testNotASession() {
+        XCTAssertNil(AgentStatus.read([post("a", "stone", 1, "Hello")]))
+        XCTAssertNil(AgentStatus.read([]))
+    }
+
+    func testWaitingUntilItsNodeStartsIt() {
+        XCTAssertEqual(AgentStatus.read([runPost])?.state, .waiting)
+        // A started from anyone but the node, or for another run, doesn't count.
+        XCTAssertEqual(AgentStatus.read([runPost, started(by: "mallory")])?.state, .waiting)
+        XCTAssertEqual(AgentStatus.read([runPost, started(re: "0000")])?.state, .waiting)
+    }
+
+    func testTurns() {
+        let working = AgentStatus.read([runPost, started()])
+        XCTAssertEqual(working?.state, .working)
+        XCTAssertEqual(working?.login, "run-fb38bc18")
+        let answered = [runPost, started(), post("p", "run-fb38bc18", 3, "Done; merge?")]
+        XCTAssertEqual(AgentStatus.read(answered)?.state, .yourTurn)
+        XCTAssertEqual(AgentStatus.read(answered + [post("q", "stone", 4, "yes")])?.state, .working)
+    }
+
+    func testEnded() {
+        let ended = post("e", "x86-1", 5, message(#"{"ocx":2,"re":"\#(run)","ended":{"outcome":"exited","exit":0}}"#))
+        let status = AgentStatus.read([runPost, started(), ended, post("r", "stone", 6, "thanks")])
+        XCTAssertEqual(status?.state, .ended(outcome: "exited"))
+        XCTAssertEqual(status?.login, "run-fb38bc18")
+    }
+
+    func testProtocolOne() {
+        let root = post(run, "ec2-user", 1, message(#"{"ocx":1,"kind":"run","node":"x86-1","objective":"x"}"#))
+        let started = post("s", "x86-1", 2, message(#"{"ocx":1,"kind":"started","node":"x86-1","run":"\#(run)","values":{"user":"x86-1-stone"}}"#))
+        let ended = post("e", "x86-1", 3, message(#"{"ocx":1,"kind":"ended","node":"x86-1","run":"\#(run)","outcome":"stopped"}"#))
+        XCTAssertEqual(AgentStatus.read([root, started])?.login, "x86-1-stone")
+        XCTAssertEqual(AgentStatus.read([root, started, ended])?.state, .ended(outcome: "stopped"))
+    }
+
+    /// Some projects carry `run` as a string (a run's hash): not a run.
+    func testOtherShapesAreNotMessages() {
+        XCTAssertNil(OCXMessage(message(#"{"ocx":2,"re":"abc","run":"abc"}"#)))
+        XCTAssertNil(OCXMessage("```json\n{\"run\":{}}\n```"))
+        XCTAssertNil(OCXMessage("Some text\n```json\n{\"ocx\":2,\"run\":{}}\n```"))
+    }
+
+    func testChatPollKeepsEveryLineWithItsSender() throws {
         let json = """
-        {"msgs":[{"msgid":7,"mtime":"2026-10-31T12:00:00Z","xfrom":"stone-node","xmsg":"[run 69aad19e93] Read a file"},
-                 {"msgid":8,"mtime":"2026-10-31T12:00:02Z","xfrom":"TIMELINE","xmsg":"Forum post"}]}
+        {"msgs":[{"msgid":7,"mtime":"2026-11-05T12:00:00Z","xfrom":"run-fb38bc18","xmsg":"Reading src/main.cr"},
+                 {"msgid":8,"mtime":"2026-11-05T12:00:02Z","xfrom":"TIMELINE","xmsg":"Forum post"}]}
         """
         let answer = try XCTUnwrap(ChatPollAnswer.parse(Data(json.utf8)))
         XCTAssertEqual(answer.lastID, 8)
-        XCTAssertEqual(answer.rows, 1)
-        XCTAssertEqual(answer.progress.map(\.run), ["69aad19e93"])
+        XCTAssertEqual(answer.rows, 2)
+        XCTAssertEqual(answer.lines.map(\.login), ["run-fb38bc18", "TIMELINE"])
+        XCTAssertEqual(answer.lines.first?.text, "Reading src/main.cr")
     }
 }

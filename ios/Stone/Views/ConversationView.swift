@@ -14,7 +14,7 @@ struct ConversationView: View {
 
     @EnvironmentObject private var store: RepoStore
     @ObservedObject private var conversations = ConversationStore.shared
-    @ObservedObject private var progress = RunProgress.shared
+    @ObservedObject private var sessionSteps = SessionSteps.shared
     @State private var title = ""
     @State private var posts: [ConversationPost] = []
     @State private var loaded = false
@@ -36,9 +36,15 @@ struct ConversationView: View {
     /// A post too long for a bubble, shown whole in a sheet.
     @State private var wholePost: ConversationPost?
     private static let pageSize = 100
-    /// What OCX says the agent on this thread is doing; nil when the server
-    /// doesn't say (no endpoint, offline, a ticket rather than a thread).
+    /// What the session answering this thread is doing, read from its
+    /// posts on each reload; nil for a ticket, or a thread that isn't a
+    /// session's.
     @State private var agentStatus: AgentStatus?
+    /// The session's steps in this turn, while it is working.
+    private var steps: [ChatLine] {
+        guard let status = agentStatus, status.state == .working, let login = status.login else { return [] }
+        return sessionSteps.steps(repo: id.repoID, login: login, after: posts.last?.date ?? .distantPast)
+    }
     /// True while this screen's own sync (after Send, or the watch loop)
     /// runs, so the two never overlap.
     @State private var syncing = false
@@ -82,6 +88,9 @@ struct ConversationView: View {
                             .equatable()
                             .id(post.hash)
                     }
+                    if !steps.isEmpty {
+                        StepsView(steps: steps)
+                    }
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
@@ -118,7 +127,7 @@ struct ConversationView: View {
                     if let agentStatus {
                         HStack(spacing: 4) {
                             Circle()
-                                .fill(Self.color(for: agentStatus.state))
+                                .fill(agentStatus.color)
                                 .frame(width: 7, height: 7)
                             Text(agentStatus.label())
                         }
@@ -166,48 +175,26 @@ struct ConversationView: View {
     /// agent is actually working, idle or stopped is only known to OCX on
     /// the server.
     private var waitingLine: String? {
-        // A run on this thread is working: its newest progress line, live
-        // from the server's chat, until the thread's next post.
-        if let line = progress.newest(among: posts.map(\.hash), after: posts.last?.date ?? .distantPast) {
-            return "Working: \(line.text)"
-        }
+        // A session's status line, and its steps, say whose turn it is.
+        if agentStatus != nil { return nil }
         guard let last = posts.last, ConversationBook.isOwn(last, login: login) else { return nil }
         let other = posts.last { !ConversationBook.isOwn($0, login: login) }?.author ?? "a reply"
         let since = last.date.formatted(.dateTime.hour().minute())
         return "Waiting for \(other) since \(since)"
     }
 
-    private static func color(for state: AgentStatus.State) -> Color {
-        switch state {
-        case .working: return .green
-        case .idle: return .yellow
-        case .stopped: return .gray
-        }
-    }
-
     /// While this conversation is on screen (the task is cancelled when it
-    /// leaves): every 15 seconds, ask OCX what the thread's agent is doing
-    /// (threads only), and sync this repo
-    /// - at once when the agent goes from working to idle or stopped -- its
-    ///   answer has just been posted;
-    /// - every 30 seconds while your post is the latest and a reply is due;
+    /// leaves), sync this repo
+    /// - every 30 seconds while a reply is due: your post is the latest, or
+    ///   the session is working;
     /// - every 2 minutes otherwise.
     private func watch() async {
         guard let repo else { return }
         var lastSync = Date()
         while !Task.isCancelled {
-            var syncNow = false
-            if id.kind == .thread {
-                let previous = agentStatus?.state
-                let status = await AgentStatusClient.fetch(repo: repo, thread: id.key)
-                // Only a change redraws the screen; the poll itself mustn't.
-                if status != agentStatus { agentStatus = status }
-                if previous == .working, let state = status?.state, state != .working {
-                    syncNow = true
-                }
-            }
-            let interval: TimeInterval = waitingLine != nil ? 30 : 120
-            if syncNow || Date().timeIntervalSince(lastSync) >= interval {
+            let due = waitingLine != nil || agentStatus?.state == .working
+            let interval: TimeInterval = due ? 30 : 120
+            if Date().timeIntervalSince(lastSync) >= interval {
                 await syncRepo(repo)
                 lastSync = Date()
             }
@@ -237,6 +224,8 @@ struct ConversationView: View {
         if let result = await conversations.posts(for: id, fossilPath: fossilPath) {
             if title != result.title { title = result.title }
             if posts != result.posts { posts = result.posts }
+            let status = id.kind == .thread ? AgentStatus.read(result.posts) : nil
+            if agentStatus != status { agentStatus = status }
             if let last = result.posts.last {
                 conversations.markRead(id, upTo: last.mtime)
                 await NotificationManager.shared.updateBadge(conversations.totalUnread)
@@ -633,4 +622,43 @@ private struct SafariView: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ controller: SFSafariViewController, context: Context) {}
+}
+
+extension AgentStatus {
+    var color: Color {
+        switch state {
+        case .waiting: return .orange
+        case .working: return .green
+        case .yourTurn: return .yellow
+        case .ended: return .gray
+        }
+    }
+}
+
+/// A working session's steps in this turn, live from the repository's chat,
+/// under the latest post until the session answers (as ocx-console's page
+/// shows them). The newest few; a long turn's earlier steps are counted.
+private struct StepsView: View {
+    let steps: [ChatLine]
+    private static let shown = 6
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            if steps.count > Self.shown {
+                Text("\(steps.count - Self.shown) earlier steps")
+            }
+            ForEach(Array(steps.suffix(Self.shown).enumerated()), id: \.offset) { _, step in
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(step.date.formatted(.dateTime.hour().minute()))
+                        .monospacedDigit()
+                    Text(step.text).lineLimit(2)
+                }
+            }
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 4)
+        .accessibilityElement(children: .combine)
+    }
 }

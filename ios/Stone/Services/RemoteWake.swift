@@ -15,9 +15,8 @@ struct ChatPollAnswer: Equatable {
     /// Fossil answers 200 with one row marked `isError` when the login lacks
     /// the chat capability (C) or its cookie has expired.
     let isError: Bool
-    /// The rows that are a run's progress lines; they don't count as news
-    /// to sync for, since they are chat, not records.
-    var progress: [RunProgressLine] = []
+    /// Every row as sent: a session's steps among them.
+    var lines: [ChatLine] = []
 
     static func parse(_ data: Data) -> ChatPollAnswer? {
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -26,67 +25,61 @@ struct ChatPollAnswer: Equatable {
             return ChatPollAnswer(lastID: nil, rows: 0, isError: true)
         }
         let ids = msgs.compactMap { $0["msgid"] as? Int }
-        let progress = msgs.compactMap { msg -> RunProgressLine? in
-            guard let text = msg["xmsg"] as? String, let mtime = msg["mtime"] as? String else { return nil }
-            return RunProgressLine.parse(text, mtime: mtime)
+        let lines = msgs.compactMap { msg -> ChatLine? in
+            guard let login = msg["xfrom"] as? String, let text = msg["xmsg"] as? String,
+                  let mtime = msg["mtime"] as? String else { return nil }
+            return ChatLine.parse(login: login, text: text, mtime: mtime)
         }
-        return ChatPollAnswer(lastID: ids.max(), rows: msgs.count - progress.count, isError: false,
-                              progress: progress)
+        return ChatPollAnswer(lastID: ids.max(), rows: msgs.count, isError: false, lines: lines)
     }
 }
 
-/// One line of a run's progress, which the node posts to the run's
-/// repository's chat while the run works: `[run HASH10] TEXT`, HASH10 being
-/// the run's first ten hex digits (ocx2, 2026-10-31; the run names a
-/// progress file, and the node posts its newest line at most every 2 s).
-/// Chat isn't synced or kept, so these are seen only live, through
-/// /chat-poll, and only while RemoteWake follows the repository.
-struct RunProgressLine: Equatable {
-    let run: String
+/// One line of a repository's chat. A session's steps are lines it sends
+/// there while it works, one per tool it uses (ocx-console's tools/steps:
+/// "Reading src/main.cr", "Editing ..."). Chat isn't synced or kept, so they
+/// are seen only live, through /chat-poll, while RemoteWake follows the
+/// repository.
+struct ChatLine: Equatable {
+    let login: String
     let text: String
     let date: Date
 
     /// `text` is the message as sent (chat-poll's `raw`); `mtime` is
     /// chat-poll's "YYYY-MM-DDTHH:MM:SSZ".
-    static func parse(_ text: String, mtime: String) -> RunProgressLine? {
-        guard text.hasPrefix("[run "), text.count > 17 else { return nil }
-        let run = text.dropFirst(5).prefix(10)
-        let rest = text.dropFirst(15)
-        guard run.count == 10, run.allSatisfy({ $0.isHexDigit && !$0.isUppercase }),
-              rest.hasPrefix("] "), !rest.contains("\n"),
-              let date = ISO8601DateFormatter().date(from: mtime) else { return nil }
-        return RunProgressLine(run: String(run), text: String(rest.dropFirst(2)), date: date)
+    static func parse(login: String, text: String, mtime: String) -> ChatLine? {
+        let line = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !login.isEmpty, !line.isEmpty, let date = ISO8601DateFormatter().date(from: mtime) else { return nil }
+        return ChatLine(login: login, text: line, date: date)
     }
 }
 
-/// The newest progress line of each run seen this session, for the
-/// conversation that holds the run's post (ConversationView's
-/// "Working: …" line).
+/// The recent chat lines of each repository seen this app session, for the
+/// conversation whose session sent them (ConversationView's steps).
 @MainActor
-final class RunProgress: ObservableObject {
-    static let shared = RunProgress()
+final class SessionSteps: ObservableObject {
+    static let shared = SessionSteps()
 
-    @Published private(set) var lines: [String: RunProgressLine] = [:]
+    @Published private(set) var lines: [UUID: [ChatLine]] = [:]
 
     /// A line older than this says nothing about now.
     static let fresh: TimeInterval = 600
+    /// Kept per repository; a turn shows its newest few.
+    static let kept = 200
 
-    func record(_ new: [RunProgressLine]) {
-        for line in new where (lines[line.run]?.date ?? .distantPast) <= line.date {
-            lines[line.run] = line
-        }
-        lines = lines.filter { Date().timeIntervalSince($0.value.date) < Self.fresh * 6 }
+    func record(_ new: [ChatLine], repo: UUID) {
+        let now = Date()
+        lines[repo] = Array(((lines[repo] ?? []) + new)
+            .filter { now.timeIntervalSince($0.date) < Self.fresh }
+            .suffix(Self.kept))
     }
 
-    /// The newest fresh line of a run whose post is among `hashes`, written
-    /// after `after` (the thread's newest post, which ends a turn).
-    func newest(among hashes: [String], after: Date) -> RunProgressLine? {
-        lines.values
-            .filter { line in
-                line.date > after && Date().timeIntervalSince(line.date) < Self.fresh
-                    && hashes.contains { $0.hasPrefix(line.run) }
-            }
-            .max { $0.date < $1.date }
+    /// The fresh lines `login` sent to `repo`'s chat after `after` (the
+    /// thread's newest post, which ends a turn), oldest first.
+    func steps(repo: UUID, login: String, after: Date) -> [ChatLine] {
+        (lines[repo] ?? []).filter { line in
+            line.date > after && Date().timeIntervalSince(line.date) < Self.fresh
+                && line.login.caseInsensitiveCompare(login) == .orderedSame
+        }
     }
 }
 
@@ -133,7 +126,7 @@ enum RemoteWake {
                 let asked = Date()
                 let data = try await session.longPoll(
                     "chat-poll",
-                    // raw: each row's text as sent, for progress lines.
+                    // raw: each row's text as sent, for a session's steps.
                     query: [URLQueryItem(name: "name", value: String(last)),
                             URLQueryItem(name: "raw", value: "1")],
                     referer: "chat",
@@ -151,8 +144,8 @@ enum RemoteWake {
                 errorAnswers = 0
                 let first = last < 0
                 if let id = answer.lastID { last = id }
-                if !first, !answer.progress.isEmpty {
-                    await RunProgress.shared.record(answer.progress)
+                if !first, !answer.lines.isEmpty {
+                    await SessionSteps.shared.record(answer.lines, repo: repo.id)
                 }
                 guard answer.rows > 0, !first || Date().timeIntervalSince(asked) >= waited else { continue }
                 let sinceLast = Date().timeIntervalSince(lastWake)
