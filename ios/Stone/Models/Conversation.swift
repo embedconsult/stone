@@ -55,6 +55,8 @@ struct ConversationSummary: Identifiable, Equatable {
     /// Posts by someone other than the signed-in login newer than the last
     /// time the conversation was read on this phone.
     var unread: Int
+    /// For a session's thread: running or idle (AgentStatus).
+    var status: AgentStatus? = nil
 }
 
 enum FossilTime {

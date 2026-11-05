@@ -43,11 +43,19 @@ struct ConversationView: View {
     /// Questions in this thread that have a decision, by hash: their
     /// choices are no longer offered.
     @State private var decided: Set<String> = []
-    /// The session's steps in this turn, while it is working.
-    private var steps: [ChatLine] {
-        guard let status = agentStatus, status.state == .working, let login = status.login else { return [] }
-        return sessionSteps.steps(repo: id.repoID, login: login, after: posts.last?.date ?? .distantPast)
+    /// The session's steps after `post`, up to the next post: the turn that
+    /// post started. Empty for a thread that isn't a session's.
+    private func steps(after post: ConversationPost) -> [ChatLine] {
+        guard let login = agentStatus?.login, let index = posts.firstIndex(of: post) else { return [] }
+        let next = posts.index(after: index) < posts.endIndex ? posts[posts.index(after: index)].date : .distantFuture
+        return sessionSteps.steps(repo: id.repoID, login: login, after: post.date, before: next)
     }
+    /// Whether the newest post is on screen: the jump-to-bottom button
+    /// shows when it isn't.
+    @State private var bottomY: CGFloat = 0
+    @State private var viewportHeight: CGFloat = 0
+    private var scrolledUp: Bool { bottomY > viewportHeight + 80 }
+    private static let bottomID = "bottom"
     /// True while this screen's own sync (after Send, or the watch loop)
     /// runs, so the two never overlap.
     @State private var syncing = false
@@ -92,17 +100,40 @@ struct ConversationView: View {
                                    fossilPath: fossilPath)
                             .equatable()
                             .id(post.hash)
+                        let turn = steps(after: post)
+                        if !turn.isEmpty {
+                            StepsView(steps: turn, current: post == posts.last)
+                        }
                     }
-                    if !steps.isEmpty {
-                        StepsView(steps: steps)
-                    }
+                    Color.clear.frame(height: 1)
+                        .id(Self.bottomID)
+                        .onGeometryChange(for: CGFloat.self) { $0.frame(in: .named(Self.bottomID)).minY } action: { bottomY = $0 }
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
             }
             .defaultScrollAnchor(.bottom)
-            .onChange(of: posts.last?.hash) { _, last in
-                if let last { proxy.scrollTo(last, anchor: .bottom) }
+            .coordinateSpace(.named(Self.bottomID))
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewportHeight = $0 }
+            .onChange(of: posts.last?.hash) { _, _ in
+                proxy.scrollTo(Self.bottomID, anchor: .bottom)
+            }
+            // Like the console's: a round arrow while scrolled up, back to
+            // the newest post (maintainer, ocx-console forum 57bc09a092).
+            .overlay(alignment: .bottomTrailing) {
+                if scrolledUp {
+                    Button {
+                        withAnimation { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
+                    } label: {
+                        Image(systemName: "arrow.down")
+                            .font(.headline)
+                            .frame(width: 40, height: 40)
+                            .background(.regularMaterial, in: Circle())
+                            .shadow(radius: 2)
+                    }
+                    .padding(12)
+                    .accessibilityLabel("Jump to bottom")
+                }
             }
         }
         .safeAreaInset(edge: .bottom) {
@@ -147,6 +178,9 @@ struct ConversationView: View {
             }
         }
         .task(id: id) { await watch() }
+        .task(id: agentStatus == nil) {
+            if agentStatus != nil, let repo { await sessionSteps.load(repo) }
+        }
         .environment(\.openURL, OpenURLAction { url in
             guard url.scheme == "http" || url.scheme == "https" else { return .systemAction }
             openedLink = OpenedLink(url: url)
@@ -196,16 +230,21 @@ struct ConversationView: View {
     /// - every 30 seconds while a reply is due: your post is the latest, or
     ///   the session is working;
     /// - every 2 minutes otherwise.
+    /// A session's thread also reads the repo's chat then, for its steps
+    /// (and once when it is seen to be a session's: `.task` below).
     private func watch() async {
         guard let repo else { return }
         var lastSync = Date()
         while !Task.isCancelled {
             let due = waitingLine != nil || agentStatus?.state == .working
             let interval: TimeInterval = due ? 30 : 120
+            var synced = false
             if Date().timeIntervalSince(lastSync) >= interval {
                 await syncRepo(repo)
                 lastSync = Date()
+                synced = true
             }
+            if synced, agentStatus != nil { await sessionSteps.load(repo) }
             try? await Task.sleep(for: .seconds(15))
         }
     }
@@ -675,25 +714,51 @@ extension AgentStatus {
         case .ended: return .gray
         }
     }
+
+    /// The list's running or idle mark.
+    var shortLabel: String {
+        switch state {
+        case .waiting: return "Not started"
+        case .working: return "Running"
+        case .yourTurn: return "Idle, your turn"
+        case .ended: return "Ended"
+        }
+    }
 }
 
-/// A working session's steps in this turn, live from the repository's chat,
-/// under the latest post until the session answers (as ocx-console's page
-/// shows them). The newest few; a long turn's earlier steps are counted.
+/// One turn's steps, in line under the post that started it, from the
+/// repository's chat (as ocx-console's page shows them). The current
+/// turn's are open, its newest few with the rest counted; a past turn's
+/// are folded to "N steps" until tapped.
 private struct StepsView: View {
     let steps: [ChatLine]
+    let current: Bool
+    @State private var open: Bool?
+    @State private var all = false
     private static let shown = 6
 
     var body: some View {
+        let isOpen = open ?? current
         VStack(alignment: .leading, spacing: 3) {
-            if steps.count > Self.shown {
-                Text("\(steps.count - Self.shown) earlier steps")
+            Button {
+                open = !isOpen
+            } label: {
+                Label("\(steps.count) step\(steps.count == 1 ? "" : "s")",
+                      systemImage: isOpen ? "chevron.down" : "chevron.right")
             }
-            ForEach(Array(steps.suffix(Self.shown).enumerated()), id: \.offset) { _, step in
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(step.date.formatted(.dateTime.hour().minute()))
-                        .monospacedDigit()
-                    Text(step.text).lineLimit(2)
+            .buttonStyle(.plain)
+            if isOpen {
+                if !all && steps.count > Self.shown {
+                    Button("\(steps.count - Self.shown) earlier steps") { all = true }
+                        .buttonStyle(.plain)
+                        .underline()
+                }
+                ForEach(Array((all ? steps : Array(steps.suffix(Self.shown))).enumerated()), id: \.offset) { _, step in
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(step.date.formatted(.dateTime.hour().minute()))
+                            .monospacedDigit()
+                        Text(step.text).lineLimit(2)
+                    }
                 }
             }
         }
@@ -701,6 +766,5 @@ private struct StepsView: View {
         .foregroundStyle(.secondary)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 4)
-        .accessibilityElement(children: .combine)
     }
 }
