@@ -181,18 +181,22 @@ final class ForegroundSync {
 
     private var timer: Task<Void, Never>?
     private var wakes: Task<Void, Never>?
+    private var returns: Task<Void, Never>?
 
     func start(store: RepoStore) {
         guard timer == nil else { return }
         timer = Task { await Self.runTimer(store: store) }
         wakes = Task { await Self.runWakes(store: store) }
+        returns = Task { await Self.runReturns(store: store) }
     }
 
     func stop() {
         timer?.cancel()
         wakes?.cancel()
+        returns?.cancel()
         timer = nil
         wakes = nil
+        returns = nil
     }
 
     /// Whether Automatic Sync is on, and not held back by Low Power Mode.
@@ -216,6 +220,22 @@ final class ForegroundSync {
             guard !store.isSyncingAll, store.repos.contains(where: { $0.remoteURL != nil }) else { continue }
             await store.syncAll(trigger: .timer)
             // Same post-sync scan/notify step a background task runs.
+            await BackgroundSyncScheduler.scanAndNotify(store: store, receivedCounts: store.lastSyncReceivedCounts)
+        }
+    }
+
+    /// A Sync All each time the network comes back, so what was saved
+    /// offline goes out and what arrived meanwhile comes in without waiting
+    /// for the timer. Not held by the Automatic Sync setting: the maintainer
+    /// asked that Stone sync when the network returns (ocx-console forum
+    /// 653b82196c), and one sync is what a reply sent offline promises.
+    private static func runReturns(store: RepoStore) async {
+        var was = NetworkStatus.shared.online
+        for await online in NetworkStatus.shared.$online.values {
+            defer { was = online }
+            guard online, !was else { continue }
+            guard !store.isSyncingAll, store.repos.contains(where: { $0.remoteURL != nil }) else { continue }
+            await store.syncAll(trigger: .networkReturned)
             await BackgroundSyncScheduler.scanAndNotify(store: store, receivedCounts: store.lastSyncReceivedCounts)
         }
     }

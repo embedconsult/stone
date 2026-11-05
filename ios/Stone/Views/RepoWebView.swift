@@ -212,6 +212,7 @@ struct RepoDetailView: View {
     /// the request's path (e.g. "/tktview/<uuid>") and clears it so a later
     /// unrelated visit to this repo doesn't replay a stale deep link.
     @ObservedObject private var deepLinkRouter = DeepLinkRouter.shared
+    @ObservedObject private var network = NetworkStatus.shared
 
     @State private var currentURL: URL?
 
@@ -353,10 +354,11 @@ struct RepoDetailView: View {
                 Button {
                     Task { await runSync() }
                 } label: {
-                    if syncing { ProgressView() }
+                    if !network.online { OfflineLabel() }
+                    else if syncing { ProgressView() }
                     else { Image(systemName: "arrow.triangle.2.circlepath") }
                 }
-                .disabled(syncing || repo.remoteURL == nil)
+                .disabled(!network.online || syncing || repo.remoteURL == nil)
             }
 
         }

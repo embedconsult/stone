@@ -5,6 +5,7 @@ import SwiftUI
 struct RepoListView: View {
     @EnvironmentObject private var store: RepoStore
     @ObservedObject private var conversationStore = ConversationStore.shared
+    @ObservedObject private var network = NetworkStatus.shared
     @State private var showingAdd = false
     @State private var showingSettings = false
     @State private var repoToRename: Repo?
@@ -106,11 +107,12 @@ struct RepoListView: View {
                         await BackgroundSyncScheduler.scanAndNotify(store: store, receivedCounts: store.lastSyncReceivedCounts)
                     }
                 } label: {
-                    if store.isSyncingAll { ProgressView() }
+                    if !network.online { OfflineLabel() }
+                    else if store.isSyncingAll { ProgressView() }
                     else { Image(systemName: "arrow.triangle.2.circlepath") }
                 }
-                .disabled(store.isSyncingAll || !store.repos.contains { $0.remoteURL != nil })
-                .accessibilityLabel("Sync All")
+                .disabled(!network.online || store.isSyncingAll || !store.repos.contains { $0.remoteURL != nil })
+                .accessibilityLabel(network.online ? "Sync All" : "Offline")
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button { showingAdd = true } label: { Image(systemName: "plus") }
