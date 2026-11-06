@@ -64,37 +64,101 @@ struct RemoteSiteView: View {
     }
 
     private func prepare() async {
-        guard let remote = repo.remoteURL,
-              var comps = URLComponents(string: remote) else {
+        guard repo.remoteURL != nil else {
             errorText = "This repository has no remote configured."
             return
         }
-        comps.user = nil
-        comps.password = nil
-        guard let home = comps.url else {
+        guard let home = Self.siteURL(repo) else {
             errorText = "Invalid remote address."
             return
         }
-        // Log in first when there's a password, so pages that need it open
-        // without a second login; without one, browse anonymously.
-        if CredentialStore.password(for: repo.id) != nil,
-           let session = RemoteSession(remoteURL: remote, password: CredentialStore.password(for: repo.id)) {
-            do {
-                let cookie = try await session.sessionCookie()
-                await RemoteSiteWebView.shareCookie(cookie)
-            } catch {
-                errorText = error.localizedDescription
-                return
-            }
+        do {
+            try await Self.signIn(repo)
+        } catch {
+            errorText = error.localizedDescription
+            return
         }
         pageURL = home
+    }
+
+    /// The repo's server address, without the login in it.
+    static func siteURL(_ repo: Repo) -> URL? {
+        guard let remote = repo.remoteURL, var comps = URLComponents(string: remote) else { return nil }
+        comps.user = nil
+        comps.password = nil
+        return comps.url
+    }
+
+    /// Logs in first when there's a password, so pages that need it open
+    /// without a second login; without one, browse anonymously.
+    static func signIn(_ repo: Repo) async throws {
+        guard let remote = repo.remoteURL, let password = CredentialStore.password(for: repo.id),
+              let session = RemoteSession(remoteURL: remote, password: password) else { return }
+        let cookie = try await session.sessionCookie()
+        await RemoteSiteWebView.shareCookie(cookie)
+    }
+
+    /// The repository on this phone whose server `url` is on: its address,
+    /// without the login, starts the link's. The longest match wins, so
+    /// two repositories on one host each get their own links.
+    static func repo(for url: URL, in repos: [Repo]) -> Repo? {
+        let link = url.absoluteString
+        let matches = repos.compactMap { repo -> (repo: Repo, base: String)? in
+            guard var base = siteURL(repo)?.absoluteString else { return nil }
+            while base.hasSuffix("/") { base.removeLast() }
+            guard link == base || link.hasPrefix(base + "/") || link.hasPrefix(base + "?") else { return nil }
+            return (repo, base)
+        }
+        return matches.max { $0.base.count < $1.base.count }?.repo
+    }
+}
+
+/// A page of one of the phone's repositories' servers, opened from a
+/// conversation's link: signed in as the repo's remote user, as Remote Site
+/// is, so a page that needs a login doesn't send you to /login
+/// (maintainer, ocx-console forum 649a29854b).
+struct SignedInPage: View {
+    let repo: Repo
+    let url: URL
+    @Environment(\.dismiss) private var dismiss
+    @State private var ready = false
+    @State private var errorText: String?
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                if ready {
+                    RemoteSiteWebView(url: url)
+                } else if let errorText {
+                    ContentUnavailableView("Couldn't sign in", systemImage: "exclamationmark.triangle",
+                                           description: Text(errorText))
+                } else {
+                    ProgressView("Signing in…")
+                }
+            }
+            .navigationTitle(repo.name)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+        }
+        .task {
+            do {
+                try await RemoteSiteView.signIn(repo)
+                ready = true
+            } catch {
+                errorText = error.localizedDescription
+            }
+        }
     }
 }
 
 /// Thin WKWebView wrapper for the remote site. Deliberately separate from
 /// `RepoWebView` (the LOCAL embedded server) so local, on-device content and
 /// the remote server are never rendered by the same code path.
-private struct RemoteSiteWebView: UIViewRepresentable {
+struct RemoteSiteWebView: UIViewRepresentable {
     let url: URL
 
     func makeUIView(context: Context) -> WKWebView {

@@ -200,7 +200,14 @@ struct ConversationView: View {
             return .handled
         })
         .sheet(item: $openedLink) { link in
-            SafariView(url: link.url).ignoresSafeArea()
+            // A link to one of this phone's repositories' servers opens
+            // signed in; any other in Safari's view.
+            if let site = RemoteSiteView.repo(for: link.url, in: store.repos),
+               CredentialStore.password(for: site.id) != nil {
+                SignedInPage(repo: site, url: link.url)
+            } else {
+                SafariView(url: link.url).ignoresSafeArea()
+            }
         }
         .sheet(item: $wholePost) { post in
             NavigationStack {
