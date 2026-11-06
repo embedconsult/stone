@@ -13,6 +13,7 @@ struct RemoteSiteView: View {
     let repo: Repo
 
     @State private var pageURL: URL?
+    @State private var shown: URL?
     @State private var errorText: String?
 
     var body: some View {
@@ -23,6 +24,9 @@ struct RemoteSiteView: View {
         }
         .navigationTitle("Remote Site")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) { OpenInSafariButton(url: shown ?? pageURL) }
+        }
         .task { await prepare() }
     }
 
@@ -53,7 +57,7 @@ struct RemoteSiteView: View {
     @ViewBuilder
     private var content: some View {
         if let pageURL {
-            RemoteSiteWebView(url: pageURL)
+            RemoteSiteWebView(url: pageURL, shown: $shown)
         } else if let errorText {
             ContentUnavailableView("Couldn't reach the remote site",
                                    systemImage: "exclamationmark.triangle",
@@ -122,13 +126,14 @@ struct SignedInPage: View {
     let url: URL
     @Environment(\.dismiss) private var dismiss
     @State private var ready = false
+    @State private var shown: URL?
     @State private var errorText: String?
 
     var body: some View {
         NavigationStack {
             Group {
                 if ready {
-                    RemoteSiteWebView(url: url)
+                    RemoteSiteWebView(url: url, shown: $shown)
                 } else if let errorText {
                     ContentUnavailableView("Couldn't sign in", systemImage: "exclamationmark.triangle",
                                            description: Text(errorText))
@@ -142,6 +147,7 @@ struct SignedInPage: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
                 }
+                ToolbarItem(placement: .topBarLeading) { OpenInSafariButton(url: shown ?? url) }
             }
         }
         .task {
@@ -160,6 +166,14 @@ struct SignedInPage: View {
 /// the remote server are never rendered by the same code path.
 struct RemoteSiteWebView: UIViewRepresentable {
     let url: URL
+    /// The page showing now, for Open in Safari.
+    @Binding var shown: URL?
+
+    final class Coordinator {
+        var watch: NSKeyValueObservation?
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeUIView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
@@ -168,6 +182,11 @@ struct RemoteSiteWebView: UIViewRepresentable {
         webView.allowsBackForwardNavigationGestures = true
         webView.uiDelegate = NewTabsInPlace.shared
         webView.load(URLRequest(url: url))
+        let shown = $shown
+        context.coordinator.watch = webView.observe(\.url, options: [.initial, .new]) { view, _ in
+            let now = view.url
+            Task { @MainActor in shown.wrappedValue = now }
+        }
         return webView
     }
 
@@ -179,5 +198,22 @@ struct RemoteSiteWebView: UIViewRepresentable {
     /// with -- loads already authenticated as the same user.
     static func shareCookie(_ cookie: HTTPCookie) async {
         await WKWebsiteDataStore.default().httpCookieStore.setCookie(cookie)
+    }
+}
+
+/// Opens the page showing now in Safari (maintainer, ocx-console forum
+/// 58613c1556: "stone doesn't give me a way to select opening in a
+/// browser"). Safari signs in on its own; Stone's login stays in Stone.
+struct OpenInSafariButton: View {
+    let url: URL?
+
+    var body: some View {
+        Button {
+            if let url { UIApplication.shared.open(url) }
+        } label: {
+            Image(systemName: "safari")
+        }
+        .disabled(url == nil)
+        .accessibilityLabel("Open in Safari")
     }
 }
