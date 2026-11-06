@@ -157,6 +157,19 @@ struct ConversationView: View {
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            // A session that hasn't ended can be asked for an update in one
+            // press.
+            if let agentStatus, !agentStatus.isEnded {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        Task { await send(Self.updateRequest) }
+                    } label: {
+                        Image(systemName: "questionmark.bubble")
+                    }
+                    .disabled(sending)
+                    .accessibilityLabel("Ask for an update")
+                }
+            }
             ToolbarItem(placement: .principal) {
                 VStack(spacing: 1) {
                     Text(title).font(.headline).lineLimit(1)
@@ -300,11 +313,19 @@ struct ConversationView: View {
         }
     }
 
-    private func send() async {
+    /// What the update button posts: a plain request the session answers
+    /// in a few lines (maintainer, ocx-console forum 02c912ba6c: "asking
+    /// for an update should be a single button").
+    static let updateRequest = "Update, please: in a few lines, what you're doing now, what's done, and what's next."
+
+    /// Sends the draft, or `fixed` text (the update button's) as a reply to
+    /// the latest post, leaving the draft as it is.
+    private func send(_ fixed: String? = nil) async {
         guard let repo, let fossilPath, let latest = posts.last else { return }
         sending = true
         defer { sending = false }
-        var body = draft.text
+        var body = fixed ?? draft.text
+        let replyTarget = fixed == nil ? self.replyTarget : nil
         // A reply to an OCX question is a decision on it: the option's
         // words, or your own, in the question's own message shape.
         if let target = replyTarget,
@@ -319,8 +340,10 @@ struct ConversationView: View {
             errorText = error.localizedDescription
             return
         }
-        draft.text = ""
-        replyTarget = nil
+        if fixed == nil {
+            draft.text = ""
+            self.replyTarget = nil
+        }
         await reload()
         // Push right away. When that can't happen (no network, a refused
         // login), the reply is already safe in the clone and any later sync
@@ -713,6 +736,11 @@ extension AgentStatus {
         case .yourTurn: return .yellow
         case .ended: return .gray
         }
+    }
+
+    var isEnded: Bool {
+        if case .ended = state { return true }
+        return false
     }
 
     /// The list's running or idle mark.
