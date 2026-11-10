@@ -123,7 +123,14 @@ struct ConversationView: View {
             .overlay(alignment: .bottomTrailing) {
                 if scrolledUp {
                     Button {
-                        withAnimation { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
+                        // No animation: while the list still coasts after a
+                        // flick, an animated scroll loses to the coasting and
+                        // nothing moves (stone forum a3ddb2dd50). A jump
+                        // without animation stops the coasting; the second,
+                        // on the next turn of the main loop, lands at the
+                        // bottom if the coasting moved it once more.
+                        proxy.scrollTo(Self.bottomID, anchor: .bottom)
+                        DispatchQueue.main.async { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
                     } label: {
                         Image(systemName: "arrow.down")
                             .font(.headline)
