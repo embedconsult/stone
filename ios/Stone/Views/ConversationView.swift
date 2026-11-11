@@ -56,6 +56,10 @@ struct ConversationView: View {
     @State private var viewportHeight: CGFloat = 0
     private var scrolledUp: Bool { bottomY > viewportHeight + 80 }
     private static let bottomID = "bottom"
+    /// Set for a moment by the jump button: turning
+    /// scrolling off stops a list still coasting after a flick, which
+    /// otherwise carries on past any jump (stone forum 915dbe3627).
+    @State private var stopCoasting = false
     /// True while this screen's own sync (after Send, or the watch loop)
     /// runs, so the two never overlap.
     @State private var syncing = false
@@ -113,6 +117,7 @@ struct ConversationView: View {
                 .padding(.vertical, 8)
             }
             .defaultScrollAnchor(.bottom)
+            .scrollDisabled(stopCoasting)
             .coordinateSpace(.named(Self.bottomID))
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewportHeight = $0 }
             .onChange(of: posts.last?.hash) { _, _ in
@@ -123,14 +128,17 @@ struct ConversationView: View {
             .overlay(alignment: .bottomTrailing) {
                 if scrolledUp {
                     Button {
-                        // No animation: while the list still coasts after a
-                        // flick, an animated scroll loses to the coasting and
-                        // nothing moves (stone forum a3ddb2dd50). A jump
-                        // without animation stops the coasting; the second,
-                        // on the next turn of the main loop, lands at the
-                        // bottom if the coasting moved it once more.
-                        proxy.scrollTo(Self.bottomID, anchor: .bottom)
-                        DispatchQueue.main.async { proxy.scrollTo(Self.bottomID, anchor: .bottom) }
+                        // A list still coasting after a flick carries on past
+                        // a jump, animated or not (stone forum a3ddb2dd50,
+                        // 915dbe3627). Stop it first by turning scrolling off,
+                        // then jump and turn scrolling back on. The wait lets
+                        // the screen draw once with scrolling off; on the very
+                        // next turn of the main loop both changes could merge.
+                        stopCoasting = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                            proxy.scrollTo(Self.bottomID, anchor: .bottom)
+                            stopCoasting = false
+                        }
                     } label: {
                         Image(systemName: "arrow.down")
                             .font(.headline)
