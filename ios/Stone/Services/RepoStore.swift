@@ -35,6 +35,7 @@ enum SyncTrigger: String, Equatable {
     case networkReturned = "the network coming back"
     case notification = "opening a notification"
     case verify = "Verify This Build"
+    case podcasts = "Podcasts"
 }
 
 /// A repository's most recent finished sync, whatever started it: Sync All,
