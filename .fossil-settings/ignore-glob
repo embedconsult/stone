@@ -6,3 +6,5 @@ vendor/libressl-4.1.0/*
 vendor/libressl-src.tar.gz
 vendor/cacert.pem
 ios/Frameworks/FossilCore.xcframework/*
+vendor/wasm-micro-runtime-WAMR-2.4.4/*
+vendor/wamr-src.tar.gz

@@ -32,6 +32,8 @@ INPUT_STAMP="${FW}/.stone-input-sha256"
 # build recipe are unchanged; otherwise a Swift-only project build would link
 # yesterday's embedded HTTP server.
 INPUT_HASH="$(shasum -a 256 "$0" "${BRIDGE}/StoneFossil.c" "${BRIDGE}/StoneFossil.h" \
+  "${BRIDGE}/StoneWasm.c" "${BRIDGE}/StoneWasm.h" "${BRIDGE}/StoneWasmHello.h" \
+  "${REPO_ROOT}/scripts/wamr-sources.txt" "${REPO_ROOT}/scripts/wamr-flags.txt" \
   | awk '{print $1}' | shasum -a 256 | awk '{print $1}')"
 
 if [[ -z "${FORCE:-}" && -f "${FW}/ios-arm64/libfossil.a" && -f "${FW}/ios-arm64-simulator/libfossil.a" \
@@ -47,6 +49,15 @@ fi
 
 # LibreSSL provides Fossil's TLS layer (clone/sync over https://). Built by
 # scripts/build-libressl-ios.sh into per-slice static libs + shared headers.
+# WAMR, which runs WebAssembly plugins (StoneWasm.h): the sources in
+# scripts/wamr-sources.txt, darwin platform, aarch64 native calls.
+WAMR="${REPO_ROOT}/vendor/wasm-micro-runtime-WAMR-2.4.4"
+if [[ ! -d "${WAMR}/core" ]]; then
+  echo "WAMR source missing. Run scripts/fetch-wamr.sh first." >&2
+  exit 1
+fi
+WAMR_FLAGS="-DBH_PLATFORM_DARWIN -DBUILD_TARGET_AARCH64 $(sed -e 's/PLATFORM/darwin/g' -e "s|-I|-I${WAMR}/|g" "${REPO_ROOT}/scripts/wamr-flags.txt" | tr '\n' ' ')"
+
 SSL_DIR="${REPO_ROOT}/build/libressl-ios"
 SSL_INC="${SSL_DIR}/include"
 if [[ ! -d "${SSL_INC}/openssl" ]]; then
@@ -142,6 +153,19 @@ build_lib() {            # $1 = label  $2 = sdk  $3 = clang target triple
 
   # The StoneFossil bridge.
   "${base[@]}" ${COMMON} ${FOSSIL_OPTIONS} -c "${BRIDGE}/StoneFossil.c" -o "${objdir}/StoneFossil.o"
+
+  echo "==> Compiling WAMR for ${label}"
+  local src
+  while read -r src; do
+    [[ -z "${src}" || "${src}" == \#* ]] && continue
+    src="${src#darwin:}"
+    src="${src//PLATFORM/darwin}"
+    src="${src//ARCH/aarch64}"
+    local name; name="$(basename "${src}")"
+    "${base[@]}" -g -Os -fno-common -Wno-everything ${WAMR_FLAGS} -c "${WAMR}/${src}" -o "${objdir}/wamr_${name%.*}.o"
+  done < "${REPO_ROOT}/scripts/wamr-sources.txt"
+  "${base[@]}" -g -Os -fno-common -Wno-everything -I"${WAMR}/core/iwasm/include" -I"${BRIDGE}" \
+    -c "${BRIDGE}/StoneWasm.c" -o "${objdir}/StoneWasm.o"
 
   # Combine Fossil objects with this slice's LibreSSL static libs into a single
   # libfossil.a, so the app still links exactly one artifact. libtool -static

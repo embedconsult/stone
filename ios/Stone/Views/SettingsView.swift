@@ -70,6 +70,7 @@ struct SettingsView: View {
 
                 Section {
                     NavigationLink("Verify This Build", destination: VerifyView())
+                    NavigationLink("WebAssembly Test", destination: WasmTestView())
                     NavigationLink("About", destination: AboutView())
                 }
             }

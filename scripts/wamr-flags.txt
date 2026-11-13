@@ -1,0 +1,14 @@
+-DBH_MALLOC=wasm_runtime_malloc -DBH_FREE=wasm_runtime_free -DNDEBUG
+-DWASM_ENABLE_INTERP=1 -DWASM_ENABLE_FAST_INTERP=1 -DWASM_ENABLE_LIBC_WASI=1
+-DWASM_ENABLE_BULK_MEMORY=1 -DWASM_ENABLE_REF_TYPES=1 -DWASM_ENABLE_MODULE_INST_CONTEXT=1
+-DWASM_ENABLE_SHRUNK_MEMORY=1 -DWASM_ENABLE_MINI_LOADER=0 -DWASM_ENABLE_MULTI_MODULE=0
+-DWASM_ENABLE_SHARED_MEMORY=0 -DWASM_ENABLE_AOT_INTRINSICS=0 -DWASM_ENABLE_QUICK_AOT_ENTRY=0
+-DWASM_ENABLE_EXTENDED_CONST_EXPR=0 -DWASM_DISABLE_HW_BOUND_CHECK=1
+-DWASM_DISABLE_STACK_HW_BOUND_CHECK=1 -DWASM_DISABLE_WAKEUP_BLOCKING_OP=0
+-DWASM_DISABLE_WRITE_GS_BASE=0 -DWASM_GLOBAL_HEAP_SIZE=10485760
+-Icore/iwasm/include -Icore/iwasm/common -Icore/iwasm/interpreter
+-Icore/iwasm/libraries/libc-wasi/sandboxed-system-primitives/include
+-Icore/iwasm/libraries/libc-wasi/sandboxed-system-primitives/src
+-Icore/shared/mem-alloc -Icore/shared/platform/common/libc-util
+-Icore/shared/platform/PLATFORM -Icore/shared/platform/include
+-Icore/shared/utils
