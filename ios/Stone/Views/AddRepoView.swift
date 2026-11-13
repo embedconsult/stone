@@ -20,6 +20,13 @@ struct AddRepoView: View {
     @State private var working = false
     @State private var errorText: String?
 
+    /// Filled in, for an offer to add a known repository (Podcasts offers
+    /// stone-media).
+    init(name: String = "", remoteURL: String = "") {
+        _name = State(initialValue: name)
+        _remoteURL = State(initialValue: remoteURL)
+    }
+
     var body: some View {
         NavigationStack {
             Form {

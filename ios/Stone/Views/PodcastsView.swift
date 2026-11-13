@@ -1,9 +1,12 @@
 import SwiftUI
 
 /// Podcasts: paste a feed's address to subscribe; each feed lists its
-/// episodes, and a tap plays one (PodcastPlayer).
+/// episodes, and a tap plays one (PodcastPlayer). The feeds are stone-media's
+/// wiki page "Podcasts" (PodcastStore).
 struct PodcastsView: View {
+    @EnvironmentObject private var repoStore: RepoStore
     @ObservedObject private var store = PodcastStore.shared
+    @State private var addingRepo = false
     @State private var address = ""
     @State private var adding = false
     @State private var error: String?
@@ -15,6 +18,29 @@ struct PodcastsView: View {
     }
 
     var body: some View {
+        Group {
+            if store.hasRepo { feedList } else { noRepo }
+        }
+        .navigationTitle("Podcasts")
+        .task(id: repoStore.repos.count) { await store.load(repoStore) }
+        .sheet(isPresented: $addingRepo) {
+            AddRepoView(name: "stone-media", remoteURL: PodcastStore.stoneMediaURL)
+                .environmentObject(repoStore)
+        }
+    }
+
+    private var noRepo: some View {
+        ContentUnavailableView {
+            Label("No stone-media here", systemImage: "headphones")
+        } description: {
+            Text("Your podcast list is the wiki page Podcasts in the stone-media repository, and this phone doesn't carry it.")
+        } actions: {
+            Button("Add stone-media") { addingRepo = true }
+                .buttonStyle(.borderedProminent)
+        }
+    }
+
+    private var feedList: some View {
         List {
             Section {
                 HStack {
@@ -33,18 +59,24 @@ struct PodcastsView: View {
                     Text(error).font(.footnote).foregroundStyle(.red)
                 }
             } footer: {
-                Text("Paste a podcast's RSS feed address. Episodes stream from the publisher.")
+                Text("Paste a podcast's RSS feed address. Feeds are kept on stone-media's wiki page Podcasts; episodes stream from the publisher.")
             }
             if !store.feeds.isEmpty {
                 Section("Feeds") {
                     ForEach(store.feeds) { feed in
                         NavigationLink(feed.title) { PodcastEpisodesView(feed: feed) }
                     }
-                    .onDelete { store.remove(at: $0) }
+                    .onDelete { offsets in
+                        let gone = offsets.map { store.feeds[$0] }
+                        Task {
+                            for feed in gone {
+                                do { try await store.remove(feed, repoStore) } catch { self.error = error.localizedDescription }
+                            }
+                        }
+                    }
                 }
             }
         }
-        .navigationTitle("Podcasts")
         .safeAreaInset(edge: .bottom) { NowPlayingBar() }
     }
 
@@ -53,7 +85,7 @@ struct PodcastsView: View {
         adding = true
         error = nil
         do {
-            try await store.add(url)
+            try await store.add(url, repoStore)
             address = ""
         } catch {
             self.error = error.localizedDescription
