@@ -771,7 +771,7 @@ extension AgentStatus {
         case .waiting: return "Not started"
         case .working: return "Running"
         case .yourTurn: return "Idle, your turn"
-        case .ended: return "Ended"
+        case .ended: return isResumable ? "Ended, can be resumed" : "Ended"
         }
     }
 }
