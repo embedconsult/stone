@@ -35,6 +35,10 @@
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
+		<!-- Podcast episodes stream with AVPlayer; many feeds still give
+		     http:// audio addresses. This allows plain HTTP for media only. -->
+		<key>NSAllowsArbitraryLoadsForMedia</key>
+		<true/>
 	</dict>
 	<!-- Stone only uses standard HTTPS/TLS (LibreSSL, for Fossil sync),
 	     which is exempt from export compliance review. Declaring this
@@ -53,6 +57,7 @@
 	     scheduled. -->
 	<key>UIBackgroundModes</key>
 	<array>
+		<string>audio</string>
 		<string>fetch</string>
 		<string>processing</string>
 	</array>
