@@ -11,8 +11,6 @@ enum AppRoute: Hashable {
     /// One repo's conversations (the repo screen's speech-bubbles button).
     case repoConversations(UUID)
     case conversation(ConversationID)
-    /// The console (ConsoleView).
-    case console
     /// Podcasts (PodcastsView).
     case podcasts
 }

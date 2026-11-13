@@ -77,12 +77,12 @@ page. Each line says where to go in the app, what to do and what to see.
   and the app reads none of these sensors yet.
 - **Search across time.** Find anything in the journal by when it happened.
   Not yet.
-- **Project apps.** Some projects have a page of their own that works like
-  an app. One is the console, a chat page where a maintainer talks with
-  sessions. Stone will ship a few such apps inside itself, so they work offline
-  and without their repositories cloned. Not yet: the
-  [plan](https://ollama.openbeagle.org/stone/forumpost/d9c251466a) waits on
-  the maintainer's go-ahead.
+- **Project apps.** A repository can carry apps of its own as WebAssembly
+  plugins (plugin/NAME.wasm on its trunk), so cloning it installs them. Stone
+  runs them and gives them what they can't do alone, such as playing audio.
+  In progress: stone-media's Media plugin is built and waits for its hand
+  check; ocx-console will come the same way, replacing Stone's old console
+  page.
 
 ## The virtues behind it
 
