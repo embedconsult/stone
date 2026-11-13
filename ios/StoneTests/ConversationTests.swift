@@ -224,6 +224,23 @@ final class AgentStatusTests: XCTestCase {
         XCTAssertEqual(status?.login, "run-fb38bc18")
     }
 
+    /// A lost run can be resumed; a started after its ended is its next
+    /// life, so it's running again (OCX docs/protocol-v2-resume.md).
+    func testResumed() {
+        let lost = post("e", "x86-1", 5, message(#"{"ocx":2,"re":"\#(run)","ended":{"outcome":"lost"}}"#))
+        let ended = AgentStatus.read([runPost, started(), lost])
+        XCTAssertEqual(ended?.state, .ended(outcome: "lost"))
+        XCTAssertEqual(ended?.isResumable, true)
+        let resume = post("m", "ec2-user", 6, message(#"{"ocx":2,"re":"\#(run)","resume":{}}"#))
+        let again = post("t", "x86-1", 7, message(#"{"ocx":2,"re":"\#(run)","started":{"values":{"process_user":"run-fb38bc18"}}}"#))
+        let status = AgentStatus.read([runPost, started(), lost, resume, again])
+        XCTAssertEqual(status?.state, .working)
+        XCTAssertEqual(status?.isResumable, false)
+        XCTAssertEqual(AgentStatus.read([runPost, started(), lost, resume])?.state, .ended(outcome: "lost"))
+        let exited = post("x", "x86-1", 5, message(#"{"ocx":2,"re":"\#(run)","ended":{"outcome":"exited"}}"#))
+        XCTAssertEqual(AgentStatus.read([runPost, started(), exited])?.isResumable, false)
+    }
+
     func testProtocolOne() {
         let root = post(run, "ec2-user", 1, message(#"{"ocx":1,"kind":"run","node":"x86-1","objective":"x"}"#))
         let started = post("s", "x86-1", 2, message(#"{"ocx":1,"kind":"started","node":"x86-1","run":"\#(run)","values":{"user":"x86-1-stone"}}"#))

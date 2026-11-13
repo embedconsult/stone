@@ -4,7 +4,10 @@ import Foundation
 /// thread's own posts, so it works offline and needs nothing from the
 /// server. A session's thread starts with its `run`; OCX's node answers it
 /// with `started` and, at the end, `ended` (protocol 2, sections 2.3 and
-/// 2.12; protocol 1's `kind` messages too). Between those, the turn is the
+/// 2.12; protocol 1's `kind` messages too). A run that ended `lost` or
+/// `paused` can be resumed (OCX docs/protocol-v2-resume.md): a `resume` starts
+/// its next life and a new `started` follows, so the latest of `started` and
+/// `ended` decides whether it's running. Between those, the turn is the
 /// session's while the latest post is someone else's, and yours once the
 /// session has answered.
 ///
@@ -31,6 +34,12 @@ struct AgentStatus: Equatable {
     /// When the state began: the run, `started`, the latest post or `ended`.
     let since: Date
 
+    /// Ended `lost` or `paused`: a `resume` can start it again.
+    var isResumable: Bool {
+        if case .ended(let outcome) = state { return outcome == "lost" || outcome == "paused" }
+        return false
+    }
+
     /// The line under the conversation title.
     func label() -> String {
         let who = login ?? "The session"
@@ -42,7 +51,8 @@ struct AgentStatus: Equatable {
         case .waiting: return "Waiting to start, since \(time)"
         case .working: return "\(who) is working, since \(time)"
         case .yourTurn: return "Your turn, since \(time)"
-        case .ended(let outcome): return "Ended at \(time)" + (outcome.map { ": \($0)" } ?? "")
+        case .ended(let outcome):
+            return "Ended at \(time)" + (outcome.map { ": \($0)" } ?? "") + (isResumable ? ", can be resumed" : "")
         }
     }
 
@@ -56,7 +66,8 @@ struct AgentStatus: Equatable {
         for post in posts.dropFirst() where post.author == node {
             guard let message = OCXMessage(post.body ?? ""), message.re == first.hash else { continue }
             switch message.kind {
-            case "started": started = (post, message.login)
+            // A started after an ended is the run's next life (a resume).
+            case "started": started = (post, message.login); ended = nil
             case "ended": ended = (post, message.outcome)
             default: break
             }

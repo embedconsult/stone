@@ -58,7 +58,7 @@ struct OCXMessage: Equatable {
             note = json["note"] as? String
             return
         }
-        guard let kind = ["run", "started", "ended", "stop", "question", "decision"]
+        guard let kind = ["run", "started", "ended", "stop", "resume", "question", "decision"]
                 .first(where: { json[$0] is [String: Any] }),
               let content = json[kind] as? [String: Any] else { return nil }
         self.kind = kind
@@ -82,6 +82,7 @@ struct OCXMessage: Equatable {
         case "started": return "*The session started.*"
         case "ended": return outcome.map { "*The session ended: \($0).*" } ?? "*The session ended.*"
         case "stop": return "*Asked the session to stop.*"
+        case "resume": return "*Asked the session to resume.*"
         case "decision": return note.map { "**Decision:** \($0)" }
         case "question":
             guard let question else { return nil }
