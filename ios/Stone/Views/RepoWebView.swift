@@ -239,8 +239,8 @@ struct RepoDetailView: View {
     @State private var errorText: String?
     @State private var showingSyncResult = false
     @State private var showingRemoteSite = false
-    /// This repository's plugins (plugin/NAME.wasm on its trunk), each a
-    /// button in the bottom bar (PluginView).
+    /// This repository's plugins (plugin/NAME.wasm on its trunk), listed
+    /// from the four-squares button in the bottom bar (PluginListView).
     @State private var plugins: [String] = []
 
     /// Ticket 0bbfd908e6, Option A (the maintainer's pick): a permanent
@@ -404,15 +404,13 @@ struct RepoDetailView: View {
                 }
                 .disabled(!network.online || syncing || repo.remoteURL == nil)
             }
-            ToolbarItemGroup(placement: .bottomBar) {
-                ForEach(plugins, id: \.self) { name in
-                    NavigationLink {
-                        PluginView(repo: repo, name: name)
-                    } label: {
-                        Label(name.capitalized, systemImage: "puzzlepiece")
-                            .labelStyle(.titleAndIcon)
-                    }
+            ToolbarItem(placement: .bottomBar) {
+                NavigationLink {
+                    PluginListView(repo: repo, plugins: plugins)
+                } label: {
+                    Image(systemName: "square.grid.2x2")
                 }
+                .accessibilityLabel("Apps")
             }
         }
         .toolbar(plugins.isEmpty ? .hidden : .visible, for: .bottomBar)

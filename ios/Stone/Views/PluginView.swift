@@ -36,6 +36,25 @@ struct PluginView: View {
     }
 }
 
+/// The repository's installed apps (its plugins), opened from the
+/// four-squares button; each opens as a PluginView.
+struct PluginListView: View {
+    let repo: Repo
+    let plugins: [String]
+
+    var body: some View {
+        List(plugins, id: \.self) { name in
+            NavigationLink {
+                PluginView(repo: repo, name: name)
+            } label: {
+                Label(name.capitalized, systemImage: "puzzlepiece")
+            }
+        }
+        .navigationTitle("Apps")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
 /// Answers the page's requests (scheme stone-plugin) by running the module.
 final class PluginSchemeHandler: NSObject, WKURLSchemeHandler {
     static let scheme = "stone-plugin"
