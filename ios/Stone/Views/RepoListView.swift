@@ -77,6 +77,7 @@ struct RepoListView: View {
             case .repoConversations(let repoID): ConversationListView(repoID: repoID)
             case .conversation(let id): ConversationView(id: id)
             case .console: ConsoleView()
+            case .podcasts: PodcastsView()
             }
         }
         .refreshable {
@@ -99,6 +100,12 @@ struct RepoListView: View {
                 }
                 .accessibilityIdentifier("conversationsButton")
                 .accessibilityLabel("Conversations (\(conversationStore.totalUnread) unread)")
+            }
+            ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink(value: AppRoute.podcasts) {
+                    Image(systemName: "headphones")
+                }
+                .accessibilityLabel("Podcasts")
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {

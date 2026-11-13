@@ -57,6 +57,8 @@
 		7D5625CEBF93664CFA24F861 /* AgentStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = 863C2EB53315015898FA4BAA /* AgentStatus.swift */; };
 		0C1D2E3F405162738495A6B7 /* OCXMessage.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6071829304A5B /* OCXMessage.swift */; };
 		1D2E3F405162738495A6B70C /* NetworkStatus.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2C3D4E5F6071829304A5B1C /* NetworkStatus.swift */; };
+		4A5B6C7D8E9F0A1B2C3D4E5F /* Podcasts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B6C7D8E9F0A1B2C3D4E5F60 /* Podcasts.swift */; };
+		6C7D8E9F0A1B2C3D4E5F6071 /* PodcastsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D8E9F0A1B2C3D4E5F607182 /* PodcastsView.swift */; };
 		7F646F38057EBFAAC465C99C /* RemoteWake.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10ED8B296808DBA385D91DCC /* RemoteWake.swift */; };
 /* End PBXBuildFile section */
 
@@ -133,6 +135,8 @@
 		863C2EB53315015898FA4BAA /* AgentStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AgentStatus.swift; sourceTree = "<group>"; };
 		A1B2C3D4E5F6071829304A5B /* OCXMessage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OCXMessage.swift; sourceTree = "<group>"; };
 		B2C3D4E5F6071829304A5B1C /* NetworkStatus.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkStatus.swift; sourceTree = "<group>"; };
+		5B6C7D8E9F0A1B2C3D4E5F60 /* Podcasts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Podcasts.swift; sourceTree = "<group>"; };
+		7D8E9F0A1B2C3D4E5F607182 /* PodcastsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PodcastsView.swift; sourceTree = "<group>"; };
 		10ED8B296808DBA385D91DCC /* RemoteWake.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteWake.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -293,6 +297,7 @@
 				B381B11CAD790DF201810543 /* AddRepoView.swift */,
 				E1B2028331DBACFDC79B3645 /* EditRemoteView.swift */,
 				929ADAA2B0E5E4DDFA51199B /* RepoListView.swift */,
+				7D8E9F0A1B2C3D4E5F607182 /* PodcastsView.swift */,
 				D03A16783380AA7FE06F26BC /* RepoWebView.swift */,
 				5E771500A11A5EAA00000002 /* SettingsView.swift */,
 				2A4DFE84072A9434AFB1BB7D /* BuildIdentityView.swift */,
@@ -332,6 +337,7 @@
 				6704D5B12ED959E0B7A4F2EE /* ConversationStore.swift */,
 				10ED8B296808DBA385D91DCC /* RemoteWake.swift */,
 				B2C3D4E5F6071829304A5B1C /* NetworkStatus.swift */,
+				5B6C7D8E9F0A1B2C3D4E5F60 /* Podcasts.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -472,6 +478,8 @@
 				0C1D2E3F405162738495A6B7 /* OCXMessage.swift in Sources */,
 				7F646F38057EBFAAC465C99C /* RemoteWake.swift in Sources */,
 				1D2E3F405162738495A6B70C /* NetworkStatus.swift in Sources */,
+				4A5B6C7D8E9F0A1B2C3D4E5F /* Podcasts.swift in Sources */,
+				6C7D8E9F0A1B2C3D4E5F6071 /* PodcastsView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

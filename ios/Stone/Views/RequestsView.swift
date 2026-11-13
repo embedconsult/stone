@@ -13,6 +13,8 @@ enum AppRoute: Hashable {
     case conversation(ConversationID)
     /// The console (ConsoleView).
     case console
+    /// Podcasts (PodcastsView).
+    case podcasts
 }
 
 /// The screen behind the notifications (ticket 4c75227cc7): one row per
