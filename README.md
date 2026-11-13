@@ -74,7 +74,8 @@ page. Each line says where to go in the app, what to do and what to see.
 - **Chronicle.** Journal entries, calendar events, health, location, photos
   and voice notes recorded into a journal repository. Not yet: the design is
   in [docs/design/chronicle-readiness.md](docs/design/chronicle-readiness.md),
-  and the app reads none of these sensors yet.
+  and the app reads none of these sensors yet. It waits on the apps gate
+  below: its repository is private.
 - **Search across time.** Find anything in the journal by when it happened.
   Not yet.
 - **Project apps.** Stone carries apps in its own build, WebAssembly modules
@@ -83,6 +84,12 @@ page. Each line says where to go in the app, what to do and what to see.
   repositories on the phone. In progress: the list and switch, with a small
   test app; Stone Media and ocx-console come next
   ([plan](https://ollama.openbeagle.org/stone/forumpost/df2aca7b58)).
+  Gate: an app acts as the person's login in every repository on the phone,
+  which suits public data, all Stone carries today. Before a private
+  repository such as Chronicle goes on a phone, stability and isolation must
+  be shown working: what an app can reach across repositories, and that one
+  repository's data can't leak through another's app
+  ([maintainer](https://ollama.openbeagle.org/stone/forumpost/b818022970)).
 
 ## The virtues behind it
 
