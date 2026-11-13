@@ -1,0 +1,55 @@
+# WAMR 2.4.4 sources Stone builds in (fast interpreter, WASI; no AOT, JIT,
+# threads or SIMD), listed from WAMR's own CMake build for these options
+# (product-mini/platforms/linux, WAMR_BUILD_FAST_INTERP=1, LIBC_WASI=1,
+# LIBC_BUILTIN=0, LIB_PTHREAD=0, SIMD=0). PLATFORM is linux or darwin;
+# ARCH is em64 (x86-64) or aarch64, the processor's own native-call code.
+# (WAMR's generic C one, invokeNative_general.c, crashed calling WASI's
+# fd_write on x86-64.) A line starting "darwin:" is for darwin only:
+# darwin has no mremap(), so WAMR's portable one is built in.
+# Read by scripts/build-fossil-xcframework.sh
+# and scripts/linux-wasm-test.cr.
+core/iwasm/common/arch/invokeNative_ARCH.s
+core/iwasm/common/wasm_application.c
+core/iwasm/common/wasm_blocking_op.c
+core/iwasm/common/wasm_c_api.c
+core/iwasm/common/wasm_exec_env.c
+core/iwasm/common/wasm_loader_common.c
+core/iwasm/common/wasm_memory.c
+core/iwasm/common/wasm_native.c
+core/iwasm/common/wasm_runtime_common.c
+core/iwasm/common/wasm_shared_memory.c
+core/iwasm/interpreter/wasm_interp_fast.c
+core/iwasm/interpreter/wasm_loader.c
+core/iwasm/interpreter/wasm_runtime.c
+core/iwasm/libraries/libc-wasi/libc_wasi_wrapper.c
+core/iwasm/libraries/libc-wasi/sandboxed-system-primitives/src/blocking_op.c
+core/iwasm/libraries/libc-wasi/sandboxed-system-primitives/src/posix.c
+core/iwasm/libraries/libc-wasi/sandboxed-system-primitives/src/random.c
+core/iwasm/libraries/libc-wasi/sandboxed-system-primitives/src/str.c
+core/shared/mem-alloc/ems/ems_alloc.c
+core/shared/mem-alloc/ems/ems_gc.c
+core/shared/mem-alloc/ems/ems_hmu.c
+core/shared/mem-alloc/ems/ems_kfc.c
+core/shared/mem-alloc/mem_alloc.c
+core/shared/platform/common/libc-util/libc_errno.c
+darwin:core/shared/platform/common/memory/mremap.c
+core/shared/platform/common/posix/posix_blocking_op.c
+core/shared/platform/common/posix/posix_clock.c
+core/shared/platform/common/posix/posix_file.c
+core/shared/platform/common/posix/posix_malloc.c
+core/shared/platform/common/posix/posix_memmap.c
+core/shared/platform/common/posix/posix_sleep.c
+core/shared/platform/common/posix/posix_socket.c
+core/shared/platform/common/posix/posix_thread.c
+core/shared/platform/common/posix/posix_time.c
+core/shared/platform/PLATFORM/platform_init.c
+core/shared/utils/bh_assert.c
+core/shared/utils/bh_bitmap.c
+core/shared/utils/bh_common.c
+core/shared/utils/bh_hashmap.c
+core/shared/utils/bh_leb128.c
+core/shared/utils/bh_list.c
+core/shared/utils/bh_log.c
+core/shared/utils/bh_queue.c
+core/shared/utils/bh_vector.c
+core/shared/utils/runtime_timer.c
