@@ -29,7 +29,8 @@ enum PluginHost {
     }
 
     /// What a run's imports may reach: the plugin's own repository first.
-    final class Context {
+    /// Never changed after it's made, so any thread may read it.
+    final class Context: @unchecked Sendable {
         let home: Place
         let others: [Place]
 
@@ -47,6 +48,7 @@ enum PluginHost {
     /// Plugin runs happen here, one at a time, off the main thread.
     static let queue = DispatchQueue(label: "org.beagleboard.stone.plugins")
 
+    @MainActor
     static func place(_ repo: Repo, _ store: RepoStore) -> Place {
         Place(name: (repo.fileName as NSString).deletingPathExtension,
               path: store.fileURL(for: repo).path,
