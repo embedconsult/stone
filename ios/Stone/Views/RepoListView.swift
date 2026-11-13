@@ -76,7 +76,6 @@ struct RepoListView: View {
             case .conversations: ConversationListView()
             case .repoConversations(let repoID): ConversationListView(repoID: repoID)
             case .conversation(let id): ConversationView(id: id)
-            case .console: ConsoleView()
             case .podcasts: PodcastsView()
             }
         }
@@ -87,12 +86,6 @@ struct RepoListView: View {
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button { showingSettings = true } label: { Image(systemName: "gearshape") }
-            }
-            ToolbarItem(placement: .topBarLeading) {
-                NavigationLink(value: AppRoute.console) {
-                    Image(systemName: "square.grid.2x2")
-                }
-                .accessibilityLabel("Console")
             }
             ToolbarItem(placement: .topBarLeading) {
                 NavigationLink(value: AppRoute.conversations) {

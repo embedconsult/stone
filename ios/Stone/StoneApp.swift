@@ -55,15 +55,6 @@ struct StoneApp: App {
                     await FossilEngine.shared.setHome(path: support.path)
                 }
             }
-            // The console is the greeting: on launch, once any clone has a
-            // card, it opens over the repo list (Back returns to the list).
-            .task {
-                let paths = store.repos.map { store.fileURL(for: $0).path }
-                if await Task.detached(operation: { ConsoleBridge.anyCards(paths) }).value,
-                   path.isEmpty, deepLinkRouter.pending == nil, deepLinkRouter.pendingConversation == nil {
-                    path.append(AppRoute.console)
-                }
-            }
             .onChange(of: deepLinkRouter.pending) { _, destination in
                 guard let destination,
                       let repo = store.repos.first(where: { $0.id == destination.repoID })
