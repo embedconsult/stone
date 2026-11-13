@@ -25,7 +25,10 @@ enum WasmRunner {
         return Array(UnsafeBufferPointer(start: bytes, count: Int(size)))
     }
 
-    static func run(_ module: [UInt8], env: [String] = [], input: String = "") -> Result {
+    /// Runs `module` once; `host` answers its imports (PluginHost), given
+    /// `context` with each call.
+    static func run(_ module: [UInt8], env: [String] = [], input: String = "",
+                    host: stone_wasm_host_fn? = nil, context: UnsafeMutableRawPointer? = nil) -> Result {
         let strings = env.map { strdup($0) }
         defer { strings.forEach { free($0) } }
         let pointers: [UnsafePointer<CChar>?] = strings.map { $0.map { UnsafePointer($0) } }
@@ -34,8 +37,8 @@ enum WasmRunner {
         let code = module.withUnsafeBufferPointer { moduleBytes in
             pointers.withUnsafeBufferPointer { envp in
                 input.withCString { inputChars in
-                    stone_wasm_run(moduleBytes.baseAddress, UInt32(module.count), envp.baseAddress, Int32(env.count),
-                                   inputChars, UInt32(input.utf8.count), &out, &err)
+                    stone_wasm_run_hosted(moduleBytes.baseAddress, UInt32(module.count), envp.baseAddress, Int32(env.count),
+                                          inputChars, UInt32(input.utf8.count), host, context, &out, &err)
                 }
             }
         }
