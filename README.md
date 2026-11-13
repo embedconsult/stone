@@ -90,6 +90,10 @@ page. Each line says where to go in the app, what to do and what to see.
   be shown working: what an app can reach across repositories, and that one
   repository's data can't leak through another's app
   ([maintainer](https://ollama.openbeagle.org/stone/forumpost/b818022970)).
+  The approach to test then: a private repository gets a login of its own,
+  and Fossil's capabilities for that login decide what reaches it, so an app
+  running for a public repository can't reach a private one's data
+  ([maintainer](https://ollama.openbeagle.org/stone/forumpost/6b8b077ec1)).
 
 ## The virtues behind it
 
