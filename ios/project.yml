@@ -30,6 +30,13 @@ targets:
     platform: iOS
     sources:
       - path: Stone
+        excludes:
+          - "Apps"
+      # Stone's bundled apps (PluginHost.apps), copied whole as one folder,
+      # so an app added to it needs no project change.
+      - path: Stone/Apps
+        type: folder
+        buildPhase: resources
       - path: FossilBridge
         # Only the public header is needed by Swift; the .c is already compiled
         # into FossilCore.xcframework. Exclude the .c to avoid double-building.

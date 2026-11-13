@@ -1,9 +1,12 @@
+import CryptoKit
 import Foundation
 
-/// Runs a repository's plugins: WebAssembly modules checked in on its trunk
-/// as `plugin/NAME.wasm`, so clone and sync carry them (Stone Media plugin
-/// plan, step 1b; stone-media BACKLOG.md "The steps now", step 1; contract
-/// agreed on stone forum d584e578b6). Each page request runs the module once,
+/// Runs Stone's apps: WebAssembly modules bundled in Stone's own build
+/// (Apps/NAME/app.wasm, with a release.txt naming the project and check-in
+/// it was built from and its sha256, as an OCX release does), each off until
+/// the person switches it on in the Apps list (plan on stone forum
+/// df2aca7b58, step 1; contract agreed on d584e578b6). Stone never runs code
+/// fetched from a repository. Each page request runs the module once,
 /// CGI-style (StoneWasm), and the module's imports are answered here:
 ///
 /// - `fossil` {"args", "input", "file"?, "repository"?}: a Fossil command on
@@ -19,7 +22,8 @@ import Foundation
 ///   "title", "position", "duration"}.
 ///
 /// "repository" names a repository on this phone; without it, calls go to
-/// the plugin's own. Nothing else on the phone is reachable.
+/// the app's own project's repository, when it's on the phone. Nothing else
+/// on the phone is reachable.
 enum PluginHost {
     /// One repository a plugin may reach.
     struct Place {
@@ -28,22 +32,71 @@ enum PluginHost {
         let login: String
     }
 
-    /// What a run's imports may reach: the plugin's own repository first.
-    /// Never changed after it's made, so any thread may read it.
+    /// What a run's imports may reach: the app's project's repository, if
+    /// it's on the phone, and the others. Never changed after it's made, so
+    /// any thread may read it.
     final class Context: @unchecked Sendable {
-        let home: Place
+        let home: Place?
         let others: [Place]
 
-        init(home: Place, others: [Place]) {
+        init(home: Place?, others: [Place]) {
             self.home = home
             self.others = others
         }
 
         func place(_ name: String?) -> Place? {
-            guard let name, !name.isEmpty, name != home.name else { return home }
+            guard let name, !name.isEmpty else { return home }
+            if let home, home.name == name { return home }
             return others.first { $0.name == name }
         }
     }
+
+    /// One bundled app: Apps/NAME/ in Stone's bundle.
+    struct App: Identifiable, Hashable {
+        let name: String
+        let project: String
+        let checkin: String
+        let sha256: String
+        let module: URL
+        var id: String { name }
+        var title: String { name.capitalized }
+    }
+
+    /// Stone's bundled apps, by name. release.txt holds "project NAME",
+    /// "check-in HASH" and a sha256sum line for app.wasm.
+    static let apps: [App] = {
+        guard let root = Bundle.main.url(forResource: "Apps", withExtension: nil),
+              let names = try? FileManager.default.contentsOfDirectory(atPath: root.path) else { return [] }
+        return names.sorted().compactMap { name in
+            let folder = root.appendingPathComponent(name)
+            guard let text = try? String(contentsOf: folder.appendingPathComponent("release.txt"), encoding: .utf8) else {
+                return nil
+            }
+            var project = "", checkin = "", sha256 = ""
+            for line in text.split(whereSeparator: \.isNewline) {
+                let parts = line.split(separator: " ").map(String.init)
+                guard parts.count == 2 else { continue }
+                switch parts[0] {
+                case "project": project = parts[1]
+                case "check-in": checkin = parts[1]
+                default: if parts[1] == "app.wasm" { sha256 = parts[0].lowercased() }
+                }
+            }
+            guard !sha256.isEmpty else { return nil }
+            return App(name: name, project: project, checkin: checkin, sha256: sha256,
+                       module: folder.appendingPathComponent("app.wasm"))
+        }
+    }()
+
+    /// The app's module, or nil when its bytes don't match release.txt.
+    static func module(_ app: App) -> [UInt8]? {
+        guard let data = try? Data(contentsOf: app.module) else { return nil }
+        let digest = SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+        return digest == app.sha256 ? [UInt8](data) : nil
+    }
+
+    /// The UserDefaults key of the app's switch (off until switched on).
+    static func switchKey(_ app: App) -> String { "app.on.\(app.name)" }
 
     /// Plugin runs happen here, one at a time, off the main thread.
     static let queue = DispatchQueue(label: "org.beagleboard.stone.plugins")
@@ -56,30 +109,10 @@ enum PluginHost {
     }
 
     @MainActor
-    static func context(_ repo: Repo, _ store: RepoStore) -> Context {
-        Context(home: place(repo, store),
-                others: store.repos.filter { $0.id != repo.id }.map { place($0, store) })
-    }
-
-    /// The names of the plugins on the repository's trunk (plugin/NAME.wasm).
-    static func plugins(at path: String) async -> [String] {
-        let listed = await FossilEngine.shared.run(["ls", "-r", "trunk", "-R", path])
-        guard listed.succeeded else { return [] }
-        return listed.output.split(whereSeparator: \.isNewline).compactMap { line in
-            let file = line.trimmingCharacters(in: .whitespaces)
-            guard file.hasPrefix("plugin/"), file.hasSuffix(".wasm") else { return nil }
-            let name = String(file.dropFirst("plugin/".count).dropLast(".wasm".count))
-            return name.contains("/") || name.isEmpty ? nil : name
-        }
-    }
-
-    /// The module's bytes, from the repository's trunk.
-    static func module(_ name: String, at path: String) async -> [UInt8]? {
-        let file = FileManager.default.temporaryDirectory.appendingPathComponent("plugin-\(UUID().uuidString).wasm")
-        defer { try? FileManager.default.removeItem(at: file) }
-        let result = await FossilEngine.shared.run(["cat", "plugin/\(name).wasm", "-r", "trunk", "-o", file.path, "-R", path])
-        guard result.succeeded, let data = try? Data(contentsOf: file), !data.isEmpty else { return nil }
-        return [UInt8](data)
+    static func context(_ app: App, _ store: RepoStore) -> Context {
+        let all = store.repos.map { place($0, store) }
+        return Context(home: all.first { $0.name == app.project },
+                       others: all.filter { $0.name != app.project })
     }
 
     /// Runs one request through the module, on `queue`.
@@ -109,7 +142,7 @@ enum PluginHost {
         switch call {
         case "fossil": reply = fossil(fields, host)
         case "query": reply = query(fields, host)
-        case "projects": reply = ["names": [host.home.name] + host.others.map(\.name)]
+        case "projects": reply = ["names": (host.home.map { [$0.name] } ?? []) + host.others.map(\.name)]
         case "fetch": reply = fetch(fields)
         case "media": reply = media(fields)
         default: return nil

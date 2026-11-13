@@ -239,9 +239,6 @@ struct RepoDetailView: View {
     @State private var errorText: String?
     @State private var showingSyncResult = false
     @State private var showingRemoteSite = false
-    /// This repository's plugins (plugin/NAME.wasm on its trunk), listed
-    /// from the four-squares button in the bottom bar (PluginListView).
-    @State private var plugins: [String] = []
 
     /// Ticket 0bbfd908e6, Option A (the maintainer's pick): a permanent
     /// address bar "might get in the way, but could be useful for debug" --
@@ -404,18 +401,8 @@ struct RepoDetailView: View {
                 }
                 .disabled(!network.online || syncing || repo.remoteURL == nil)
             }
-            ToolbarItem(placement: .bottomBar) {
-                NavigationLink {
-                    PluginListView(repo: repo, plugins: plugins)
-                } label: {
-                    Image(systemName: "square.grid.2x2")
-                }
-                .accessibilityLabel("Apps")
-            }
         }
-        .toolbar(plugins.isEmpty ? .hidden : .visible, for: .bottomBar)
         .task { await startServer() }
-        .task { plugins = await PluginHost.plugins(at: store.fileURL(for: repo).path) }
         .alert("Go to Path", isPresented: $showingPathPrompt) {
             TextField("/modreq", text: $debugPathInput)
                 .textInputAutocapitalization(.never)
