@@ -298,6 +298,16 @@ final class PodcastPlayer: ObservableObject {
 
     func toggle() { playing ? pause() : resume() }
 
+    /// Seconds into the episode, and its length when known (0 if not).
+    var position: Double {
+        let seconds = player.currentTime().seconds
+        return seconds.isFinite ? seconds : 0
+    }
+    var duration: Double {
+        let seconds = player.currentItem?.duration.seconds ?? 0
+        return seconds.isFinite ? seconds : 0
+    }
+
     func pause() {
         player.pause()
         playing = false

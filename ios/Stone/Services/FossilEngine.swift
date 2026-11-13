@@ -25,6 +25,13 @@ actor FossilEngine {
     /// Run a Fossil command (without the leading "fossil"), capturing output.
     /// Example: `run(["clone", url, path])`.
     func run(_ args: [String]) -> CommandResult {
+        runNow(args)
+    }
+
+    /// `run`, for a caller on a thread of its own that can't await: a
+    /// plugin's import (PluginHost), answered while its module runs. The C
+    /// bridge serializes Fossil runs itself.
+    nonisolated func runNow(_ args: [String]) -> CommandResult {
         withCArgv(args) { argc, argv in
             var outPtr: UnsafeMutablePointer<CChar>? = nil
             let code = stone_fossil_run(argc, argv, &outPtr)
@@ -99,7 +106,7 @@ actor FossilEngine {
 
     /// Convert `[String]` into a C `argv` (NULL-terminated) for the duration of
     /// `body`, freeing all allocations afterward.
-    private func withCArgv<R>(_ args: [String],
+    nonisolated private func withCArgv<R>(_ args: [String],
                               _ body: (Int32, UnsafePointer<UnsafePointer<CChar>?>) -> R) -> R {
         var cStrings: [UnsafeMutablePointer<CChar>?] = args.map { strdup($0) }
         cStrings.append(nil)

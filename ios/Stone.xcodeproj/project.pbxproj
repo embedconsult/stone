@@ -60,6 +60,8 @@
 		4A5B6C7D8E9F0A1B2C3D4E5F /* Podcasts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B6C7D8E9F0A1B2C3D4E5F60 /* Podcasts.swift */; };
 		6C7D8E9F0A1B2C3D4E5F6071 /* PodcastsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D8E9F0A1B2C3D4E5F607182 /* PodcastsView.swift */; };
 		8E9F0A1B2C3D4E5F60718293 /* WasmTestView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9F0A1B2C3D4E5F60718293A4 /* WasmTestView.swift */; };
+		A0B1C2D3E4F5061728394A5B /* PluginHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1C2D3E4F5061728394A5B6C /* PluginHost.swift */; };
+		C2D3E4F5061728394A5B6C7D /* PluginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3E4F5061728394A5B6C7D8E /* PluginView.swift */; };
 		7F646F38057EBFAAC465C99C /* RemoteWake.swift in Sources */ = {isa = PBXBuildFile; fileRef = 10ED8B296808DBA385D91DCC /* RemoteWake.swift */; };
 /* End PBXBuildFile section */
 
@@ -139,6 +141,8 @@
 		5B6C7D8E9F0A1B2C3D4E5F60 /* Podcasts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Podcasts.swift; sourceTree = "<group>"; };
 		7D8E9F0A1B2C3D4E5F607182 /* PodcastsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PodcastsView.swift; sourceTree = "<group>"; };
 		9F0A1B2C3D4E5F60718293A4 /* WasmTestView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WasmTestView.swift; sourceTree = "<group>"; };
+		B1C2D3E4F5061728394A5B6C /* PluginHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginHost.swift; sourceTree = "<group>"; };
+		D3E4F5061728394A5B6C7D8E /* PluginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PluginView.swift; sourceTree = "<group>"; };
 		10ED8B296808DBA385D91DCC /* RemoteWake.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RemoteWake.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -301,6 +305,7 @@
 				929ADAA2B0E5E4DDFA51199B /* RepoListView.swift */,
 				7D8E9F0A1B2C3D4E5F607182 /* PodcastsView.swift */,
 				9F0A1B2C3D4E5F60718293A4 /* WasmTestView.swift */,
+				D3E4F5061728394A5B6C7D8E /* PluginView.swift */,
 				D03A16783380AA7FE06F26BC /* RepoWebView.swift */,
 				5E771500A11A5EAA00000002 /* SettingsView.swift */,
 				2A4DFE84072A9434AFB1BB7D /* BuildIdentityView.swift */,
@@ -341,6 +346,7 @@
 				10ED8B296808DBA385D91DCC /* RemoteWake.swift */,
 				B2C3D4E5F6071829304A5B1C /* NetworkStatus.swift */,
 				5B6C7D8E9F0A1B2C3D4E5F60 /* Podcasts.swift */,
+				B1C2D3E4F5061728394A5B6C /* PluginHost.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -484,6 +490,8 @@
 				4A5B6C7D8E9F0A1B2C3D4E5F /* Podcasts.swift in Sources */,
 				6C7D8E9F0A1B2C3D4E5F6071 /* PodcastsView.swift in Sources */,
 				8E9F0A1B2C3D4E5F60718293 /* WasmTestView.swift in Sources */,
+				A0B1C2D3E4F5061728394A5B /* PluginHost.swift in Sources */,
+				C2D3E4F5061728394A5B6C7D /* PluginView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

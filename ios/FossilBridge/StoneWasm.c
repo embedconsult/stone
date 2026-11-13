@@ -12,6 +12,51 @@
 static pthread_mutex_t stone_wasm_lock = PTHREAD_MUTEX_INITIALIZER;
 static int stone_wasm_ready = 0;
 
+/* The run in progress (runs are serialized by stone_wasm_lock): who answers
+ * its imports, and the last reply, which `reply` copies. */
+static stone_wasm_host_fn stone_wasm_host = NULL;
+static void *stone_wasm_context = NULL;
+static char *stone_wasm_reply = NULL;
+static uint32_t stone_wasm_reply_size = 0;
+
+static int32_t stone_wasm_call(const char *name, const uint8_t *request, uint32_t size) {
+    if (!stone_wasm_host) return -1;
+    char *text = malloc((size_t)size + 1);
+    if (!text) return -1;
+    memcpy(text, request, size);
+    text[size] = 0;
+    char *reply = stone_wasm_host(stone_wasm_context, name, text);
+    free(text);
+    if (!reply) return -1;
+    free(stone_wasm_reply);
+    stone_wasm_reply = reply;
+    stone_wasm_reply_size = (uint32_t)strlen(reply);
+    return (int32_t)stone_wasm_reply_size;
+}
+
+/* Each import's signature is "(*~)i": WAMR checks that (pointer, size) lies
+ * in the module's memory and passes a native pointer. */
+static int32_t stone_wasm_fossil(wasm_exec_env_t env, uint8_t *p, uint32_t n) { return stone_wasm_call("fossil", p, n); }
+static int32_t stone_wasm_query(wasm_exec_env_t env, uint8_t *p, uint32_t n) { return stone_wasm_call("query", p, n); }
+static int32_t stone_wasm_projects(wasm_exec_env_t env, uint8_t *p, uint32_t n) { return stone_wasm_call("projects", p, n); }
+static int32_t stone_wasm_fetch(wasm_exec_env_t env, uint8_t *p, uint32_t n) { return stone_wasm_call("fetch", p, n); }
+static int32_t stone_wasm_media(wasm_exec_env_t env, uint8_t *p, uint32_t n) { return stone_wasm_call("media", p, n); }
+
+static int32_t stone_wasm_copy_reply(wasm_exec_env_t env, uint8_t *buffer, uint32_t size) {
+    uint32_t n = size < stone_wasm_reply_size ? size : stone_wasm_reply_size;
+    if (n) memcpy(buffer, stone_wasm_reply, n);
+    return (int32_t)n;
+}
+
+static NativeSymbol stone_wasm_imports[] = {
+    { "fossil", (void *)stone_wasm_fossil, "(*~)i", NULL },
+    { "query", (void *)stone_wasm_query, "(*~)i", NULL },
+    { "projects", (void *)stone_wasm_projects, "(*~)i", NULL },
+    { "fetch", (void *)stone_wasm_fetch, "(*~)i", NULL },
+    { "media", (void *)stone_wasm_media, "(*~)i", NULL },
+    { "reply", (void *)stone_wasm_copy_reply, "(*~)i", NULL },
+};
+
 /* A temporary file in TMPDIR (the app's own tmp folder on iOS), already
  * unlinked, so it goes away when closed. */
 static int stone_wasm_temp(void) {
@@ -50,6 +95,14 @@ int stone_wasm_run(const unsigned char *module, unsigned int size,
                    const char *const env[], int envc,
                    const char *input, unsigned int input_len,
                    char **out_text, char **err_text) {
+    return stone_wasm_run_hosted(module, size, env, envc, input, input_len, NULL, NULL, out_text, err_text);
+}
+
+int stone_wasm_run_hosted(const unsigned char *module, unsigned int size,
+                          const char *const env[], int envc,
+                          const char *input, unsigned int input_len,
+                          stone_wasm_host_fn host, void *context,
+                          char **out_text, char **err_text) {
     char error[256] = "";
     int code = -1;
     int in_fd = -1, out_fd = -1, err_fd = -1;
@@ -68,8 +121,15 @@ int stone_wasm_run(const unsigned char *module, unsigned int size,
             snprintf(error, sizeof error, "WAMR didn't start");
             goto done;
         }
+        if (!wasm_runtime_register_natives("console_host", stone_wasm_imports,
+                                           sizeof stone_wasm_imports / sizeof stone_wasm_imports[0])) {
+            snprintf(error, sizeof error, "WAMR didn't take Stone's imports");
+            goto done;
+        }
         stone_wasm_ready = 1;
     }
+    stone_wasm_host = host;
+    stone_wasm_context = context;
 
     in_fd = stone_wasm_temp();
     out_fd = stone_wasm_temp();
@@ -96,7 +156,7 @@ int stone_wasm_run(const unsigned char *module, unsigned int size,
     char *argv[] = { "module" };
     wasm_runtime_set_wasi_args_ex(loaded, NULL, 0, NULL, 0, (const char **)env, (uint32_t)envc,
                                   argv, 1, dup(in_fd), dup(out_fd), dup(err_fd));
-    instance = wasm_runtime_instantiate(loaded, 256 * 1024, 0, error, sizeof error);
+    instance = wasm_runtime_instantiate(loaded, 1024 * 1024, 0, error, sizeof error);
     if (!instance) goto done;
 
     if (wasm_application_execute_main(instance, 0, NULL)) {
@@ -108,6 +168,11 @@ int stone_wasm_run(const unsigned char *module, unsigned int size,
     }
 
 done:
+    stone_wasm_host = NULL;
+    stone_wasm_context = NULL;
+    free(stone_wasm_reply);
+    stone_wasm_reply = NULL;
+    stone_wasm_reply_size = 0;
     if (instance) wasm_runtime_deinstantiate(instance);
     if (loaded) wasm_runtime_unload(loaded);
     free(bytes);
