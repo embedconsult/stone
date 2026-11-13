@@ -1,4 +1,5 @@
-# Writes ios/FossilBridge/StoneWasmHello.h: a tiny wasm32-wasi module, put
+# Writes ios/FossilBridge/StoneWasmHello.h and ios/Stone/Apps/hello/app.wasm
+# (Stone's first bundled app, with its release.txt): a tiny wasm32-wasi module, put
 # together byte by byte, that writes one CGI response to stdout with WASI's
 # fd_write and returns. Stone runs it to show that WAMR works inside the
 # app (StoneWasm.h). Run: crystal run scripts/stone-wasm-hello.cr
@@ -74,3 +75,6 @@ static const unsigned char stone_wasm_hello[] = {
 
 H
 puts "ios/FossilBridge/StoneWasmHello.h: #{wasm.size} bytes"
+Dir.mkdir_p("ios/Stone/Apps/hello")
+File.write("ios/Stone/Apps/hello/app.wasm", Bytes.new(wasm.size) { |i| wasm[i] })
+puts "ios/Stone/Apps/hello/app.wasm: #{wasm.size} bytes"

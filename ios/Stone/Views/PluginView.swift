@@ -1,12 +1,11 @@
 import SwiftUI
 import WebKit
 
-/// A repository's plugin (plugin/NAME.wasm on its trunk) as a page: every
-/// request the page makes, forms included, runs the module once through
-/// PluginHost, and its CGI response is what the web view shows.
+/// A bundled app as a page: every request the page makes, forms included,
+/// runs the module once through PluginHost, and its CGI response is what
+/// the web view shows.
 struct PluginView: View {
-    let repo: Repo
-    let name: String
+    let app: PluginHost.App
     @EnvironmentObject private var store: RepoStore
     @State private var handler: PluginSchemeHandler?
     @State private var problem: String?
@@ -16,42 +15,78 @@ struct PluginView: View {
             if let handler {
                 PluginWebView(handler: handler)
             } else if let problem {
-                ContentUnavailableView("The plugin didn't load", systemImage: "puzzlepiece",
+                ContentUnavailableView("The app didn't load", systemImage: "puzzlepiece",
                                        description: Text(problem))
             } else {
                 ProgressView()
             }
         }
-        .navigationTitle(name.capitalized)
+        .navigationTitle(app.title)
         .navigationBarTitleDisplayMode(.inline)
         .safeAreaInset(edge: .bottom) { NowPlayingBar() }
         .task {
-            let context = PluginHost.context(repo, store)
-            if let module = await PluginHost.module(name, at: context.home.path) {
-                handler = PluginSchemeHandler(module: module, context: context)
+            if let module = PluginHost.module(app) {
+                handler = PluginSchemeHandler(module: module, context: PluginHost.context(app, store))
             } else {
-                problem = "plugin/\(name).wasm isn't on this repository's trunk."
+                problem = "\(app.name)'s module doesn't match its release.txt."
             }
         }
     }
 }
 
-/// The repository's installed apps (its plugins), opened from the
-/// four-squares button; each opens as a PluginView.
-struct PluginListView: View {
-    let repo: Repo
-    let plugins: [String]
+/// Stone's apps, opened from the home screen's four squares: each bundled
+/// app with the project and check-in it was built from, whether that
+/// project's repository is on this phone, and its switch. An app is off
+/// until switched on, and only an app that's on opens.
+struct AppsView: View {
+    @EnvironmentObject private var store: RepoStore
 
     var body: some View {
-        List(plugins, id: \.self) { name in
-            NavigationLink {
-                PluginView(repo: repo, name: name)
-            } label: {
-                Label(name.capitalized, systemImage: "puzzlepiece")
+        List {
+            if PluginHost.apps.isEmpty {
+                Text("No apps in this build.")
+            }
+            ForEach(PluginHost.apps) { app in
+                AppRow(app: app, repoHere: store.repos.contains {
+                    ($0.fileName as NSString).deletingPathExtension == app.project
+                })
             }
         }
         .navigationTitle("Apps")
         .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+private struct AppRow: View {
+    let app: PluginHost.App
+    let repoHere: Bool
+    @AppStorage private var on: Bool
+
+    init(app: PluginHost.App, repoHere: Bool) {
+        self.app = app
+        self.repoHere = repoHere
+        _on = AppStorage(wrappedValue: false, PluginHost.switchKey(app))
+    }
+
+    var body: some View {
+        Section {
+            Toggle(isOn: $on) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(app.title).font(.headline)
+                    Text("\(app.project), check-in \(String(app.checkin.prefix(10)))")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Text(repoHere ? "Its repository is on this phone" : "Its repository isn't on this phone")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+            if on {
+                NavigationLink {
+                    PluginView(app: app)
+                } label: {
+                    Label("Open \(app.title)", systemImage: "puzzlepiece")
+                }
+            }
+        }
     }
 }
 

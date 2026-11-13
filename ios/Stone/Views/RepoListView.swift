@@ -77,6 +77,7 @@ struct RepoListView: View {
             case .repoConversations(let repoID): ConversationListView(repoID: repoID)
             case .conversation(let id): ConversationView(id: id)
             case .podcasts: PodcastsView()
+            case .apps: AppsView()
             }
         }
         .refreshable {
@@ -86,6 +87,12 @@ struct RepoListView: View {
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button { showingSettings = true } label: { Image(systemName: "gearshape") }
+            }
+            ToolbarItem(placement: .topBarLeading) {
+                NavigationLink(value: AppRoute.apps) {
+                    Image(systemName: "square.grid.2x2")
+                }
+                .accessibilityLabel("Apps")
             }
             ToolbarItem(placement: .topBarLeading) {
                 NavigationLink(value: AppRoute.conversations) {
