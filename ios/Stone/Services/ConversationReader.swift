@@ -46,6 +46,20 @@ enum ConversationReader {
     /// Each ticket's comment-bearing changes, as posts. The author is the
     /// change's U card (`tkt_user`), falling back to the `login`/`username`
     /// fields older clones and web-form changes carry.
+    /// The clone's newest forum post and ticket change, as one text: it
+    /// changes whenever any sync brings a post, so an open conversation
+    /// knows to reload without reading every post (stone forum 16ffecccf9).
+    static func newest(fossilPath: String) -> String {
+        var parts: [String] = []
+        if !FossilQuery.columns(fossilPath, table: "forumpost").isEmpty {
+            parts.append(FossilQuery.rows(fossilPath, "SELECT max(fmtime) FROM forumpost").first?.first ?? "")
+        }
+        if !FossilQuery.columns(fossilPath, table: "ticketchng").isEmpty {
+            parts.append(FossilQuery.rows(fossilPath, "SELECT max(tkt_mtime) FROM ticketchng").first?.first ?? "")
+        }
+        return parts.joined(separator: " ")
+    }
+
     static func tickets(repoID: UUID, fossilPath: String) -> [Loaded] {
         let changeColumns = FossilQuery.columns(fossilPath, table: "ticketchng")
         guard changeColumns.contains("icomment") else { return [] }
