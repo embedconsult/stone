@@ -18,6 +18,9 @@ struct ConversationView: View {
     @State private var title = ""
     @State private var posts: [ConversationPost] = []
     @State private var loaded = false
+    /// The clone's newest post when this screen last loaded
+    /// (ConversationReader.newest).
+    @State private var newest = ""
     /// Held by reference and observed only by the reply box, so each
     /// keystroke redraws the box alone -- not every bubble above it, whose
     /// re-measuring made the conversation jump while typing.
@@ -280,6 +283,13 @@ struct ConversationView: View {
                 synced = true
             }
             if synced, agentStatus != nil { await sessionSteps.load(repo) }
+            // Another sync (launch, background, pull to refresh) may have
+            // brought posts this screen's own syncs then don't receive: a
+            // cheap look at the clone's newest post catches those too.
+            if let fossilPath {
+                let now = await Task.detached { ConversationReader.newest(fossilPath: fossilPath) }.value
+                if now != newest { await reload() }
+            }
             try? await Task.sleep(for: .seconds(15))
         }
     }
@@ -303,6 +313,7 @@ struct ConversationView: View {
 
     private func reload() async {
         guard let fossilPath else { return }
+        newest = await Task.detached { ConversationReader.newest(fossilPath: fossilPath) }.value
         if let result = await conversations.posts(for: id, fossilPath: fossilPath) {
             if title != result.title { title = result.title }
             if posts != result.posts { posts = result.posts }
