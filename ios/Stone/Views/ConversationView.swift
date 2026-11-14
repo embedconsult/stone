@@ -59,10 +59,9 @@ struct ConversationView: View {
     @State private var viewportHeight: CGFloat = 0
     private var scrolledUp: Bool { bottomY > viewportHeight + 80 }
     private static let bottomID = "bottom"
-    /// Set for a moment by the jump button: turning
-    /// scrolling off stops a list still coasting after a flick, which
-    /// otherwise carries on past any jump (stone forum 915dbe3627).
-    @State private var stopCoasting = false
+    /// The UIKit scroll view under this screen's ScrollView, for the jump
+    /// button (ScrollHandle).
+    @State private var scrollHandle = ScrollHandle()
     /// True while this screen's own sync (after Send, or the watch loop)
     /// runs, so the two never overlap.
     @State private var syncing = false
@@ -118,9 +117,9 @@ struct ConversationView: View {
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
+                .background(ScrollFinder(handle: scrollHandle))
             }
             .defaultScrollAnchor(.bottom)
-            .scrollDisabled(stopCoasting)
             .coordinateSpace(.named(Self.bottomID))
             .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { viewportHeight = $0 }
             .onChange(of: posts.last?.hash) { _, _ in
@@ -132,15 +131,15 @@ struct ConversationView: View {
                 if scrolledUp {
                     Button {
                         // A list still coasting after a flick carries on past
-                        // a jump, animated or not (stone forum a3ddb2dd50,
-                        // 915dbe3627). Stop it first by turning scrolling off,
-                        // then jump and turn scrolling back on. The wait lets
-                        // the screen draw once with scrolling off; on the very
-                        // next turn of the main loop both changes could merge.
-                        stopCoasting = true
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                        // SwiftUI's scrollTo, and turning scrolling off for a
+                        // moment didn't stop it either (stone forum a3ddb2dd50,
+                        // 915dbe3627; hand check failed Nov 14, 83f9715c0b).
+                        // UIKit stops the coasting when the offset is set
+                        // without animation, so jump there; scrollTo after it
+                        // covers a screen whose scroll view wasn't found.
+                        scrollHandle.jumpToBottom()
+                        DispatchQueue.main.async {
                             proxy.scrollTo(Self.bottomID, anchor: .bottom)
-                            stopCoasting = false
                         }
                     } label: {
                         Image(systemName: "arrow.down")
@@ -832,5 +831,53 @@ private struct StepsView: View {
         .foregroundStyle(.secondary)
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 4)
+    }
+}
+
+/// The UIScrollView a SwiftUI ScrollView is drawn with, found by
+/// ScrollFinder, so the jump button can stop a list that's still coasting.
+final class ScrollHandle {
+    weak var view: UIScrollView?
+
+    /// Sets the offset to the bottom without animation, which also ends any
+    /// coasting.
+    func jumpToBottom() {
+        guard let view else { return }
+        let inset = view.adjustedContentInset
+        let bottom = max(view.contentSize.height - view.bounds.height + inset.bottom, -inset.top)
+        view.setContentOffset(CGPoint(x: view.contentOffset.x, y: bottom), animated: false)
+    }
+}
+
+/// An empty view inside the ScrollView's content that hands its enclosing
+/// UIScrollView to a ScrollHandle once it's on screen.
+private struct ScrollFinder: UIViewRepresentable {
+    let handle: ScrollHandle
+
+    func makeUIView(context: Context) -> FinderView {
+        let view = FinderView()
+        view.handle = handle
+        view.isUserInteractionEnabled = false
+        return view
+    }
+
+    func updateUIView(_ view: FinderView, context: Context) {
+        view.handle = handle
+    }
+
+    final class FinderView: UIView {
+        weak var handle: ScrollHandle?
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            var next = superview
+            while let view = next {
+                if let scroll = view as? UIScrollView {
+                    handle?.view = scroll
+                    return
+                }
+                next = view.superview
+            }
+        }
     }
 }
