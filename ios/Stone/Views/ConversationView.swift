@@ -392,6 +392,11 @@ struct ConversationView: View {
         defer { syncing = false }
         do {
             let output = try await store.sync(repo, trigger: .conversation)
+            // The reply has gone out (or failed): the spinner stops here, not
+            // after the scan of every repo's conversations and the reload
+            // below, which on a big forum took long enough to look stuck
+            // (maintainer's bug, stone forum 16ffecccf9).
+            sending = false
             if let reason = RepoStore.detectLocalSQLiteFailure(output) ?? RepoStore.detectAuthFailure(output) {
                 sendStatus = "Saved on this phone; it will go out with the next sync. (\(reason))"
             } else {
