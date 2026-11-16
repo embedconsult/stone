@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UIKit
 
 /// The home screen: lists repositories and offers add (clone / new) + delete.
 struct RepoListView: View {
@@ -301,7 +302,23 @@ struct SyncResultView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") { dismiss() }
                 }
+                // Selecting text inside a List row doesn't work well on
+                // iOS, so the whole sheet copies as plain text instead.
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Copy") { UIPasteboard.general.string = copyText }
+                }
             }
         }
+    }
+
+    private var copyText: String {
+        let finished = record.finishedAt.formatted(date: .abbreviated, time: .standard)
+        return """
+        \(repoName): \(record.status.summary)
+        Started by: \(record.trigger.rawValue)
+        Finished: \(finished)
+
+        \(record.log)
+        """
     }
 }
