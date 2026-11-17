@@ -13,6 +13,7 @@ struct ConversationView: View {
     let id: ConversationID
 
     @EnvironmentObject private var store: RepoStore
+    @Environment(\.scenePhase) private var scenePhase
     @ObservedObject private var conversations = ConversationStore.shared
     @ObservedObject private var sessionSteps = SessionSteps.shared
     @State private var title = ""
@@ -208,6 +209,12 @@ struct ConversationView: View {
             }
         }
         .task(id: id) { await watch() }
+        // Locked or in the background, nothing runs (Low Power Mode also
+        // stops background refresh), so coming back to the front syncs
+        // and catches up at once instead of at the loop's next turn.
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { Task { await catchUp() } }
+        }
         .task(id: agentStatus == nil) {
             if agentStatus != nil, let repo { await sessionSteps.load(repo) }
         }
@@ -291,6 +298,15 @@ struct ConversationView: View {
             }
             try? await Task.sleep(for: .seconds(15))
         }
+    }
+
+    /// The app came back to the front: sync this repo now, then show
+    /// whatever any sync brought.
+    private func catchUp() async {
+        if let repo { await syncRepo(repo) }
+        guard let fossilPath else { return }
+        let now = await Task.detached { ConversationReader.newest(fossilPath: fossilPath) }.value
+        if now != newest { await reload() }
     }
 
     /// One quiet sync of this conversation's repo, then the same after-sync
