@@ -124,6 +124,13 @@ final class ConversationStore: ObservableObject {
         persist()
     }
 
+    /// Marks every conversation in `list` read up to its latest post.
+    func markAllRead(_ list: [ConversationSummary]) {
+        for summary in list where summary.unread > 0 {
+            markRead(summary.id, upTo: summary.latest.mtime)
+        }
+    }
+
     /// The conversations `login` takes part in, latest post body read (the
     /// list shows it, and a `For:` line in it is one way to take part).
     /// A thread's session status, reading only the bodies it needs: the

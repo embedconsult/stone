@@ -27,6 +27,15 @@ struct ConversationListView: View {
         .listStyle(.plain)
         .navigationTitle(repoID.flatMap { id in store.repos.first { $0.id == id }?.name } ?? "Conversations")
         .overlay { if loading && shown.isEmpty { ProgressView() } }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button("Mark All Read") {
+                    conversations.markAllRead(shown)
+                    Task { await NotificationManager.shared.updateBadge(conversations.totalUnread) }
+                }
+                .disabled(!shown.contains { $0.unread > 0 })
+            }
+        }
         .task { await reload() }
         .refreshable {
             await store.syncAll()
