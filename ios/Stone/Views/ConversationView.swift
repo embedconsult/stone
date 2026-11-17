@@ -264,6 +264,9 @@ struct ConversationView: View {
         // A session's status line, and its steps, say whose turn it is.
         if agentStatus != nil { return nil }
         guard let last = posts.last, ConversationBook.isOwn(last, login: login) else { return nil }
+        // Verify This Build's summary is a report, not a question: nobody
+        // owes it a reply.
+        if (last.body ?? "").hasPrefix("Verify This Build, build ") { return nil }
         let other = posts.last { !ConversationBook.isOwn($0, login: login) }?.author ?? "a reply"
         let since = last.date.formatted(.dateTime.hour().minute())
         return "Waiting for \(other) since \(since)"
