@@ -326,12 +326,15 @@ final class RepoStore: ObservableObject {
         let password = CredentialStore.password(for: repo.id)
         let authURL = try Self.urlWithPassword(remote, password: password)
         let path = fileURL(for: repo).path
+        // Through SyncRelay, so a connection that goes quiet ends after a
+        // minute instead of holding every other Fossil run behind it.
+        let proxy = await SyncRelay.shared.proxyArguments(for: remote)
 
         var ticketConfigPullSeconds: TimeInterval?
         var skinPullSeconds: TimeInterval?
 
         var syncStartedAt = Date()
-        var result = await engine.run(["sync", authURL, "-R", path])
+        var result = await engine.run(["sync", authURL, "-R", path] + proxy)
         var syncSeconds = Date().timeIntervalSince(syncStartedAt)
 
         if !result.succeeded, Self.indicatesMissingTicketColumn(result.output) {
@@ -345,7 +348,7 @@ final class RepoStore: ObservableObject {
             recordTicketConfigPull(for: repo.id)
 
             syncStartedAt = Date()
-            result = await engine.run(["sync", authURL, "-R", path])
+            result = await engine.run(["sync", authURL, "-R", path] + proxy)
             syncSeconds += Date().timeIntervalSince(syncStartedAt)
         } else if result.succeeded, Self.isConfigPullDue(lastPullAt: repo.lastTicketConfigPullAt) {
             // Not broken, but ticket config also carries report/edit setup
