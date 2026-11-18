@@ -432,7 +432,8 @@ struct ConversationView: View {
             // that matters.
             var reason = "couldn't reach the server"
             if case .fossil(let log)? = error as? RepoStore.StoreError {
-                reason = RepoStore.detectLocalSQLiteFailure(log) ?? RepoStore.detectAuthFailure(log) ?? reason
+                reason = RepoStore.detectLocalSQLiteFailure(log) ?? RepoStore.detectAuthFailure(log)
+                    ?? RepoStore.detectConnectionFailure(log) ?? reason
             } else {
                 reason = error.localizedDescription
             }
