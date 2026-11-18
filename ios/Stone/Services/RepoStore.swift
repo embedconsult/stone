@@ -306,6 +306,7 @@ final class RepoStore: ObservableObject {
     nonisolated static func status(forOutput output: String) -> RepoSyncStatus {
         if let reason = detectLocalSQLiteFailure(output) { return .localFailure(reason) }
         if let reason = detectAuthFailure(output) { return .authFailed(reason) }
+        if let reason = detectConnectionFailure(output) { return .failure(reason) }
         let counts = parseArtifactCounts(output) ?? (sent: 0, received: 0)
         return .success(sent: counts.sent, received: counts.received)
     }
@@ -315,6 +316,7 @@ final class RepoStore: ObservableObject {
         if case .fossil(let message)? = error as? StoreError {
             if let reason = detectLocalSQLiteFailure(message) { return .localFailure(reason) }
             if let reason = detectAuthFailure(message) { return .authFailed(reason) }
+            if let reason = detectConnectionFailure(message) { return .failure(reason) }
         }
         return .failure(error.localizedDescription)
     }
@@ -358,7 +360,7 @@ final class RepoStore: ObservableObject {
             recordTicketConfigPull(for: repo.id)
         }
 
-        guard result.succeeded else {
+        guard result.succeeded, Self.detectConnectionFailure(result.output) == nil else {
             lastSyncLog = Self.appendPhaseTimings(
                 to: result.output,
                 ticketConfigPullSeconds: ticketConfigPullSeconds,
@@ -482,6 +484,21 @@ final class RepoStore: ObservableObject {
         return nil
     }
 
+    /// A sync that never reached the server. Fossil prints its error, then
+    /// "Round-trips: 0" and exits 0, so without this check Stone reported
+    /// "Synced" (maintainer, Nov 17 11:03 pm: "SSL: cannot connect to proxy
+    /// 127.0.0.1:59979 (Connection refused)", then "Round-trips: 0"). Any
+    /// real exchange takes at least one round trip.
+    nonisolated static func detectConnectionFailure(_ output: String) -> String? {
+        guard output.range(of: #"Round-trips:\s*0\b"#, options: .regularExpression) != nil else { return nil }
+        let lines = output.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }
+        let error = lines.first { line in
+            let lower = line.lowercased()
+            return line.hasPrefix("SSL:") || lower.contains("cannot connect")
+                || lower.contains("unable to") || lower.hasPrefix("error")
+        }
+        return error ?? "the server never answered"
+    }
     /// Parses Fossil's non-interactive sync summary line
     /// (`Round-trips: N   Artifacts sent: X  received: Y`, src/xfer.c
     /// `zBriefFormat`, printed exactly once when stdout isn't a tty) out of a

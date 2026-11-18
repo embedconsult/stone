@@ -125,6 +125,24 @@ final class RepoStoreSyncCredentialTests: XCTestCase {
     /// exited 0" still isn't "something was pushed." This is what makes that
     /// distinction visible in the UI (RepoWebView's sync alert, syncAll's
     /// summary) instead of a blanket "Sync complete."
+    /// The maintainer's paste, Nov 17 11:03 pm: Fossil exited 0 and Stone
+    /// said "Synced".
+    func testRefusedConnectionIsAFailureNotSynced() {
+        let output = """
+        via proxy: http://127.0.0.1:59979
+        SSL: cannot connect to proxy 127.0.0.1:59979 (Connection refused)
+        Round-trips: 0   Artifacts sent: 0  received: 0
+        Sync done, wire bytes sent: 0  received: 0  remote:
+        """
+        XCTAssertEqual(RepoStore.detectConnectionFailure(output),
+                       "SSL: cannot connect to proxy 127.0.0.1:59979 (Connection refused)")
+        if case .success = RepoStore.status(forOutput: output) { XCTFail("a refused connection showed as Synced") }
+    }
+
+    func testOrdinarySyncIsNotAConnectionFailure() {
+        let output = "Round-trips: 2   Artifacts sent: 0  received: 3\nSync done, wire bytes sent: 925  received: 3771  remote: 44.228.7.94"
+        XCTAssertNil(RepoStore.detectConnectionFailure(output))
+    }
     func testParseArtifactCountsReadsFossilsSummaryLine() {
         let output = """
         Round-trips: 2   Artifacts sent: 3  received: 0
