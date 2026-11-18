@@ -65,6 +65,10 @@ enum FossilTime {
         Date(timeIntervalSince1970: (julian - 2440587.5) * 86400)
     }
 
+    /// The julian day number of `date`, the inverse of `date(julian:)`.
+    static func julian(_ date: Date) -> Double {
+        date.timeIntervalSince1970 / 86400 + 2440587.5
+    }
     /// A D card's value: UTC, `YYYY-MM-DDTHH:MM:SS.SSS`.
     static func dCard(_ date: Date) -> String {
         let formatter = DateFormatter()
@@ -394,8 +398,15 @@ enum ForumThreads {
 enum ConversationBook {
     /// Posts by anyone other than `login` newer than `lastRead` (a julian
     /// day; 0 for a conversation never opened on this phone).
-    static func unread(_ posts: [ConversationPost], login: String, lastRead: Double) -> Int {
-        return posts.filter { !isOwn($0, login: login) && $0.mtime > lastRead }.count
+    /// Posts by someone else newer than `lastRead`. With `newForDays`, a
+    /// post older than that many days no longer counts as new, read or not
+    /// (maintainer, Nov 17: two-week-old posts still showed as new). 0 means
+    /// no limit.
+    static func unread(_ posts: [ConversationPost], login: String, lastRead: Double,
+                       newForDays: Int = 0, now: Date = Date()) -> Int {
+        var since = lastRead
+        if newForDays > 0 { since = max(since, FossilTime.julian(now) - Double(newForDays)) }
+        return posts.filter { !isOwn($0, login: login) && $0.mtime > since }.count
     }
 
     static func isOwn(_ post: ConversationPost, login: String) -> Bool {

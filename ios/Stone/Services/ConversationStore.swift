@@ -74,7 +74,8 @@ final class ConversationStore: ObservableObject {
                     ? await Self.status(conversation.posts, fossilPath: path) : nil
                 let summary = ConversationSummary(
                     id: conversation.id, title: conversation.title, latest: latest,
-                    unread: ConversationBook.unread(conversation.posts, login: login, lastRead: lastRead[key] ?? 0),
+                    unread: ConversationBook.unread(conversation.posts, login: login, lastRead: lastRead[key] ?? 0,
+                                                   newForDays: SettingsView.newForDaysSetting),
                     status: status)
                 all.append(summary)
 
