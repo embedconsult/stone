@@ -172,6 +172,16 @@ final class ConversationTests: XCTestCase {
                      hash: "h\(rid)", user: user, comment: comment)
     }
 
+    /// "New" ends after newForDays, read or not; 0 keeps the old rule.
+    func testUnreadEndsAfterNewForDays() {
+        let now = Date()
+        let today = FossilTime.julian(now)
+        let posts = [post("old", "peer", today - 15), post("recent", "peer", today - 2)]
+        XCTAssertEqual(ConversationBook.unread(posts, login: "me", lastRead: 0, newForDays: 14, now: now), 1)
+        XCTAssertEqual(ConversationBook.unread(posts, login: "me", lastRead: 0, newForDays: 0, now: now), 2)
+        XCTAssertEqual(ConversationBook.unread(posts, login: "me", lastRead: today - 1, newForDays: 14, now: now), 0)
+    }
+
     private func post(_ hash: String, _ author: String, _ mtime: Double) -> ConversationPost {
         ConversationPost(hash: hash, author: author, mtime: mtime, body: nil, mimetype: "", inReplyTo: nil)
     }

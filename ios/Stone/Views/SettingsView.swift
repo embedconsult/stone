@@ -16,9 +16,18 @@ struct SettingsView: View {
     static let defaultAutoSyncIntervalMinutes = 15
     static let autoSyncIntervalChoices = [5, 15, 30, 60]
 
+    /// How many days a post counts as new in Conversations (0: always,
+    /// until read). Maintainer, Nov 17: "yes, but 14 and settable".
+    static let newForDaysKey = "conversationNewForDays"
+    static let defaultNewForDays = 14
+    static let newForDaysChoices = [1, 3, 7, 14, 30, 0]
+    nonisolated static var newForDaysSetting: Int {
+        UserDefaults.standard.object(forKey: newForDaysKey) as? Int ?? defaultNewForDays
+    }
     @AppStorage(autoSyncEnabledKey) private var autoSyncEnabled = false
     @AppStorage(autoSyncIntervalKey) private var autoSyncIntervalMinutes = defaultAutoSyncIntervalMinutes
     @AppStorage(autoSyncSkipsLowPowerKey) private var autoSyncSkipsLowPowerMode = true
+    @AppStorage(newForDaysKey) private var newForDays = defaultNewForDays
 
     /// Ticket 1a55c5d8b8: notify when a repo has a decision or try-this
     /// waiting for the maintainer. Default true (matches
@@ -56,6 +65,17 @@ struct SettingsView: View {
                     Text("Periodically runs Sync All while Stone is open on screen, and in the background when Automatic Sync is on and Stone leaves the foreground -- iOS decides exactly when a background sync runs, not this interval.")
                 }
 
+                Section {
+                    Picker("New For", selection: $newForDays) {
+                        ForEach(Self.newForDaysChoices, id: \.self) { days in
+                            Text(days == 0 ? "Until Read" : days == 1 ? "1 day" : "\(days) days").tag(days)
+                        }
+                    }
+                } header: {
+                    Text("Conversations")
+                } footer: {
+                    Text("A post older than this stops counting as new, read or not. Takes effect at the next sync.")
+                }
                 Section {
                     Toggle("Maintainer Request Alerts", isOn: $notificationsEnabled)
                         .onChange(of: notificationsEnabled) { _, enabled in
