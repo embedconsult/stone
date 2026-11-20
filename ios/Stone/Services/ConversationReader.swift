@@ -120,6 +120,29 @@ enum ConversationReader {
         return (body, mimetype)
     }
 
+    /// Reads only the bodies a conversation screen uses: the newest
+    /// `newest` posts (the ones on screen), the first post, and, in a
+    /// session's thread, the node's posts (AgentStatus reads those). Older
+    /// posts stay unread until "Show earlier posts" asks for them.
+    ///
+    /// Why: every reload read every body, all 2,318 in the One Place
+    /// thread, and then parsed each one twice on the main thread for
+    /// status and decisions. A busy repo reloads every few seconds, so the
+    /// screen fell hours behind (stone forum a069e1121a, Nov 20).
+    static func fillNewest(_ posts: [ConversationPost], newest: Int, fossilPath: String) async -> [ConversationPost] {
+        guard !posts.isEmpty else { return posts }
+        var filled = posts
+        filled[0] = await fillBodies([posts[0]], fossilPath: fossilPath)[0]
+        var wanted = Set(filled.indices.suffix(newest))
+        if let run = OCXMessage(filled[0].body ?? ""), run.kind == "run", let node = run.to {
+            wanted.formUnion(filled.indices.filter { filled[$0].author == node })
+        }
+        let missing = wanted.filter { filled[$0].body == nil }.sorted()
+        let read = await fillBodies(missing.map { filled[$0] }, fossilPath: fossilPath)
+        for (index, post) in zip(missing, read) { filled[index] = post }
+        return filled
+    }
+
     /// Reads every missing body in `posts`.
     static func fillBodies(_ posts: [ConversationPost], fossilPath: String) async -> [ConversationPost] {
         var filled = posts
