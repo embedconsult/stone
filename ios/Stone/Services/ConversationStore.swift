@@ -100,7 +100,7 @@ final class ConversationStore: ObservableObject {
     }
 
     /// Posts of one conversation, bodies read, oldest first.
-    func posts(for id: ConversationID, fossilPath: String) async -> (title: String, posts: [ConversationPost])? {
+    func posts(for id: ConversationID, fossilPath: String, newest: Int = .max) async -> (title: String, posts: [ConversationPost])? {
         let loaded: ConversationReader.Loaded? = await Task.detached(priority: .userInitiated) {
             switch id.kind {
             case .thread:
@@ -110,7 +110,7 @@ final class ConversationStore: ObservableObject {
             }
         }.value
         guard let loaded else { return nil }
-        let posts = await ConversationReader.fillBodies(loaded.posts, fossilPath: fossilPath)
+        let posts = await ConversationReader.fillNewest(loaded.posts, newest: newest, fossilPath: fossilPath)
         return (loaded.title, posts)
     }
 

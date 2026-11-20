@@ -91,6 +91,7 @@ struct ConversationView: View {
                     if posts.count > shownCount {
                         Button("Show earlier posts (\(posts.count - shownCount))") {
                             shownCount += Self.pageSize
+                            Task { await reload() }
                         }
                         .buttonStyle(.bordered)
                     }
@@ -332,7 +333,7 @@ struct ConversationView: View {
     private func reload() async {
         guard let fossilPath else { return }
         newest = await Task.detached { ConversationReader.newest(fossilPath: fossilPath) }.value
-        if let result = await conversations.posts(for: id, fossilPath: fossilPath) {
+        if let result = await conversations.posts(for: id, fossilPath: fossilPath, newest: shownCount) {
             if title != result.title { title = result.title }
             if posts != result.posts { posts = result.posts }
             let status = id.kind == .thread ? AgentStatus.read(result.posts) : nil
