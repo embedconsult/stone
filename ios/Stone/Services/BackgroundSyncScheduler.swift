@@ -135,10 +135,12 @@ enum BackgroundSyncScheduler {
         }
 
         let scanStartedAt = Date()
+        HangLog.doing("conversation scan")
         let outcomes = await conversations.refresh(
             repos: store.repos,
             fossilPath: { store.fileURL(for: $0).path }
         )
+        HangLog.doing("conversation scan done")
         store.appendRequestScanTiming(ran: true, seconds: Date().timeIntervalSince(scanStartedAt))
         for outcome in outcomes {
             await NotificationManager.shared.post(for: outcome.repo, conversation: outcome.summary,
