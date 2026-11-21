@@ -332,6 +332,8 @@ struct ConversationView: View {
 
     private func reload() async {
         guard let fossilPath else { return }
+        HangLog.doing("reload \(title)")
+        defer { HangLog.doing("reload done") }
         newest = await Task.detached { ConversationReader.newest(fossilPath: fossilPath) }.value
         if let result = await conversations.posts(for: id, fossilPath: fossilPath, newest: shownCount) {
             if title != result.title { title = result.title }
@@ -374,6 +376,7 @@ struct ConversationView: View {
     /// the latest post, leaving the draft as it is.
     private func send(_ fixed: String? = nil) async {
         guard let repo, let fossilPath, let latest = posts.last else { return }
+        HangLog.doing("send in \(title)")
         sending = true
         defer { sending = false }
         var body = fixed ?? draft.text

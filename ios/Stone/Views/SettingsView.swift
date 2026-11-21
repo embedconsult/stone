@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Minimal app settings: the commit author Fossil attributes clone/commit/
 /// sync operations to (defaults to "stone"), and the automatic-sync
@@ -90,6 +91,7 @@ struct SettingsView: View {
 
                 Section {
                     NavigationLink("Verify This Build", destination: VerifyView())
+                    NavigationLink("Hang Log", destination: HangLogView())
                     NavigationLink("WebAssembly Test", destination: WasmTestView())
                     NavigationLink("About", destination: AboutView())
                 }
@@ -118,5 +120,30 @@ struct SettingsView: View {
         guard minutes % 60 == 0 else { return "\(minutes) Minutes" }
         let hours = minutes / 60
         return hours == 1 ? "1 Hour" : "\(hours) Hours"
+    }
+}
+
+/// Each time Stone stopped answering for a second or more, with what it
+/// had been doing just before (HangLog). Copy pastes it whole.
+private struct HangLogView: View {
+    @State private var text = ""
+
+    var body: some View {
+        ScrollView {
+            Text(text.isEmpty ? "No hangs noted yet." : text)
+                .font(.footnote.monospaced())
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding()
+        }
+        .navigationTitle("Hang Log")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button("Copy") { UIPasteboard.general.string = text }
+                    .disabled(text.isEmpty)
+            }
+        }
+        .task { text = HangLog.shared.text() }
     }
 }

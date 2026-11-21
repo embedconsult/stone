@@ -88,8 +88,10 @@ struct StoneApp: App {
         .onChange(of: scenePhase, initial: true) { _, phase in
             switch phase {
             case .active:
+                HangLog.shared.setWatching(true)
                 ForegroundSync.shared.start(store: store)
             case .background:
+                HangLog.shared.setWatching(false)
                 ForegroundSync.shared.stop()
                 BackgroundSyncScheduler.scheduleAll()
             default:

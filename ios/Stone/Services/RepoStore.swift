@@ -333,7 +333,9 @@ final class RepoStore: ObservableObject {
         var skinPullSeconds: TimeInterval?
 
         var syncStartedAt = Date()
+        HangLog.doing("sync \(repo.name)")
         var result = await engine.run(["sync", authURL, "-R", path])
+        HangLog.doing("sync \(repo.name) done")
         var syncSeconds = Date().timeIntervalSince(syncStartedAt)
 
         if !result.succeeded, Self.indicatesMissingTicketColumn(result.output) {
@@ -347,7 +349,9 @@ final class RepoStore: ObservableObject {
             recordTicketConfigPull(for: repo.id)
 
             syncStartedAt = Date()
+            HangLog.doing("sync \(repo.name) again")
             result = await engine.run(["sync", authURL, "-R", path])
+            HangLog.doing("sync \(repo.name) done")
             syncSeconds += Date().timeIntervalSince(syncStartedAt)
         } else if result.succeeded, Self.isConfigPullDue(lastPullAt: repo.lastTicketConfigPullAt) {
             // Not broken, but ticket config also carries report/edit setup
@@ -410,13 +414,17 @@ final class RepoStore: ObservableObject {
     /// clone. Best-effort, matching disableLocalauthSetting's precedent:
     /// a failure here doesn't block the clone/sync itself.
     private func pullTicketConfig(authURL: String, path: String) async {
+        HangLog.doing("ticket-config pull")
         _ = await engine.run(["configuration", "pull", "ticket", authURL, "--overwrite", "-R", path])
+        HangLog.doing("ticket-config pull done")
     }
 
     /// Pulls the remote's skin configuration into this clone. Same
     /// `--overwrite` reasoning as pullTicketConfig(_:_:).
     private func pullSkinConfig(authURL: String, path: String) async {
+        HangLog.doing("skin pull")
         _ = await engine.run(["configuration", "pull", "skin", authURL, "--overwrite", "-R", path])
+        HangLog.doing("skin pull done")
     }
 
     /// Detect a LOCAL SQLite failure inside this phone's own clone -- ground
