@@ -7,6 +7,8 @@ scripts/fetch-libressl.sh
 scripts/build-libressl-ios.sh
 scripts/fetch-wamr.sh
 scripts/fetch-cacert.sh
+scripts/test-fetch-apps.sh
+scripts/fetch-apps.sh
 scripts/build-fossil-xcframework.sh
 test -d ios/Frameworks/FossilCore.xcframework
 

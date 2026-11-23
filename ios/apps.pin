@@ -1,0 +1,17 @@
+# Stone's pinned apps: each line bundles one app module in Stone's build.
+# scripts/fetch-apps.sh downloads the module and its release inventory,
+# and stops the build unless the module's SHA-256 matches the pin and the
+# inventory lists that same SHA-256 for app.wasm and the pinned check-in.
+# The pin, in Stone's own history, is the guard; the inventory confirms it.
+# Plan: stone forum df2aca7b58 step 2; route 1 in ollama docs/release-flow.md.
+#
+# Fields, separated by spaces:
+#   name       the app's name, lowercase letters, digits and dashes
+#   project    its project (repository name)
+#   check-in   the full source check-in hash the release was built from
+#   sha256     the expected SHA-256 of app.wasm
+#   module     HTTPS address of app.wasm
+#   inventory  HTTPS address of the release's file list (release.txt)
+#
+# The download addresses and access are still to be agreed with OCX, so
+# no app is pinned yet. Hello stays in ios/Stone/Apps/hello, in source.
