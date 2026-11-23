@@ -303,6 +303,7 @@ struct VerifyView: View {
         }
 
         session.auto.append(await longThreadKeepsUp())
+        session.auto.append(await hangIsLogged())
 
         let settings = await UNUserNotificationCenter.current().notificationSettings()
         let allowed = settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional
@@ -358,6 +359,29 @@ struct VerifyView: View {
             + String(format: "%.2f", seconds) + " s"
             + (unread > 0 ? "; \(unread) without text" : "")
             + (atNewest ? "" : "; doesn't reach the newest post")
+        return outcome
+    }
+
+    /// Hand check 20, made automatic: freezes the screen for 2.5 s on
+    /// purpose (the watchdog notes a hang 1 to 1.5 s in) and checks that
+    /// the hang log (df86c49754) noted it, with the
+    /// step just before and how long it lasted. Asked for on stone forum
+    /// 212c1ae20d.
+    private func hangIsLogged() async -> VerifyOutcome {
+        var outcome = VerifyOutcome(name: "A 2.5 s freeze is noted in the Hang Log")
+        let before = HangLog.shared.text()
+        HangLog.doing("Verify This Build: freezing the screen for 2.5 s on purpose")
+        Thread.sleep(forTimeInterval: 2.5)
+        // The watchdog writes its second line once the screen answers.
+        try? await Task.sleep(for: .seconds(1))
+        let after = HangLog.shared.text()
+        let added = after.hasPrefix(before) ? String(after.dropFirst(before.count)) : after
+        let lines = added.split(separator: "\n").map(String.init)
+        let stopped = lines.contains { $0.contains("Stone stopped answering") && $0.contains("on purpose") }
+        let ended = lines.last { $0.contains("answering again after") }
+        outcome.passed = stopped && ended != nil
+        outcome.detail = !stopped ? "no entry was written for the freeze"
+            : ended.map { $0.components(separatedBy: ": ").last ?? "" } ?? "the entry has no end line"
         return outcome
     }
 
