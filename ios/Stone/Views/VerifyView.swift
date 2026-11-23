@@ -302,10 +302,63 @@ struct VerifyView: View {
             session.auto.append(outcome)
         }
 
+        session.auto.append(await longThreadKeepsUp())
+
         let settings = await UNUserNotificationCenter.current().notificationSettings()
         let allowed = settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional
         session.auto.append(VerifyOutcome(name: "Notifications allowed", passed: allowed,
                                   detail: allowed ? "" : "turned off in iOS Settings, or never asked"))
+    }
+
+    /// Hand check 19, made automatic: the longest thread on this phone
+    /// loads as its screen loads it (the newest page, e81cde4143) within
+    /// two seconds, ends at the clone's newest post in that thread, and has
+    /// text in every post of that page. Asked for on stone forum
+    /// 212c1ae20d: routine hand steps end (maintainer, Nov 19).
+    private func longThreadKeepsUp() async -> VerifyOutcome {
+        var outcome = VerifyOutcome(name: "Longest thread opens at its newest posts within 2 s")
+        var longest: (repo: Repo, path: String, root: String, count: Int, newest: String)?
+        for repo in store.repos {
+            let path = store.fileURL(for: repo).path
+            let row = await Task.detached { () -> [String]? in
+                guard !FossilQuery.columns(path, table: "forumpost").isEmpty else { return nil }
+                return FossilQuery.rows(path, """
+                    SELECT b.uuid, count(*),
+                      (SELECT n.uuid FROM forumpost g JOIN blob n ON n.rid = g.fpid
+                       WHERE g.froot = f.froot ORDER BY g.fmtime DESC LIMIT 1)
+                    FROM forumpost f JOIN blob b ON b.rid = f.froot
+                    GROUP BY f.froot ORDER BY count(*) DESC LIMIT 1
+                    """).first
+            }.value
+            guard let row, row.count == 3, let count = Int(row[1]) else { continue }
+            if count > (longest?.count ?? 0) { longest = (repo, path, row[0], count, row[2]) }
+        }
+        guard let longest else {
+            outcome.passed = nil
+            outcome.detail = "no forum threads on this phone"
+            return outcome
+        }
+        let id = ConversationID(repoID: longest.repo.id, kind: .thread, key: longest.root)
+        let page = 100
+        let started = Date()
+        let result = await ConversationStore.shared.posts(for: id, fossilPath: longest.path, newest: page)
+        let seconds = Date().timeIntervalSince(started)
+        guard let result else {
+            outcome.passed = false
+            outcome.detail = "couldn't load \(longest.root.prefix(10)) in \(longest.repo.name)"
+            return outcome
+        }
+        let shown = result.posts.suffix(page)
+        let unread = shown.filter { $0.body == nil }.count
+        // The clone's newest post in the thread (an edit counts as its
+        // post, so its hash is the one shown).
+        let atNewest = shown.contains { $0.hash == longest.newest }
+        outcome.passed = seconds < 2 && unread == 0 && atNewest
+        outcome.detail = "\"\(result.title)\" in \(longest.repo.name): \(result.posts.count) posts, newest \(shown.count) in "
+            + String(format: "%.2f", seconds) + " s"
+            + (unread > 0 ? "; \(unread) without text" : "")
+            + (atNewest ? "" : "; doesn't reach the newest post")
+        return outcome
     }
 
     // MARK: Recording
