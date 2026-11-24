@@ -112,7 +112,7 @@ final class PluginSchemeHandler: NSObject, WKURLSchemeHandler {
         let type = request.value(forHTTPHeaderField: "Content-Type") ?? ""
         let id = ObjectIdentifier(task)
         Task { @MainActor in
-            let result = await PluginHost.run(module, context, method: method, query: url.query ?? "",
+            let result = await PluginHost.run(module, context, method: method, path: url.path, query: url.query ?? "",
                                               body: body, contentType: type)
             guard !stopped.contains(id) else { return }
             let (status, headers, page) = Self.response(result)
