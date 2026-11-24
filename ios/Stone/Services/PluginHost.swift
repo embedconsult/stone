@@ -115,12 +115,16 @@ enum PluginHost {
                        others: all.filter { $0.name != app.project })
     }
 
-    /// Runs one request through the module, on `queue`.
-    static func run(_ module: [UInt8], _ context: Context, method: String, query: String,
+    /// Runs one request through the module, on `queue`. As on the server,
+    /// PATH_INFO is the page's path below the app, and SCRIPT_NAME the app's
+    /// base: empty here, since the app is the root of stone-plugin://plugin,
+    /// so a link to SCRIPT_NAME + "/thread" works on both (stone forum
+    /// 0008865ba1: Stone always said PATH_INFO=/ before).
+    static func run(_ module: [UInt8], _ context: Context, method: String, path: String = "/", query: String,
                     body: Data, contentType: String) async -> WasmRunner.Result {
         await withCheckedContinuation { continuation in
             queue.async {
-                let env = ["REQUEST_METHOD=\(method)", "QUERY_STRING=\(query)", "PATH_INFO=/",
+                let env = ["REQUEST_METHOD=\(method)", "QUERY_STRING=\(query)", "PATH_INFO=\(path.isEmpty ? "/" : path)", "SCRIPT_NAME=",
                            "CONTENT_LENGTH=\(body.count)", "CONTENT_TYPE=\(contentType)",
                            "GATEWAY_INTERFACE=CGI/1.1", "SERVER_SOFTWARE=Stone"]
                 let unmanaged = Unmanaged.passRetained(context)
