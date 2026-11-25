@@ -304,6 +304,7 @@ struct VerifyView: View {
 
         session.auto.append(await longThreadKeepsUp())
         session.auto.append(await hangIsLogged())
+        session.auto.append(contentsOf: await appsRun())
 
         let settings = await UNUserNotificationCenter.current().notificationSettings()
         let allowed = settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional
@@ -383,6 +384,41 @@ struct VerifyView: View {
         outcome.detail = !stopped ? "no entry was written for the freeze"
             : ended.map { $0.components(separatedBy: ": ").last ?? "" } ?? "the entry has no end line"
         return outcome
+    }
+
+    /// Hand check 11's question, made automatic for every bundled app: its
+    /// module matches the sha256 in its release.txt, runs a GET of its
+    /// front page through PluginHost (as the Apps list's Open does) within
+    /// 5 s, exits 0 and returns a page. Hello's page must also say
+    /// "WebAssembly runs in Stone". The app's switch isn't needed or
+    /// changed. Asked for on stone forum 212c1ae20d: routine hand steps
+    /// end (maintainer, Nov 19).
+    private func appsRun() async -> [VerifyOutcome] {
+        guard !PluginHost.apps.isEmpty else {
+            return [VerifyOutcome(name: "Bundled apps run", passed: false, detail: "no apps in this build")]
+        }
+        var outcomes: [VerifyOutcome] = []
+        for app in PluginHost.apps {
+            var outcome = VerifyOutcome(name: "\(app.title) runs and shows its page within 5 s")
+            guard let module = PluginHost.module(app) else {
+                outcome.passed = false
+                outcome.detail = "app.wasm doesn't match release.txt's sha256"
+                outcomes.append(outcome)
+                continue
+            }
+            let context = PluginHost.context(app, store)
+            let started = Date()
+            let result = await PluginHost.run(module, context, method: "GET", query: "", body: Data(), contentType: "")
+            let seconds = Date().timeIntervalSince(started)
+            let page = result.body
+            let saysHello = app.name != "hello" || page.contains("WebAssembly runs in Stone")
+            outcome.passed = result.code == 0 && !page.isEmpty && saysHello && seconds < 5
+            outcome.detail = (result.code == 0 ? "" : "exit \(result.code) \(result.error.prefix(80)); ")
+                + "\(page.utf8.count) bytes in " + String(format: "%.2f", seconds) + " s"
+                + (saysHello ? "" : "; no \"WebAssembly runs in Stone\"")
+            outcomes.append(outcome)
+        }
+        return outcomes
     }
 
     // MARK: Recording
